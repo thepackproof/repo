@@ -1,0 +1,47 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function signedIn() { return request.auth != null; }
+    function isParticipant(transactionId) {
+      return signedIn()
+        && request.auth.uid in firestore.get(/databases/(default)/documents/transactions/$(transactionId)).data.participantIds;
+    }
+
+    match /evidence/{transactionId}/{userId}/{uploadId} {
+      allow read: if isParticipant(transactionId);
+      allow create: if signedIn()
+        && resource == null
+        && request.auth.uid == userId
+        && isParticipant(transactionId)
+        && request.resource.size > 0
+        && request.resource.size < 629145600
+        && request.resource.contentType.matches('^(image/[a-zA-Z0-9.+-]+|video/[a-zA-Z0-9.+-]+|application/pdf)$')
+        && firestore.exists(/databases/(default)/documents/pendingUploads/$(uploadId))
+        && firestore.get(/databases/(default)/documents/pendingUploads/$(uploadId)).data.uploaderId == request.auth.uid
+        && firestore.get(/databases/(default)/documents/pendingUploads/$(uploadId)).data.transactionId == transactionId
+        && firestore.get(/databases/(default)/documents/pendingUploads/$(uploadId)).data.contentType == request.resource.contentType
+        && firestore.get(/databases/(default)/documents/pendingUploads/$(uploadId)).data.expiresAt > request.time
+        && firestore.get(/databases/(default)/documents/pendingUploads/$(uploadId)).data.storagePath == 'evidence/' + transactionId + '/' + userId + '/' + uploadId;
+      allow update, delete: if false;
+    }
+
+    match /manifests/{transactionId}/{manifestId} {
+      allow read: if isParticipant(transactionId);
+      allow write: if false;
+    }
+
+    match /reports/{transactionId}/{reportId} {
+      allow read: if isParticipant(transactionId);
+      allow write: if false;
+    }
+
+    match /exports/{userId}/{exportId} {
+      allow read: if signedIn() && request.auth.uid == userId;
+      allow write: if false;
+    }
+
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

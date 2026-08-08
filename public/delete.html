@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Delete PackProof account</title>
+  <link rel="stylesheet" href="/site.css">
+  <script src="/runtime-config.js"></script>
+  <script src="/delete.js" defer></script>
+</head>
+<body><main>
+  <div class="brand">PACKPROOF</div>
+  <h1>Delete your account and data</h1>
+  <p>Submit the email connected to your PackProof account. We will email a time-limited confirmation link without revealing whether an account exists.</p>
+  <div class="card"><form id="delete-form">
+    <label for="email">Account email</label>
+    <input id="email" name="email" type="email" autocomplete="email" required maxlength="254">
+    <button type="submit">Send confirmation</button>
+    <p id="status" class="muted" aria-live="polite"></p>
+  </form></div>
+  <div class="card" id="tiktok-delete-card" hidden>
+    <h2 class="card-heading">TikTok-only account?</h2>
+    <p>If your PackProof account has no email address, authenticate directly with its linked TikTok account.</p>
+    <a class="button secondary" href="/api/tiktok-deletion">Continue with TikTok</a>
+  </div>
+  <h2>What happens next</h2>
+  <ol>
+    <li>Confirm by email or authenticate the linked TikTok account.</li>
+    <li>Deletion is scheduled for seven days later so you can cancel an accidental request in the app.</li>
+    <li>Your profile and evidence uploads are removed. Shared transaction timelines are redacted so the other participant retains an accurate record of actions taken.</li>
+  </ol>
+  <p class="notice">You can also schedule deletion at any time from Account → Delete my account and data inside PackProof.</p>
+  <footer><a href="/privacy.html">Privacy</a> · <a href="/terms.html">Terms</a> · Replace support@packproof.example before launch.</footer>
+</main></body>
+</html>

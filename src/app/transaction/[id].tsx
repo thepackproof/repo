@@ -1,0 +1,237 @@
+import { useEffect, useMemo, useState } from 'react';
+import { Alert, Linking, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { SymbolView } from 'expo-symbols';
+import * as DocumentPicker from 'expo-document-picker';
+import { Button, Card, Choice, Field, LoadingScreen, ProgressBar, StatusPill } from '@/components/ui';
+import { colors } from '@/constants/brand';
+import { callFunction, downloadUrl, subscribeEvents, subscribeEvidence, subscribeReturnPassports, subscribeTransaction, uploadEvidence } from '@/lib/api';
+import { formatDate, formatMoney, readableError, statusProgress } from '@/lib/format';
+import { useAuth } from '@/providers/auth-provider';
+import type { EvidenceRecord, EvidenceType, PackProofTransaction, ReturnPassport, TimelineEvent } from '@/types/models';
+
+const evidenceLabels: Record<EvidenceType, string> = {
+  ITEM_PHOTO: 'Item photo', CONDITION_PHOTO: 'Condition photo', IDENTIFIER_PHOTO: 'Identifier photo', COA_PHOTO: 'COA photo', PACKING_VIDEO: 'Continuous packing video', SHIPPING_LABEL: 'Shipping label', UNBOXING_VIDEO: 'Continuous unboxing video', DELIVERY_PHOTO: 'Delivery photo', SUPPORTING_DOCUMENT: 'Supporting document', RETURN_CONDITION_PHOTO: 'Return condition photo', RETURN_PACKING_VIDEO: 'Continuous return repacking video', RETURN_SHIPPING_LABEL: 'Return shipping label', RETURN_UNBOXING_VIDEO: 'Continuous returned-item unboxing video',
+};
+
+function shortId(id?: string | null) { return id ? `${id.slice(0, 5)}…${id.slice(-4)}` : 'Not joined'; }
+
+function attestationLabel(record: EvidenceRecord): string {
+  switch (record.attestationStatus) {
+    case 'JIT_VERIFIED': return 'JIT DEVICE VERIFIED';
+    case 'JIT_APP_CHECK_ONLY': return 'APP CHECK VERIFIED';
+    case 'OFFLINE_UNATTESTED': return 'OFFLINE CAPTURE';
+    default: return 'LEGACY / NO ATTESTATION';
+  }
+}
+
+function trackingStatus(record: EvidenceRecord): EvidenceRecord['carrierTrackingMatchStatus'] | EvidenceRecord['postSubmissionTrackingMatchStatus'] {
+  return record.postSubmissionTrackingMatchStatus ?? record.carrierTrackingMatchStatus;
+}
+
+function trackingLabel(record: EvidenceRecord): string | null {
+  const status = trackingStatus(record);
+  if (!status || status === 'NOT_SCANNED') return null;
+  return `${record.postSubmissionTrackingMatchStatus ? 'SUBMITTED TRACKING' : 'TRACKING'} ${status.replaceAll('_', ' ')}`;
+}
+
+export default function TransactionDetail() {
+  const { id } = useLocalSearchParams<{ id: string }>();
+  const router = useRouter();
+  const { user } = useAuth();
+  const [item, setItem] = useState<PackProofTransaction | null>(null);
+  const [evidence, setEvidence] = useState<EvidenceRecord[]>([]);
+  const [events, setEvents] = useState<TimelineEvent[]>([]);
+  const [returnPassports, setReturnPassports] = useState<ReturnPassport[]>([]);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [carrier, setCarrier] = useState('USPS');
+  const [tracking, setTracking] = useState('');
+  const [showShipping, setShowShipping] = useState(false);
+  const [showConcern, setShowConcern] = useState(false);
+  const [concernReason, setConcernReason] = useState<'FRAUD' | 'HARASSMENT' | 'PROHIBITED_ITEM' | 'IMPERSONATION' | 'PRIVACY' | 'OTHER'>('OTHER');
+  const [concernDetails, setConcernDetails] = useState('');
+  const [showReturnRequest, setShowReturnRequest] = useState(false);
+  const [returnReason, setReturnReason] = useState('');
+  const [showReturnShipping, setShowReturnShipping] = useState(false);
+  const [returnCarrier, setReturnCarrier] = useState('USPS');
+  const [returnTracking, setReturnTracking] = useState('');
+
+  useEffect(() => {
+    if (!id) return;
+    const unsubTransaction = subscribeTransaction(id, setItem, (error) => Alert.alert('Could not load PackProof', readableError(error)));
+    const unsubEvidence = subscribeEvidence(id, setEvidence);
+    const unsubEvents = subscribeEvents(id, setEvents);
+    const unsubReturns = subscribeReturnPassports(id, setReturnPassports);
+    return () => { unsubTransaction(); unsubEvidence(); unsubEvents(); unsubReturns(); };
+  }, [id]);
+
+  const role = item?.sellerId === user?.uid ? 'SELLER' : 'BUYER';
+  const confirmed = Boolean(user?.uid && item?.confirmedBy?.includes(user.uid));
+  const handoffConfirmed = Boolean(user?.uid && item?.handoffConfirmedBy?.includes(user.uid));
+  const completed = Boolean(user?.uid && item?.completedBy?.includes(user.uid));
+  const hashes = useMemo(() => new Set(evidence.map((record) => record.sha256)), [evidence]);
+  const activeReturn = returnPassports.find((passport) => !['COMPLETED', 'CANCELLED'].includes(passport.status)) ?? null;
+  const returnRequester = activeReturn?.initiatedBy === user?.uid;
+  const returningParticipant = (activeReturn?.returningParticipantId ?? item?.buyerId) === user?.uid;
+  const returnRecipient = activeReturn?.recipientId === user?.uid;
+
+  const run = async (name: string, action: () => Promise<void>) => {
+    setBusy(name);
+    try { await action(); } catch (error) { Alert.alert('Could not complete that', readableError(error)); } finally { setBusy(null); }
+  };
+
+  const capture = (type: EvidenceType, returnPassportId?: string) => router.push({ pathname: '/capture/[id]', params: { id, type, ...(returnPassportId ? { returnPassportId } : {}) } });
+  const createPacket = () => run('packet', async () => {
+    const result = await callFunction<{ transactionId: string }, { storagePath: string }>('createEvidencePacket', { transactionId: id });
+    await Linking.openURL(await downloadUrl(result.storagePath));
+  });
+  const attachPdf = () => run('document', async () => {
+    const result = await DocumentPicker.getDocumentAsync({ type: 'application/pdf', copyToCacheDirectory: true, multiple: false });
+    if (result.canceled || !result.assets[0]) return;
+    const file = result.assets[0];
+    if (file.size && file.size > 600 * 1024 * 1024) throw new Error('Supporting PDFs must be smaller than 600 MB.');
+    await uploadEvidence(id, 'SUPPORTING_DOCUMENT', file.uri, 'application/pdf', file.name || `supporting-document-${Date.now()}.pdf`);
+    Alert.alert('Document uploaded', 'The server is validating and fingerprinting the PDF. It will appear here shortly.');
+  });
+  const cancelTransaction = () => Alert.alert(
+    'Cancel this PackProof?',
+    'This stops the transaction before the terms are locked. The cancellation remains in the shared audit timeline.',
+    [{ text: 'Keep it', style: 'cancel' }, { text: 'Cancel PackProof', style: 'destructive', onPress: () => run('cancel', () => callFunction('cancelTransaction', { transactionId: id }).then(() => undefined)) }],
+  );
+
+  if (!item || !user) return <LoadingScreen />;
+  const actions = <View style={styles.actions}>
+    {role === 'SELLER' && ['DRAFT', 'AWAITING_BUYER', 'TERMS_REVIEW'].includes(item.status) ? <Button label="Edit proposed terms" icon="pencil" variant="secondary" onPress={() => router.push({ pathname: '/transaction/new', params: { transactionId: id } })} /> : null}
+    {role === 'SELLER' && ['DRAFT', 'AWAITING_BUYER'].includes(item.status) && !item.buyerId ? <Button label={item.status === 'DRAFT' ? 'Invite buyer' : 'Create a new invite'} icon="person.badge.plus" onPress={() => router.push(`/transaction/invite/${id}`)} /> : null}
+    {['DRAFT', 'AWAITING_BUYER', 'TERMS_REVIEW'].includes(item.status) && role === 'SELLER' ? <Button label="Add item or condition photo" icon="camera.fill" variant="secondary" onPress={() => capture('ITEM_PHOTO')} /> : null}
+    {item.status === 'TERMS_REVIEW' ? <Button label={confirmed ? 'Terms confirmed—waiting' : 'Confirm these exact terms'} icon="checkmark.shield.fill" disabled={confirmed} busy={busy === 'confirm'} onPress={() => run('confirm', () => callFunction('confirmTerms', { transactionId: id }).then(() => undefined))} /> : null}
+    {item.status === 'TERMS_LOCKED' && item.terms.saleType === 'SHIPPED' && role === 'SELLER' ? <Button label="Record continuous packing" icon="video.fill" onPress={() => capture('PACKING_VIDEO')} /> : null}
+    {item.status === 'TERMS_LOCKED' && item.terms.saleType === 'LOCAL_HANDOFF' ? <Button label={handoffConfirmed ? 'Handoff confirmed—waiting' : 'Confirm item changed hands'} icon="person.2.fill" disabled={handoffConfirmed} busy={busy === 'handoff'} onPress={() => run('handoff', () => callFunction('confirmLocalHandoff', { transactionId: id }).then(() => undefined))} /> : null}
+    {item.status === 'TERMS_LOCKED' && item.terms.saleType === 'LOCAL_HANDOFF' && role === 'BUYER' ? <Button label="Capture received condition" icon="camera.fill" variant="secondary" onPress={() => capture('DELIVERY_PHOTO')} /> : null}
+    {item.status === 'PACKED' && role === 'SELLER' ? <Button label="Add shipment details" icon="truck.box.fill" onPress={() => setShowShipping(true)} /> : null}
+    {item.status === 'SHIPPED' && role === 'BUYER' ? <Button label="Record continuous unboxing" icon="video.fill" onPress={() => capture('UNBOXING_VIDEO')} /> : null}
+    {item.status === 'SHIPPED' && role === 'BUYER' ? <Button label="Mark received without video" variant="secondary" busy={busy === 'received'} onPress={() => run('received', () => callFunction('markReceived', { transactionId: id }).then(() => undefined))} /> : null}
+    {role === 'SELLER' && !['COMPLETED', 'CANCELLED', 'ARCHIVED'].includes(item.status) ? <View style={styles.quickEvidence}><Text style={styles.quickLabel}>ADD SUPPORTING EVIDENCE</Text><View style={styles.choices}><Choice label="Condition" selected={false} onPress={() => capture('CONDITION_PHOTO')} /><Choice label="Identifier" selected={false} onPress={() => capture('IDENTIFIER_PHOTO')} /><Choice label="COA" selected={false} onPress={() => capture('COA_PHOTO')} />{['PACKED', 'SHIPPED'].includes(item.status) ? <Choice label="Shipping label" selected={false} onPress={() => capture('SHIPPING_LABEL')} /> : null}</View></View> : null}
+    {!['COMPLETED', 'CANCELLED', 'ARCHIVED'].includes(item.status) ? <Button label="Attach supporting PDF" icon="doc.fill" variant="secondary" busy={busy === 'document'} onPress={attachPdf} /> : null}
+    {item.status === 'BUYER_REVIEW' ? <Button label={completed ? 'Completion confirmed—waiting' : 'Everything is complete'} icon="checkmark.circle.fill" disabled={completed} busy={busy === 'complete'} onPress={() => run('complete', () => callFunction('completeTransaction', { transactionId: id }).then(() => undefined))} /> : null}
+    {!activeReturn && item.buyerId && ['SHIPPED', 'BUYER_REVIEW', 'COMPLETED', 'DISPUTED'].includes(item.status) && (item.terms.returns !== 'NO_RETURNS' || item.status === 'DISPUTED') ? <Button label="Start verified return" icon="arrow.uturn.backward.circle.fill" variant="secondary" onPress={() => setShowReturnRequest(true)} /> : null}
+    {activeReturn?.status === 'REQUESTED' && !returnRequester ? <Button label="Authorize verified return" icon="checkmark.shield.fill" busy={busy === 'authorizeReturn'} onPress={() => run('authorizeReturn', () => callFunction('authorizeReturnPassport', { transactionId: id, returnPassportId: activeReturn.id }).then(() => undefined))} /> : null}
+    {activeReturn?.status === 'AUTHORIZED' && returningParticipant ? <Button label="Record continuous return repacking" icon="video.fill" onPress={() => capture('RETURN_PACKING_VIDEO', activeReturn.id)} /> : null}
+    {activeReturn?.status === 'PACKED' && returningParticipant ? <Button label="Add return shipment details" icon="truck.box.fill" onPress={() => setShowReturnShipping(true)} /> : null}
+    {activeReturn?.status === 'IN_TRANSIT' && returnRecipient ? <Button label="Record returned-item unboxing" icon="video.fill" onPress={() => capture('RETURN_UNBOXING_VIDEO', activeReturn.id)} /> : null}
+    {activeReturn?.status === 'IN_TRANSIT' && returnRecipient ? <Button label="Mark return received without video" variant="secondary" busy={busy === 'returnReceived'} onPress={() => run('returnReceived', () => callFunction('markReturnReceived', { transactionId: id, returnPassportId: activeReturn.id }).then(() => undefined))} /> : null}
+    {activeReturn && !['REQUESTED', 'COMPLETED', 'CANCELLED'].includes(activeReturn.status) ? <Button label="Add return condition photo" icon="camera.fill" variant="secondary" onPress={() => capture('RETURN_CONDITION_PHOTO', activeReturn.id)} /> : null}
+    {activeReturn?.status === 'RECEIVED_REVIEW' ? <Button label={(activeReturn.completedBy ?? []).includes(user.uid) ? 'Return completion confirmed—waiting' : 'Complete return passport'} icon="checkmark.circle.fill" disabled={(activeReturn.completedBy ?? []).includes(user.uid)} busy={busy === 'completeReturn'} onPress={() => run('completeReturn', () => callFunction('completeReturnPassport', { transactionId: id, returnPassportId: activeReturn.id }).then(() => undefined))} /> : null}
+    {!['DRAFT', 'CANCELLED', 'ARCHIVED'].includes(item.status) ? <Button label="Generate evidence packet" icon="doc.text.fill" variant="secondary" busy={busy === 'packet'} onPress={createPacket} /> : null}
+    {item.buyerId && !['COMPLETED', 'CANCELLED', 'ARCHIVED'].includes(item.status) ? <Button label="Raise a concern" icon="exclamationmark.triangle.fill" variant="danger" onPress={() => setShowConcern(!showConcern)} /> : null}
+    {role === 'SELLER' && ['DRAFT', 'AWAITING_BUYER', 'TERMS_REVIEW'].includes(item.status) ? <Button label="Cancel PackProof" icon="xmark.circle.fill" variant="danger" busy={busy === 'cancel'} onPress={cancelTransaction} /> : null}
+  </View>;
+
+  return <SafeAreaView style={styles.safe}><ScrollView contentContainerStyle={styles.container}>
+    <Button label="Back" variant="ghost" onPress={() => router.back()} style={styles.back} />
+    <View style={styles.top}><View style={{ flex: 1 }}><Text style={styles.role}>{role}</Text><Text style={styles.title}>{item.title}</Text></View><Text style={styles.price}>{formatMoney(item.priceMinor, item.currency)}</Text></View>
+    <View style={styles.status}><StatusPill status={item.status} /><Text style={styles.updated}>Updated {formatDate(item.updatedAt)}</Text></View>
+    <ProgressBar value={statusProgress[item.status]} />
+
+    {actions}
+
+    {showReturnRequest ? <Card style={styles.form}>
+      <Text style={styles.cardTitle}>Start a symmetric return passport</Text>
+      <Text style={styles.small}>The other participant must authorize this request before return repacking. The passport snapshots the original evidence hashes and creates a separate return audit trail.</Text>
+      <Field label="Reason for return" value={returnReason} onChangeText={setReturnReason} multiline placeholder="Describe the return reason factually and reference the locked terms." />
+      <Button label="Request verified return" busy={busy === 'requestReturn'} disabled={returnReason.trim().length < 5} onPress={() => run('requestReturn', async () => { await callFunction('initiateReturnPassport', { transactionId: id, reason: returnReason.trim() }); setShowReturnRequest(false); setReturnReason(''); })} />
+      <Button label="Cancel" variant="ghost" onPress={() => setShowReturnRequest(false)} />
+    </Card> : null}
+
+    {showReturnShipping && activeReturn ? <Card style={styles.form}>
+      <Text style={styles.cardTitle}>Return shipment details</Text>
+      <View style={styles.choices}>{['USPS', 'UPS', 'FedEx', 'DHL', 'Other'].map((value) => <Choice key={value} label={value} selected={returnCarrier === value} onPress={() => setReturnCarrier(value)} />)}</View>
+      <Field label="Return tracking number" value={returnTracking} onChangeText={setReturnTracking} autoCapitalize="characters" placeholder="Enter the return tracking number" />
+      <Button label="Record return shipment" busy={busy === 'returnShipping'} disabled={returnTracking.trim().length < 3} onPress={() => run('returnShipping', async () => { await callFunction('submitReturnShipping', { transactionId: id, returnPassportId: activeReturn.id, carrier: returnCarrier, trackingNumber: returnTracking.trim() }); setShowReturnShipping(false); })} />
+    </Card> : null}
+
+    {showShipping ? <Card style={styles.form}>
+      <Text style={styles.cardTitle}>Shipment details</Text>
+      <View style={styles.choices}>{['USPS', 'UPS', 'FedEx', 'DHL', 'Other'].map((value) => <Choice key={value} label={value} selected={carrier === value} onPress={() => setCarrier(value)} />)}</View>
+      <Field label="Tracking number" value={tracking} onChangeText={setTracking} autoCapitalize="characters" placeholder="Enter the carrier tracking number" />
+      <Button label="Record shipment" busy={busy === 'shipping'} disabled={tracking.trim().length < 3} onPress={() => run('shipping', async () => { await callFunction('submitShipping', { transactionId: id, carrier, trackingNumber: tracking.trim() }); setShowShipping(false); })} />
+    </Card> : null}
+
+    {showConcern ? <Card style={styles.form}>
+      <Text style={styles.cardTitle}>Raise a private concern</Text>
+      <Text style={styles.small}>This freezes the normal completion flow and creates a moderation record. It does not decide the dispute.</Text>
+      <View style={styles.choices}>{(['FRAUD', 'HARASSMENT', 'PROHIBITED_ITEM', 'IMPERSONATION', 'PRIVACY', 'OTHER'] as const).map((value) => <Choice key={value} label={value.replaceAll('_', ' ').toLowerCase()} selected={concernReason === value} onPress={() => setConcernReason(value)} />)}</View>
+      <Field label="What happened?" value={concernDetails} onChangeText={setConcernDetails} multiline placeholder="Describe the issue factually and reference relevant evidence." />
+      <Button label="Submit concern" variant="danger" busy={busy === 'concern'} disabled={concernDetails.trim().length < 5} onPress={() => run('concern', async () => { await callFunction('raiseConcern', { transactionId: id, targetUserId: role === 'SELLER' ? item.buyerId : item.sellerId, reason: concernReason, details: concernDetails.trim() }); setShowConcern(false); })} />
+      <Button label="Block the other participant" variant="ghost" busy={busy === 'block'} onPress={() => Alert.alert('Block this user?', 'They will be unable to join new PackProofs with you. Existing shared records remain available to both parties.', [{ text: 'Cancel', style: 'cancel' }, { text: 'Block', style: 'destructive', onPress: () => run('block', () => callFunction('blockUser', { targetUserId: role === 'SELLER' ? item.buyerId : item.sellerId }).then(() => undefined)) }])} />
+    </Card> : null}
+
+    <Card style={styles.card}>
+      <Text style={styles.cardEyebrow}>AGREED ITEM</Text>
+      <Text style={styles.cardTitle}>{item.title}</Text>
+      <Text style={styles.body}>{item.description || 'No additional description supplied.'}</Text>
+      <View style={styles.divider} />
+      <Info label="Category" value={item.category} /><Info label="Seller" value={shortId(item.sellerId)} /><Info label="Buyer" value={shortId(item.buyerId)} />
+      {item.identifiers.map((identifier) => <Info key={`${identifier.label}:${identifier.value}`} label={identifier.label} value={identifier.value} />)}
+      <Info label="Condition" value={item.conditionNotes || 'No condition notes supplied.'} vertical />
+    </Card>
+
+    <Card style={styles.card}>
+      <Text style={styles.cardEyebrow}>LOCKED TERMS</Text>
+      <Info label="Fulfillment" value={item.terms.saleType === 'SHIPPED' ? 'Shipped transaction' : 'Local handoff'} />
+      <Info label="Shipping cost" value={item.terms.shippingResponsibility.replaceAll('_', ' ').toLowerCase()} />
+      <Info label="Returns" value={`${item.terms.returns.replaceAll('_', ' ').toLowerCase()} · ${item.terms.returnWindowDays} day window`} />
+      <Info label="Additional terms" value={item.terms.customTerms || 'No additional terms.'} vertical />
+      <View style={styles.confirmations}><Text style={styles.confirmation}>{item.confirmedBy.includes(item.sellerId) ? '✓' : '○'} Seller</Text><Text style={styles.confirmation}>{item.buyerId && item.confirmedBy.includes(item.buyerId) ? '✓' : '○'} Buyer</Text></View>
+      {item.terms.saleType === 'LOCAL_HANDOFF' ? <><Text style={styles.cardEyebrow}>HANDOFF CONFIRMATIONS</Text><View style={styles.confirmations}><Text style={styles.confirmation}>{item.handoffConfirmedBy?.includes(item.sellerId) ? '✓' : '○'} Seller</Text><Text style={styles.confirmation}>{item.buyerId && item.handoffConfirmedBy?.includes(item.buyerId) ? '✓' : '○'} Buyer</Text></View></> : null}
+    </Card>
+
+    {returnPassports.length ? <Card style={styles.card}>
+      <Text style={styles.cardEyebrow}>SYMMETRIC RETURN PASSPORT</Text>
+      {returnPassports.map((passport) => <View key={passport.id} style={styles.returnRow}>
+        <View style={{ flex: 1, gap: 3 }}><Text style={styles.cardTitle}>{passport.status.replaceAll('_', ' ')}</Text><Text style={styles.small}>{passport.reason}</Text>{passport.shipping ? <Text style={styles.small}>{passport.shipping.carrier} · {passport.shipping.trackingNumber}{passport.shipping.labelEvidenceMatchStatus ? ` · label ${passport.shipping.labelEvidenceMatchStatus.toLowerCase()}` : ''}</Text> : null}<Text style={styles.hash}>{passport.originalEvidenceHashes?.length ?? 0} ORIGINAL EVIDENCE HASHES SNAPSHOTTED</Text></View>
+        <Text style={styles.updated}>{formatDate(passport.updatedAt)}</Text>
+      </View>)}
+    </Card> : null}
+
+    {item.shipping ? <Card style={styles.card}><Text style={styles.cardEyebrow}>SHIPMENT</Text><Info label="Carrier" value={item.shipping.carrier} /><Info label="Tracking" value={item.shipping.trackingNumber} />{item.shipping.labelEvidenceMatchStatus ? <Info label="Packing-label check" value={item.shipping.labelEvidenceMatchStatus.replaceAll('_', ' ').toLowerCase()} /> : null}<Info label="Recorded" value={formatDate(item.shipping.shippedAt)} /></Card> : null}
+
+    <View style={styles.sectionHead}><Text style={styles.sectionTitle}>Verified evidence</Text><Text style={styles.count}>{evidence.length} FILE{evidence.length === 1 ? '' : 'S'}</Text></View>
+    <View style={styles.list}>
+      {evidence.map((record) => <Card key={record.id} style={styles.evidence}>
+        <View style={styles.evidenceIcon}><SymbolView name={record.contentType.startsWith('video') ? 'video.fill' : record.contentType === 'application/pdf' ? 'doc.fill' : 'photo.fill'} size={21} tintColor={colors.teal} /></View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.evidenceTitle}>{evidenceLabels[record.type]}</Text>
+          <Text style={styles.hash}>FILE SHA-256 · {record.sha256.slice(0, 16)}…</Text>
+          {record.manifestSha256 ? <Text style={styles.hash}>MANIFEST · {record.manifestSha256.slice(0, 16)}…</Text> : null}
+          <View style={styles.verificationRow}><Text style={styles.verification}>{attestationLabel(record)}</Text>{trackingLabel(record) ? <Text style={[styles.verification, trackingStatus(record) === 'MISMATCH' && styles.verificationDanger]}>{trackingLabel(record)}</Text> : null}</View>
+          <Text style={styles.evidenceMeta}>{formatDate(record.createdAt)} · {(record.sizeBytes / 1024 / 1024).toFixed(1)} MB</Text>
+        </View>
+        <Text onPress={() => downloadUrl(record.storagePath).then(Linking.openURL).catch((error) => Alert.alert('Could not open evidence', readableError(error)))} style={styles.open}>OPEN</Text>
+      </Card>)}
+      {!evidence.length ? <Card><Text style={styles.small}>No evidence has been server-verified yet. Files appear here only after upload, permission checks, hashing and timestamping complete.</Text></Card> : null}
+      {hashes.size !== evidence.length ? <Text style={styles.warning}>Duplicate evidence fingerprints detected. This does not change the original files.</Text> : null}
+    </View>
+
+    <View style={styles.sectionHead}><Text style={styles.sectionTitle}>Audit timeline</Text></View>
+    <Card style={styles.timeline}>{events.map((event, index) => <View key={event.id} style={styles.event}><View style={styles.eventRail}><View style={styles.eventDot} />{index < events.length - 1 ? <View style={styles.eventLine} /> : null}</View><View style={{ flex: 1, paddingBottom: 17 }}><Text style={styles.eventType}>{event.type.replaceAll('_', ' ')}</Text><Text style={styles.eventSummary}>{event.summary}</Text><Text style={styles.eventDate}>{formatDate(event.createdAt)}</Text></View></View>)}</Card>
+  </ScrollView></SafeAreaView>;
+}
+
+function Info({ label, value, vertical }: { label: string; value: string; vertical?: boolean }) {
+  return <View style={[styles.info, vertical && { flexDirection: 'column', gap: 5 }]}><Text style={styles.infoLabel}>{label}</Text><Text selectable style={[styles.infoValue, vertical && { textAlign: 'left' }]}>{value}</Text></View>;
+}
+
+const styles = StyleSheet.create({
+  safe: { flex: 1, backgroundColor: colors.background }, container: { padding: 20, paddingBottom: 48, gap: 15 }, back: { alignSelf: 'flex-start', minHeight: 40 },
+  top: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 }, role: { color: colors.teal, fontSize: 10, fontWeight: '900', letterSpacing: 1.5, marginBottom: 5 }, title: { color: colors.ink, fontSize: 27, lineHeight: 33, fontWeight: '900' }, price: { color: colors.teal, fontSize: 18, fontWeight: '900' },
+  status: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }, updated: { color: colors.muted, fontSize: 10 }, actions: { gap: 9, marginVertical: 4 }, quickEvidence: { gap: 8, paddingTop: 3 }, quickLabel: { color: colors.muted, fontSize: 9, fontWeight: '900', letterSpacing: 1.1 }, form: { gap: 14 }, choices: { flexDirection: 'row', gap: 7, flexWrap: 'wrap' },
+  card: { gap: 10 }, cardEyebrow: { color: colors.teal, fontSize: 10, fontWeight: '900', letterSpacing: 1.4 }, cardTitle: { color: colors.ink, fontSize: 18, fontWeight: '900' }, body: { color: colors.muted, fontSize: 13, lineHeight: 20 }, divider: { height: 1, backgroundColor: colors.border },
+  info: { flexDirection: 'row', justifyContent: 'space-between', gap: 12 }, infoLabel: { color: colors.muted, fontSize: 12, fontWeight: '700' }, infoValue: { flex: 1, color: colors.ink, fontSize: 12, lineHeight: 18, textAlign: 'right', fontWeight: '600' }, confirmations: { flexDirection: 'row', gap: 16, marginTop: 5 }, confirmation: { color: colors.teal, fontSize: 12, fontWeight: '800' },
+  sectionHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 7 }, sectionTitle: { color: colors.ink, fontSize: 18, fontWeight: '900' }, count: { color: colors.muted, fontSize: 9, fontWeight: '900', letterSpacing: 1.2 }, list: { gap: 9 },
+  evidence: { flexDirection: 'row', alignItems: 'center', gap: 11, padding: 14 }, evidenceIcon: { width: 42, height: 42, borderRadius: 13, backgroundColor: 'rgba(33,212,180,0.08)', alignItems: 'center', justifyContent: 'center' }, evidenceTitle: { color: colors.ink, fontSize: 13, fontWeight: '800' }, hash: { color: colors.teal, fontSize: 9, marginTop: 3 }, verificationRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 5, marginTop: 5 }, verification: { color: colors.muted, borderWidth: 1, borderColor: colors.border, borderRadius: 999, paddingHorizontal: 7, paddingVertical: 3, fontSize: 7, fontWeight: '900', letterSpacing: 0.45 }, verificationDanger: { color: colors.danger, borderColor: colors.danger }, evidenceMeta: { color: colors.muted, fontSize: 9, marginTop: 5 }, open: { color: colors.blue, fontSize: 10, fontWeight: '900' },
+  small: { color: colors.muted, fontSize: 11, lineHeight: 17 }, warning: { color: colors.amber, fontSize: 10 },
+  returnRow: { flexDirection: 'row', gap: 12, paddingVertical: 8, borderTopWidth: 1, borderTopColor: colors.border },
+  timeline: { gap: 0 }, event: { flexDirection: 'row', gap: 10 }, eventRail: { width: 16, alignItems: 'center' }, eventDot: { width: 9, height: 9, borderRadius: 5, backgroundColor: colors.teal, marginTop: 3 }, eventLine: { width: 1, flex: 1, backgroundColor: colors.border, marginTop: 4 }, eventType: { color: colors.ink, fontSize: 11, fontWeight: '900' }, eventSummary: { color: colors.muted, fontSize: 11, lineHeight: 16, marginTop: 3 }, eventDate: { color: colors.muted, opacity: 0.7, fontSize: 9, marginTop: 4 },
+});

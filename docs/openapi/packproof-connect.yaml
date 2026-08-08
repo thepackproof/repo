@@ -1,0 +1,94 @@
+openapi: 3.1.0
+info:
+  title: PackProof Connect API
+  version: 0.2.0
+  description: Creates a locked PackProof capture handoff for an external commerce order.
+servers:
+  - url: https://YOUR_PACKPROOF_DOMAIN.example
+paths:
+  /api/connect/orders:
+    post:
+      operationId: createPackProofVerification
+      summary: Create or replay an idempotent verification session
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateVerificationRequest'
+      responses:
+        '201':
+          description: New verification session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateVerificationResponse'
+        '200':
+          description: Idempotent replay of an existing session
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/CreateVerificationResponse'
+                  - type: object
+                    properties:
+                      idempotentReplay: { const: true }
+        '400': { description: Invalid payload or callback URL }
+        '401': { description: Invalid API key }
+        '403': { description: Disabled integration or platform mismatch }
+        '409': { description: Idempotency key reused with a different payload }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: PackProof API key
+  schemas:
+    CreateVerificationRequest:
+      type: object
+      additionalProperties: false
+      required: [platform, orderId, sellerId, itemTitle, callbackUrl, idempotencyKey]
+      properties:
+        platform: { type: string, minLength: 2, maxLength: 80 }
+        orderId: { type: string, minLength: 1, maxLength: 200 }
+        sellerId: { type: string, minLength: 1, maxLength: 200 }
+        trackingNumber: { type: string, minLength: 3, maxLength: 120 }
+        carrier: { type: string, minLength: 1, maxLength: 80 }
+        itemTitle: { type: string, minLength: 1, maxLength: 300 }
+        itemDescription: { type: string, maxLength: 3000, default: '' }
+        declaredWeightGrams: { type: integer, minimum: 0, maximum: 2000000 }
+        priceMinor: { type: integer, minimum: 0, maximum: 10000000000, default: 0 }
+        currency: { type: string, pattern: '^[A-Z]{3}$', default: USD }
+        callbackUrl: { type: string, format: uri, maxLength: 1000 }
+        idempotencyKey: { type: string, minLength: 8, maxLength: 200 }
+    CreateVerificationResponse:
+      type: object
+      required: [success, sessionId, verificationUrl, expiresAt]
+      properties:
+        success: { const: true }
+        sessionId: { type: string }
+        verificationUrl: { type: string, format: uri }
+        expiresAt: { type: string, format: date-time }
+        idempotentReplay: { type: boolean }
+    VerificationCallback:
+      type: object
+      required: [event, orderId, verificationStatus, sha256Hash, dossierUrl, timestamp]
+      properties:
+        event: { const: packproof.verification.completed }
+        orderId: { type: string }
+        trackingNumber: { type: [string, 'null'] }
+        verificationStatus:
+          type: string
+          enum: [VERIFIED_FULFILLMENT, VERIFIED_WITH_LIMITATIONS]
+        sha256Hash: { type: string, pattern: '^[a-f0-9]{64}$' }
+        manifestSha256: { type: string, pattern: '^[a-f0-9]{64}$' }
+        evidenceBundleSha256: { type: string, pattern: '^[a-f0-9]{64}$' }
+        manifestSignature: { type: string }
+        attestationStatus: { type: string }
+        carrierTrackingMatchStatus: { type: string }
+        declaredWeightGrams: { type: [integer, 'null'] }
+        dossierUrl: { type: string, format: uri }
+        dossierSha256: { type: string, pattern: '^[a-f0-9]{64}$' }
+        timestamp: { type: string, format: date-time }

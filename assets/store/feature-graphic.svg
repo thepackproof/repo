@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 500">
+  <defs>
+    <radialGradient id="bg" cx="20%" cy="50%" r="82%">
+      <stop stop-color="#123847"/>
+      <stop offset="1" stop-color="#07111E"/>
+    </radialGradient>
+  </defs>
+  <rect width="1024" height="500" fill="url(#bg)"/>
+  <circle cx="240" cy="250" r="178" fill="#0A1B29" opacity=".86"/>
+  <g transform="translate(82 72) scale(.35)">
+    <path d="M250 358 512 233l262 125-262 129-262-129Z" fill="#0C2634" stroke="#5B8CFF" stroke-width="33" stroke-linejoin="round"/>
+    <path d="M250 359v305l262 147V487L250 359Z" fill="#0A1C2A" stroke="#5B8CFF" stroke-width="33" stroke-linejoin="round"/>
+    <path d="M774 359v305L512 811V487l262-128Z" fill="#0D2B36" stroke="#5B8CFF" stroke-width="33" stroke-linejoin="round"/>
+    <path d="m359 590 99 99 217-238" fill="none" stroke="#21D4B4" stroke-width="60" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <text x="425" y="172" fill="#21D4B4" font-family="Inter,Arial,sans-serif" font-size="25" font-weight="800" letter-spacing="7">PACKPROOF</text>
+  <text x="425" y="236" fill="#F4F8FB" font-family="Inter,Arial,sans-serif" font-size="42" font-weight="800">A shared record</text>
+  <text x="425" y="288" fill="#F4F8FB" font-family="Inter,Arial,sans-serif" font-size="42" font-weight="800">from agreement</text>
+  <text x="425" y="340" fill="#F4F8FB" font-family="Inter,Arial,sans-serif" font-size="42" font-weight="800">to arrival.</text>
+  <rect x="425" y="377" width="254" height="4" rx="2" fill="#21D4B4"/>
+</svg>

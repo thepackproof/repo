@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <radialGradient id="glow" cx="50%" cy="43%" r="62%">
+      <stop offset="0" stop-color="#123B4A"/>
+      <stop offset="1" stop-color="#07111E"/>
+    </radialGradient>
+    <linearGradient id="proof" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#55F2D2"/>
+      <stop offset="1" stop-color="#21D4B4"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" rx="220" fill="#07111E"/>
+  <circle cx="512" cy="470" r="362" fill="url(#glow)" opacity=".72"/>
+  <path d="M244 346 512 218l268 128-268 132L244 346Z" fill="#0C2634" stroke="#5B8CFF" stroke-width="34" stroke-linejoin="round"/>
+  <path d="M244 347v312l268 151V478L244 347Z" fill="#0A1C2A" stroke="#5B8CFF" stroke-width="34" stroke-linejoin="round"/>
+  <path d="M780 347v312L512 810V478l268-131Z" fill="#0D2B36" stroke="#5B8CFF" stroke-width="34" stroke-linejoin="round"/>
+  <path d="M512 218 396 274l267 132 117-60-268-128Z" fill="#153E4C" opacity=".92"/>
+  <path d="m356 583 101 101 222-244" fill="none" stroke="url(#proof)" stroke-width="62" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

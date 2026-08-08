@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="proof" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#55F2D2"/>
+      <stop offset="1" stop-color="#21D4B4"/>
+    </linearGradient>
+  </defs>
+  <path d="M250 358 512 233l262 125-262 129-262-129Z" fill="#0C2634" stroke="#5B8CFF" stroke-width="33" stroke-linejoin="round"/>
+  <path d="M250 359v305l262 147V487L250 359Z" fill="#0A1C2A" stroke="#5B8CFF" stroke-width="33" stroke-linejoin="round"/>
+  <path d="M774 359v305L512 811V487l262-128Z" fill="#0D2B36" stroke="#5B8CFF" stroke-width="33" stroke-linejoin="round"/>
+  <path d="M512 233 399 287l261 129 114-58-262-125Z" fill="#153E4C"/>
+  <path d="m359 590 99 99 217-238" fill="none" stroke="url(#proof)" stroke-width="60" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

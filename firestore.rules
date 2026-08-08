@@ -1,0 +1,78 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function transactionRecord(transactionId) {
+      return get(/databases/$(database)/documents/transactions/$(transactionId)).data;
+    }
+    function isParticipant(transactionId) {
+      return signedIn() && request.auth.uid in transactionRecord(transactionId).participantIds;
+    }
+
+    match /users/{userId} {
+      allow read: if signedIn() && request.auth.uid == userId;
+      allow write: if false;
+      match /blocks/{blockedId} {
+        allow read: if signedIn() && request.auth.uid == userId;
+        allow write: if false;
+      }
+      match /exports/{exportId} {
+        allow read: if signedIn() && request.auth.uid == userId;
+        allow write: if false;
+      }
+    }
+
+    match /publicProfiles/{userId} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
+    match /transactions/{transactionId} {
+      allow read: if isParticipant(transactionId);
+      allow write: if false;
+
+      match /evidence/{evidenceId} {
+        allow read: if isParticipant(transactionId);
+        allow write: if false;
+      }
+      match /events/{eventId} {
+        allow read: if isParticipant(transactionId);
+        allow write: if false;
+      }
+      match /packets/{packetId} {
+        allow read: if isParticipant(transactionId);
+        allow write: if false;
+      }
+      match /returns/{returnPassportId} {
+        allow read: if isParticipant(transactionId);
+        allow write: if false;
+      }
+    }
+
+    match /pendingUploads/{uploadId} {
+      allow read, write: if false;
+    }
+    match /invites/{inviteId} {
+      allow read, write: if false;
+    }
+    match /reports/{reportId} {
+      allow read, write: if false;
+    }
+    match /billingEvents/{eventId} {
+      allow read, write: if false;
+    }
+    match /oauthStates/{stateId} {
+      allow read, write: if false;
+    }
+    match /authGrants/{grantId} {
+      allow read, write: if false;
+    }
+    match /captureSessions/{sessionId} { allow read, write: if false; }
+    match /connectSessions/{sessionId} { allow read, write: if false; }
+    match /platformIntegrations/{integrationId} { allow read, write: if false; }
+    match /webhookDeliveries/{deliveryId} { allow read, write: if false; }
+    match /providerLinks/{providerId} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -1,0 +1,1 @@
+const code=new URLSearchParams(location.search).get('code')||'';document.querySelector('#open').href=`packproof://invite?code=${encodeURIComponent(code)}`;setTimeout(()=>{if(code)location.href=`packproof://invite?code=${encodeURIComponent(code)}`},350);

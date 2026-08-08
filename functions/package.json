@@ -1,0 +1,25 @@
+{
+  "name": "packproof-functions",
+  "private": true,
+  "main": "lib/index.js",
+  "engines": {
+    "node": "22"
+  },
+  "scripts": {
+    "build": "tsc",
+    "build:watch": "tsc --watch",
+    "serve": "npm run build && npx --yes firebase-tools@15.25.1 emulators:start --only functions",
+    "deploy": "npx --yes firebase-tools@15.25.1 deploy --only functions",
+    "lint": "tsc --noEmit",
+    "provision:connect": "node scripts/provision-connect.mjs"
+  },
+  "dependencies": {
+    "firebase-admin": "^14.2.0",
+    "firebase-functions": "^7.3.2",
+    "pdf-lib": "^1.17.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.1",
+    "typescript": "~6.0.3"
+  }
+}
