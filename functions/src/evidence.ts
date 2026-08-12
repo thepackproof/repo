@@ -588,7 +588,7 @@ export const createEvidencePacket = onCall({ enforceAppCheck: true, timeoutSecon
   return generateEvidencePacket(transactionId, uid);
 });
 
-export const createPrivateDownloadUrl = onCall({ enforceAppCheck: true }, async (request) => {
+export const createPrivateDownloadUrl = onCall({ enforceAppCheck: true, invoker: 'public' }, async (request) => {
   const uid = requireUid(request);
   const storagePath = typeof request.data?.storagePath === 'string' ? request.data.storagePath : '';
   if (!storagePath || storagePath.length > 500 || storagePath.includes('\\') || storagePath.includes('..')) {

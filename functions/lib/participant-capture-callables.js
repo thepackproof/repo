@@ -35,6 +35,7 @@ function validation(parse) {
 }
 exports.claimParticipantInvitation = (0, https_1.onCall)({
     enforceAppCheck: true,
+    invoker: 'public',
     secrets: [config_1.participantHandoffSigningSecret],
 }, async (request) => {
     const actorId = (0, helpers_1.requireUid)(request);
@@ -56,6 +57,7 @@ exports.claimParticipantInvitation = (0, https_1.onCall)({
 });
 exports.redeemEvidenceSession = (0, https_1.onCall)({
     enforceAppCheck: true,
+    invoker: 'public',
     consumeAppCheckToken: true,
     secrets: [config_1.participantHandoffSigningSecret],
 }, async (request) => {
@@ -90,6 +92,7 @@ exports.redeemEvidenceSession = (0, https_1.onCall)({
 });
 exports.getMyEvidenceSession = (0, https_1.onCall)({
     enforceAppCheck: true,
+    invoker: 'public',
     secrets: [config_1.participantHandoffSigningSecret],
 }, async (request) => {
     const actorId = (0, helpers_1.requireUid)(request);

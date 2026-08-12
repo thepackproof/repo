@@ -171,7 +171,7 @@ export const redeemConnectSession = onCall({ enforceAppCheck: true }, async (req
   }
 });
 
-export const redeemPublicCommerceHandoff = onCall({ enforceAppCheck: true }, async (request) => {
+export const redeemPublicCommerceHandoff = onCall({ enforceAppCheck: true, invoker: 'public' }, async (request) => {
   const uid = requireUid(request);
   const profile = await assertAccountActive(uid);
   const input = redeemPublicCommerceHandoffSchema.parse(request.data);

@@ -40,6 +40,7 @@ function validation<T>(parse: () => T): T {
 
 export const claimParticipantInvitation = onCall({
   enforceAppCheck: true,
+  invoker: 'public',
   secrets: [participantHandoffSigningSecret],
 }, async (request) => {
   const actorId = requireUid(request);
@@ -60,6 +61,7 @@ export const claimParticipantInvitation = onCall({
 
 export const redeemEvidenceSession = onCall({
   enforceAppCheck: true,
+  invoker: 'public',
   consumeAppCheckToken: true,
   secrets: [participantHandoffSigningSecret],
 }, async (request) => {
@@ -92,6 +94,7 @@ export const redeemEvidenceSession = onCall({
 
 export const getMyEvidenceSession = onCall({
   enforceAppCheck: true,
+  invoker: 'public',
   secrets: [participantHandoffSigningSecret],
 }, async (request) => {
   const actorId = requireUid(request);

@@ -2,6 +2,8 @@
 import { spawnSync } from 'child_process';
 
 const secrets = [
+  { name: 'MANIFEST_SIGNING_SECRET', env: 'MANIFEST_SIGNING_SECRET' },
+  { name: 'WEBHOOK_SIGNING_SECRET', env: 'WEBHOOK_SIGNING_SECRET' },
   { name: 'API_CREDENTIAL_PEPPER', env: 'API_CREDENTIAL_PEPPER' },
   { name: 'PUBLIC_HANDOFF_SIGNING_SECRET', env: 'PUBLIC_HANDOFF_SIGNING_SECRET' },
   { name: 'PARTICIPANT_HANDOFF_SIGNING_SECRET', env: 'PARTICIPANT_HANDOFF_SIGNING_SECRET' },
@@ -13,7 +15,7 @@ const apply = process.argv.includes('--apply');
 function printHelp() {
   console.log('Usage: node provision-secrets.mjs [FIREBASE_PROJECT] [--apply]');
   console.log('Provide secret values via environment variables, e.g.:');
-  console.log('  API_CREDENTIAL_PEPPER, PUBLIC_HANDOFF_SIGNING_SECRET, PARTICIPANT_HANDOFF_SIGNING_SECRET');
+  console.log('  MANIFEST_SIGNING_SECRET, WEBHOOK_SIGNING_SECRET, API_CREDENTIAL_PEPPER, PUBLIC_HANDOFF_SIGNING_SECRET, PARTICIPANT_HANDOFF_SIGNING_SECRET');
   console.log('\nRun with --apply to execute the firebase CLI commands (requires firebase CLI auth in your environment).');
 }
 

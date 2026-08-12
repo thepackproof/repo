@@ -556,7 +556,7 @@ exports.createEvidencePacket = (0, https_1.onCall)({ enforceAppCheck: true, time
     (0, helpers_1.assertParticipant)(data, uid);
     return generateEvidencePacket(transactionId, uid);
 });
-exports.createPrivateDownloadUrl = (0, https_1.onCall)({ enforceAppCheck: true }, async (request) => {
+exports.createPrivateDownloadUrl = (0, https_1.onCall)({ enforceAppCheck: true, invoker: 'public' }, async (request) => {
     const uid = (0, helpers_1.requireUid)(request);
     const storagePath = typeof request.data?.storagePath === 'string' ? request.data.storagePath : '';
     if (!storagePath || storagePath.length > 500 || storagePath.includes('\\') || storagePath.includes('..')) {

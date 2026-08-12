@@ -67,6 +67,7 @@
     "eslint": "^9.39.4",
     "eslint-config-expo": "~57.0.1",
     "firebase": "^12.17.0",
+    "openapi-typescript-codegen": "^0.31.0",
     "typescript": "~6.0.3"
   },
   "scripts": {
@@ -96,7 +97,11 @@
     "verify:manifest": "node tools/verify-evidence.mjs",
     "test:manifest-verifier": "node scripts/test-evidence-verifier.mjs",
     "build:button-sdk": "node scripts/build-button-sdk.mjs",
+    "generate:openapi-sdk": "node scripts/generate-openapi-sdk.mjs",
     "test:sdk": "node scripts/build-button-sdk.mjs && node scripts/test-sdk.mjs",
+    "deploy:firebase": "node scripts/deploy-firebase.mjs",
+    "deploy:cicd": "node scripts/deploy-cicd.mjs",
+    "provision:secrets": "node infra/provision-secrets.mjs",
     "verify:pc": "node scripts/pc-demo.mjs verify",
     "build:android:preview": "node scripts/eas-with-env.mjs build --platform android --profile preview",
     "build:android:production": "node scripts/eas-with-env.mjs build --platform android --profile production",

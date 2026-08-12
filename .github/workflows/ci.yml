@@ -46,6 +46,9 @@ jobs:
           npm run lint
           npm --prefix functions run build
 
+      - name: Generate OpenAPI SDK
+        run: npm run generate:openapi-sdk
+
       - name: Merchant API unit and contract tests
         run: npm run test:api
 
@@ -81,3 +84,37 @@ jobs:
       - name: Record full application dependency advisories
         continue-on-error: true
         run: npm audit --omit=dev
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: source-and-api
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Use Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            functions/package-lock.json
+
+      - name: Install deterministic dependencies
+        run: |
+          npm ci
+          npm --prefix functions ci
+
+      - name: Deploy Firebase functions and hosting
+        env:
+          FIREBASE_PROJECT: ${{ secrets.FIREBASE_PROJECT }}
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+          MANIFEST_SIGNING_SECRET: ${{ secrets.MANIFEST_SIGNING_SECRET }}
+          WEBHOOK_SIGNING_SECRET: ${{ secrets.WEBHOOK_SIGNING_SECRET }}
+          API_CREDENTIAL_PEPPER: ${{ secrets.API_CREDENTIAL_PEPPER }}
+          PUBLIC_HANDOFF_SIGNING_SECRET: ${{ secrets.PUBLIC_HANDOFF_SIGNING_SECRET }}
+          PARTICIPANT_HANDOFF_SIGNING_SECRET: ${{ secrets.PARTICIPANT_HANDOFF_SIGNING_SECRET }}
+        run: |
+          node scripts/deploy-firebase.mjs ${{ secrets.FIREBASE_PROJECT }} --apply-secrets

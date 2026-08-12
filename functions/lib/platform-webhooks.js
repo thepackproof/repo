@@ -178,7 +178,7 @@ exports.redeemConnectSession = (0, https_1.onCall)({ enforceAppCheck: true }, as
         return (0, callable_errors_1.throwCallableError)(error);
     }
 });
-exports.redeemPublicCommerceHandoff = (0, https_1.onCall)({ enforceAppCheck: true }, async (request) => {
+exports.redeemPublicCommerceHandoff = (0, https_1.onCall)({ enforceAppCheck: true, invoker: 'public' }, async (request) => {
     const uid = (0, helpers_1.requireUid)(request);
     const profile = await (0, helpers_1.assertAccountActive)(uid);
     const input = validation_1.redeemPublicCommerceHandoffSchema.parse(request.data);
