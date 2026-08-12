@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { initializeTestEnvironment, assertFails, assertSucceeds } from '@firebase/rules-unit-testing';
-import { doc, getDoc, setDoc, Timestamp } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, orderBy, query, setDoc, Timestamp, where } from 'firebase/firestore';
 import { ref, uploadBytes, getBytes } from 'firebase/storage';
 
 const projectId = 'packproof-rules-test';
@@ -13,7 +13,7 @@ const testEnv = await initializeTestEnvironment({
 try {
   await testEnv.withSecurityRulesDisabled(async (context) => {
     const db = context.firestore();
-    await setDoc(doc(db, 'transactions', 'tx-security-001'), { sellerId: 'alice', buyerId: 'bob', participantIds: ['alice', 'bob'], status: 'TERMS_LOCKED' });
+    await setDoc(doc(db, 'transactions', 'tx-security-001'), { sellerId: 'alice', buyerId: 'bob', participantIds: ['alice', 'bob'], status: 'TERMS_LOCKED', updatedAt: Timestamp.fromMillis(Date.now()) });
     await setDoc(doc(db, 'transactions', 'tx-security-001', 'evidence', 'upload001'), { uploaderId: 'alice', storagePath: 'evidence/tx-security-001/alice/upload001' });
     await setDoc(doc(db, 'pendingUploads', 'upload001'), { uploaderId: 'alice', transactionId: 'tx-security-001', storagePath: 'evidence/tx-security-001/alice/upload001', contentType: 'image/jpeg', expiresAt: Timestamp.fromMillis(Date.now() + 60_000) });
     await setDoc(doc(db, 'pendingUploads', 'upload002'), { uploaderId: 'alice', transactionId: 'tx-security-001', storagePath: 'evidence/tx-security-001/alice/upload002', contentType: 'application/pdf', expiresAt: Timestamp.fromMillis(Date.now() + 60_000) });
@@ -25,6 +25,8 @@ try {
     await setDoc(doc(db, 'participantClaims', 'claim-security-001'), { transactionId: 'txn-security-001', status: 'ISSUED' });
     await setDoc(doc(db, 'evidenceSessions', 'es-security-001'), { transactionId: 'txn-security-001', status: 'READY' });
     await setDoc(doc(db, 'domainOutbox', 'evt-security-001'), { type: 'TRANSACTION_CREATED', deliveryState: 'PENDING' });
+    await setDoc(doc(db, 'webhookDeliveries', 'delivery-security-001'), { targetUrl: 'https://example.com', state: 'PENDING', nextAttemptAt: Timestamp.fromMillis(Date.now() - 60_000), attemptCount: 0 });
+    await setDoc(doc(db, 'apiIdempotencyRecords', 'idem-security-001'), { state: 'COMPLETE', createdAt: Timestamp.fromMillis(Date.now() - 60000) });
   });
 
   const alice = testEnv.authenticatedContext('alice');
@@ -38,11 +40,28 @@ try {
   await assertFails(setDoc(doc(alice.firestore(), 'transactions', 'tx-security-001'), { title: 'tampered' }, { merge: true }));
   await assertSucceeds(getDoc(doc(alice.firestore(), 'transactions', 'tx-security-001', 'evidence', 'upload001')));
   await assertFails(getDoc(doc(eve.firestore(), 'transactions', 'tx-security-001', 'evidence', 'upload001')));
+
+  const aliceTransactionQuery = query(
+    collection(alice.firestore(), 'transactions'),
+    where('participantIds', 'array-contains', 'alice'),
+    orderBy('updatedAt', 'desc'),
+  );
+  await assertSucceeds(getDocs(aliceTransactionQuery));
+
+  const eveTransactionQuery = query(
+    collection(eve.firestore(), 'transactions'),
+    where('participantIds', 'array-contains', 'alice'),
+    orderBy('updatedAt', 'desc'),
+  );
+  await assertFails(getDocs(eveTransactionQuery));
+  await assertFails(getDoc(doc(eve.firestore(), 'transactions', 'tx-security-001', 'evidence', 'upload001')));
   await assertSucceeds(getDoc(doc(alice.firestore(), 'publicProfiles', 'alice')));
   await assertFails(getDoc(doc(guest.firestore(), 'publicProfiles', 'alice')));
   await assertFails(getDoc(doc(alice.firestore(), 'commerceContexts', 'ctx-security-001')));
   await assertFails(setDoc(doc(alice.firestore(), 'commerceContexts', 'ctx-security-001'), { status: 'REVOKED' }, { merge: true }));
   await assertFails(getDoc(doc(alice.firestore(), 'passportDrafts', 'draft-security-001')));
+  await assertFails(getDoc(doc(alice.firestore(), 'webhookDeliveries', 'delivery-security-001')));
+  await assertFails(getDoc(doc(alice.firestore(), 'apiIdempotencyRecords', 'idem-security-001')));
   await assertFails(setDoc(doc(alice.firestore(), 'passportDrafts', 'draft-security-001'), { status: 'BOUND' }, { merge: true }));
   await assertFails(getDoc(doc(alice.firestore(), 'publicCommerceHandoffs', 'hnd-security-001')));
   await assertFails(setDoc(doc(alice.firestore(), 'publicCommerceHandoffs', 'hnd-security-001'), { status: 'CLAIMED' }, { merge: true }));

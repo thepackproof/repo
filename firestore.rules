@@ -6,7 +6,9 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/transactions/$(transactionId)).data;
     }
     function isParticipant(transactionId) {
-      return signedIn() && request.auth.uid in transactionRecord(transactionId).participantIds;
+      return signedIn()
+        && exists(/databases/$(database)/documents/transactions/$(transactionId))
+        && request.auth.uid in get(/databases/$(database)/documents/transactions/$(transactionId)).data.participantIds;
     }
 
     match /users/{userId} {
@@ -83,5 +85,11 @@ service cloud.firestore {
     match /providerLinks/{providerId} {
       allow read, write: if false;
     }
+    match /apiCredentials/{credentialId} { allow read, write: if false; }
+    match /apiClients/{clientId} { allow read, write: if false; }
+    match /organizations/{organizationId} { allow read, write: if false; }
+    match /apiIdempotencyRecords/{recordId} { allow read, write: if false; }
+    match /apiRateLimits/{limitId} { allow read, write: if false; }
+    match /apiAuditStreams/{streamId} { allow read, write: if false; }
   }
 }
