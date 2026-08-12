@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Alert, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { SymbolView } from 'expo-symbols';
+import { AppIcon } from '@/components/app-icon';
 import { Button, Card, LoadingScreen, ScreenTitle } from '@/components/ui';
 import { colors } from '@/constants/brand';
 import { callFunction } from '@/lib/api';
@@ -36,13 +36,13 @@ export default function ConnectCaptureHandoff() {
   if (loading || (valid && !user)) return <LoadingScreen />;
   return <SafeAreaView style={styles.safe}>
     <View style={styles.container}>
-      <ScreenTitle eyebrow="PackProof Connect" title="Verify this marketplace order" subtitle="The order context will be locked to a native PackProof capture and returned to the originating platform automatically." />
+      <ScreenTitle eyebrow="PackProof Connect" title="Document this marketplace order" subtitle="The order context will be locked to a native PackProof evidence capture and a structured finalization record will be returned to the originating platform." />
       <Card style={styles.card}>
-        <SymbolView name="link.badge.plus" size={42} tintColor={colors.teal} />
+        <AppIcon name="link.badge.plus" size={42} tintColor={colors.teal} />
         <Text style={styles.title}>{valid ? 'Secure order handoff ready' : 'Invalid handoff link'}</Text>
-        <Text style={styles.body}>{valid ? 'Continue to the guided Pack → Seal & Bridge → Macro-Snap evidence flow. No order details need to be retyped.' : 'This link is incomplete or was altered. Open the original link from the marketplace or seller dashboard.'}</Text>
+        <Text style={styles.body}>{valid ? 'Continue to the guided packing and label-context evidence flow. Requested regions are operator prompts; this build does not machine-confirm physical correspondence. No order details need to be retyped.' : 'This link is incomplete or was altered. Open the original link from the marketplace or seller dashboard.'}</Text>
       </Card>
-      <Button label="Begin verified capture" icon="camera.fill" disabled={!valid} busy={redeeming} onPress={begin} />
+      <Button label="Begin evidence capture" icon="camera.fill" disabled={!valid} busy={redeeming} onPress={begin} />
       <Button label="Cancel" variant="ghost" onPress={() => router.replace('/(tabs)')} />
     </View>
   </SafeAreaView>;

@@ -1,16 +1,45 @@
-import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
+import { createHash, createHmac, randomUUID } from 'node:crypto';
 import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
 import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 import { HttpsError, onCall, onRequest } from 'firebase-functions/v2/https';
 import { onDocumentCreated } from 'firebase-functions/v2/firestore';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
-import { connectLinkBaseUrl, db, storage } from './config';
+import { CommerceContextApplicationService } from './application/v1/commerce-context-service';
+import { ConnectHandoffApplicationService } from './application/v1/connect-handoff-service';
+import { PublicCommerceHandoffApplicationService } from './application/v1/public-commerce-handoff-service';
+import { ApplicationError } from './application/v1/errors';
+import { apiEnvironment, connectLinkBaseUrl, db, publicHandoffSigningSecret, storage } from './config';
 import { generateEvidencePacket } from './evidence';
-import { expiresIn, hash, randomToken, requireUid } from './helpers';
-import { connectOrderSchema, connectProvisionSchema, redeemConnectSchema, ValidationError } from './validation';
+import { assertAccountActive, expiresIn, hash, randomToken, requireUid } from './helpers';
+import { HmacConnectSessionTokenIssuer } from './infrastructure/crypto/connect-session-token-issuer';
+import { HmacPublicHandoffTokenIssuer } from './infrastructure/crypto/public-handoff-token-issuer';
+import { Sha256TokenVerifier } from './infrastructure/crypto/sha256-token-verifier';
+import { throwCallableError } from './infrastructure/firebase/v1/callable-errors';
+import { FirestoreConnectHandoffRepository } from './infrastructure/firebase/v1/connect-handoff-repository';
+import { FirestoreCommerceContextRepository } from './infrastructure/firebase/v1/commerce-context-repository';
+import { FirestorePublicCommerceHandoffRepository } from './infrastructure/firebase/v1/public-commerce-handoff-repository';
+import { connectOrderSchema, connectProvisionSchema, redeemConnectSchema, redeemPublicCommerceHandoffSchema, ValidationError } from './validation';
 
 const provisionSchema = connectProvisionSchema;
+const commerceContextService = new CommerceContextApplicationService(
+  new FirestoreCommerceContextRepository(db),
+  new HmacConnectSessionTokenIssuer(),
+);
+const connectHandoffService = new ConnectHandoffApplicationService(
+  new FirestoreConnectHandoffRepository(db),
+  new Sha256TokenVerifier(),
+);
+const publicCommerceHandoffService = new PublicCommerceHandoffApplicationService(
+  new FirestorePublicCommerceHandoffRepository(db),
+  new HmacPublicHandoffTokenIssuer(() => publicHandoffSigningSecret.value()),
+  new Sha256TokenVerifier(),
+  () => {
+    const value = apiEnvironment.value();
+    if (value !== 'sandbox' && value !== 'live') throw new Error('API_ENVIRONMENT must be sandbox or live.');
+    return value;
+  },
+);
 
 function isPrivateAddress(address: string): boolean {
   const value = address.toLowerCase().replace(/^::ffff:/, '');
@@ -45,18 +74,14 @@ async function validateCallbackUrl(callbackUrl: string, allowedOrigins?: string[
   return parsed;
 }
 
-function safeKeyEquals(actual: string, expected: string): boolean {
-  const a = Buffer.from(actual);
-  const b = Buffer.from(expected);
-  return a.length === b.length && timingSafeEqual(a, b);
-}
-
 export const provisionConnectIntegration = onCall({ enforceAppCheck: true }, async (request) => {
   requireUid(request);
   if (request.auth?.token.packproofAdmin !== true) throw new HttpsError('permission-denied', 'PackProof administrator approval is required.');
   const input = provisionSchema.parse(request.data);
   const callbackOrigins = await Promise.all(input.callbackOrigins.map(async (value) => (await validateCallbackUrl(value)).origin));
+  const buttonOrigins = await Promise.all(input.buttonOrigins.map(async (value) => (await validateCallbackUrl(value)).origin));
   const apiKey = `pp_${input.environment === 'PRODUCTION' ? 'live' : 'test'}_${randomToken(32)}`;
+  const publishableKey = `pp_pub_${input.environment === 'PRODUCTION' ? 'live' : 'sandbox'}_${randomToken(24)}`;
   const webhookSigningSecret = `whsec_${randomToken(32)}`;
   const ref = db.collection('platformIntegrations').doc();
   await ref.set({
@@ -67,12 +92,14 @@ export const provisionConnectIntegration = onCall({ enforceAppCheck: true }, asy
     apiKeyHash: hash(apiKey),
     webhookSigningSecret,
     callbackOrigins: Array.from(new Set(callbackOrigins)),
+    allowedOrigins: Array.from(new Set(buttonOrigins)),
+    publishableKeyHash: hash(publishableKey),
     status: 'ACTIVE',
     createdBy: request.auth!.uid,
     createdAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
   });
-  return { integrationId: ref.id, apiKey, webhookSigningSecret };
+  return { integrationId: ref.id, apiKey, webhookSigningSecret, publishableKey, allowedOrigins: Array.from(new Set(buttonOrigins)) };
 });
 
 export const handleMarketplaceOrder = onRequest({ cors: false, timeoutSeconds: 30 }, async (req, res) => {
@@ -87,64 +114,30 @@ export const handleMarketplaceOrder = onRequest({ cors: false, timeoutSeconds: 3
     const integration = integrationDoc.data();
     if (integration.status !== 'ACTIVE') { res.status(403).json({ error: 'integration_disabled' }); return; }
     const input = connectOrderSchema.parse(req.body);
-    if (String(integration.platform).toLowerCase() !== input.platform.toLowerCase()) { res.status(403).json({ error: 'platform_mismatch' }); return; }
     await validateCallbackUrl(input.callbackUrl, integration.callbackOrigins as string[]);
-
-    const idempotencyHash = createHash('sha256').update(`${integrationDoc.id}\n${input.idempotencyKey}`).digest('hex');
-    const requestPayloadHash = createHash('sha256').update(JSON.stringify(input)).digest('hex');
-    const sessionRef = db.collection('connectSessions').doc(idempotencyHash);
-    // Derive a stable handoff token so idempotent API retries can receive the
-    // same URL without ever storing the plaintext token or URL in Firestore.
-    const sessionToken = createHmac('sha256', String(integration.webhookSigningSecret))
-      .update(`connect-session-token-v1\n${idempotencyHash}`)
-      .digest('base64url');
-    const verificationUrl = `${connectLinkBaseUrl.value().replace(/\/$/, '')}/connect/capture?session=${encodeURIComponent(sessionRef.id)}&token=${encodeURIComponent(sessionToken)}`;
-    const expiresAt = expiresIn(7 * 86400);
-    const sessionResult = await db.runTransaction(async (tx) => {
-      const existing = await tx.get(sessionRef);
-      if (existing.exists) return { created: false, data: existing.data()! };
-      const sessionData = {
-        id: sessionRef.id,
-        integrationId: integrationDoc.id,
-        platform: input.platform,
-        externalOrderId: input.orderId,
-        externalSellerId: input.sellerId,
-        trackingNumber: input.trackingNumber ?? null,
-        carrier: input.carrier ?? null,
-        itemTitle: input.itemTitle,
-        itemDescription: input.itemDescription,
-        declaredWeightGrams: input.declaredWeightGrams ?? null,
-        priceMinor: input.priceMinor,
-        currency: input.currency,
-        callbackUrl: input.callbackUrl,
-        tokenHash: hash(sessionToken),
-        requestPayloadHash,
-        status: 'PENDING_REDEMPTION',
-        transactionId: null,
-        claimedBy: null,
-        createdAt: FieldValue.serverTimestamp(),
-        expiresAt,
-      };
-      tx.create(sessionRef, sessionData);
-      return { created: true, data: sessionData };
+    const result = await commerceContextService.ingestConnectOrder({
+      integrationId: integrationDoc.id,
+      platform: String(integration.platform),
+      webhookSigningSecret: String(integration.webhookSigningSecret),
+    }, input, req.get('x-request-id') ?? randomUUID());
+    const verificationUrl = `${connectLinkBaseUrl.value().replace(/\/$/, '')}/connect/capture?session=${encodeURIComponent(result.sessionId)}&token=${encodeURIComponent(result.sessionToken)}`;
+    res.status(result.replayed ? 200 : 201).json({
+      success: true,
+      sessionId: result.sessionId,
+      verificationUrl,
+      expiresAt: result.expiresAt.toISOString(),
+      ...(result.replayed ? { idempotentReplay: true } : {}),
     });
-    if (!sessionResult.created) {
-      if (sessionResult.data.requestPayloadHash !== requestPayloadHash) {
-        res.status(409).json({ error: 'idempotency_conflict', message: 'This idempotency key was already used with a different order payload.' });
-        return;
-      }
-      res.status(200).json({
-        success: true,
-        sessionId: sessionRef.id,
-        verificationUrl,
-        expiresAt: (sessionResult.data.expiresAt as Timestamp).toDate().toISOString(),
-        idempotentReplay: true,
-      });
-      return;
-    }
-    res.status(201).json({ success: true, sessionId: sessionRef.id, verificationUrl, expiresAt: expiresAt.toDate().toISOString() });
   } catch (error) {
     if (error instanceof ValidationError) { res.status(400).json({ error: 'invalid_payload', details: error.issues }); return; }
+    if (error instanceof ApplicationError) {
+      const status = error.category === 'FORBIDDEN' ? 403 : error.category === 'CONFLICT' ? 409 : 400;
+      const compatibilityCode = error.code === 'IDEMPOTENCY_KEY_REUSED' ? 'idempotency_conflict'
+        : error.code === 'PLATFORM_MISMATCH' ? 'platform_mismatch'
+          : error.code.toLowerCase();
+      res.status(status).json({ error: compatibilityCode, message: error.message });
+      return;
+    }
     if (error instanceof HttpsError) {
       const statusByCode: Partial<Record<typeof error.code, number>> = {
         'invalid-argument': 400,
@@ -166,53 +159,33 @@ export const handleMarketplaceOrder = onRequest({ cors: false, timeoutSeconds: 3
 export const redeemConnectSession = onCall({ enforceAppCheck: true }, async (request) => {
   const uid = requireUid(request);
   const input = redeemConnectSchema.parse(request.data);
-  const sessionRef = db.collection('connectSessions').doc(input.sessionId);
-  const result = await db.runTransaction(async (tx) => {
-    const snap = await tx.get(sessionRef);
-    if (!snap.exists) throw new HttpsError('not-found', 'PackProof Connect session not found.');
-    const session = snap.data()!;
-    if ((session.expiresAt as Timestamp).toMillis() < Date.now()) throw new HttpsError('deadline-exceeded', 'PackProof Connect session expired.');
-    if (session.claimedBy && session.claimedBy !== uid) throw new HttpsError('already-exists', 'This PackProof Connect session was claimed by another account.');
-    if (session.claimedBy === uid && session.transactionId) return { transactionId: String(session.transactionId), connectSessionId: input.sessionId };
-    if (!safeKeyEquals(hash(input.token), String(session.tokenHash))) throw new HttpsError('permission-denied', 'Invalid PackProof Connect handoff token.');
-
-    const transactionRef = db.collection('transactions').doc();
-    tx.set(transactionRef, {
-      sellerId: uid,
-      buyerId: null,
-      participantIds: [uid],
-      status: 'TERMS_LOCKED',
-      title: session.itemTitle,
-      category: 'Platform order',
-      description: session.itemDescription ?? '',
-      priceMinor: session.priceMinor ?? 0,
-      currency: session.currency ?? 'USD',
-      identifiers: [{ label: 'External order ID', value: session.externalOrderId }],
-      conditionNotes: '',
-      terms: { saleType: 'SHIPPED', shippingResponsibility: 'SELLER', returns: 'PLATFORM_POLICY', returnWindowDays: 0, customTerms: `Order imported from ${session.platform}.` },
-      confirmedBy: [uid],
-      handoffConfirmedBy: [],
-      completedBy: [],
-      lockedAt: FieldValue.serverTimestamp(),
-      createdAt: FieldValue.serverTimestamp(),
-      updatedAt: FieldValue.serverTimestamp(),
-      source: {
-        type: 'PACKPROOF_CONNECT',
-        platform: session.platform,
-        integrationId: session.integrationId,
-        connectSessionId: input.sessionId,
-        externalOrderId: session.externalOrderId,
-        externalSellerId: session.externalSellerId,
-        callbackUrl: session.callbackUrl,
-        trackingNumber: session.trackingNumber ?? null,
-        carrier: session.carrier ?? null,
-        declaredWeightGrams: session.declaredWeightGrams ?? null,
-      },
+  try {
+    return await connectHandoffService.redeem({
+      actorId: uid,
+      sessionId: input.sessionId,
+      token: input.token,
+      requestId: request.rawRequest.get('x-request-id') ?? randomUUID(),
     });
-    tx.update(sessionRef, { claimedBy: uid, transactionId: transactionRef.id, status: 'READY_FOR_CAPTURE', claimedAt: FieldValue.serverTimestamp(), tokenHash: FieldValue.delete() });
-    return { transactionId: transactionRef.id, connectSessionId: input.sessionId };
-  });
-  return result;
+  } catch (error) {
+    return throwCallableError(error);
+  }
+});
+
+export const redeemPublicCommerceHandoff = onCall({ enforceAppCheck: true }, async (request) => {
+  const uid = requireUid(request);
+  const profile = await assertAccountActive(uid);
+  const input = redeemPublicCommerceHandoffSchema.parse(request.data);
+  try {
+    return await publicCommerceHandoffService.redeem({
+      actorId: uid,
+      plan: String(profile.plan ?? 'FREE'),
+      handoffId: input.handoffId,
+      token: input.token,
+      requestId: request.rawRequest.get('x-request-id') ?? randomUUID(),
+    });
+  } catch (error) {
+    return throwCallableError(error);
+  }
 });
 
 async function deliverCallback(deliveryRef: FirebaseFirestore.DocumentReference, delivery: FirebaseFirestore.DocumentData): Promise<void> {
@@ -220,7 +193,16 @@ async function deliverCallback(deliveryRef: FirebaseFirestore.DocumentReference,
   if (!integrationSnap.exists) throw new Error('Connect integration no longer exists.');
   const signingSecret = String(integrationSnap.data()?.webhookSigningSecret ?? '');
   await validateCallbackUrl(String(delivery.callbackUrl), integrationSnap.data()?.callbackOrigins as string[] | undefined);
-  const body = JSON.stringify(delivery.payload);
+  const payload = { ...delivery.payload, timestamp: new Date().toISOString() } as Record<string, unknown>;
+  let dossierUrlExpiresAt: string | null = null;
+  if (typeof delivery.dossierStoragePath === 'string') {
+    const expiresAtMs = Date.now() + 15 * 60_000;
+    const [dossierUrl] = await storage.bucket().file(delivery.dossierStoragePath).getSignedUrl({ action: 'read', expires: expiresAtMs });
+    payload.dossierUrl = dossierUrl;
+    dossierUrlExpiresAt = new Date(expiresAtMs).toISOString();
+    payload.dossierUrlExpiresAt = dossierUrlExpiresAt;
+  }
+  const body = JSON.stringify(payload);
   const timestamp = Math.floor(Date.now() / 1000).toString();
   const signature = createHmac('sha256', signingSecret).update(`${timestamp}.${body}`).digest('hex');
   const response = await fetch(String(delivery.callbackUrl), {
@@ -236,7 +218,14 @@ async function deliverCallback(deliveryRef: FirebaseFirestore.DocumentReference,
     signal: AbortSignal.timeout(15_000),
   });
   if (!response.ok) throw new Error(`Callback returned HTTP ${response.status}.`);
-  await deliveryRef.set({ status: 'DELIVERED', deliveredAt: FieldValue.serverTimestamp(), responseStatus: response.status, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+  await deliveryRef.set({
+    status: 'DELIVERED',
+    deliveredAt: FieldValue.serverTimestamp(),
+    responseStatus: response.status,
+    deliveredPayloadSha256: createHash('sha256').update(body).digest('hex'),
+    dossierUrlExpiresAt,
+    updatedAt: FieldValue.serverTimestamp(),
+  }, { merge: true });
 }
 
 export const onConnectEvidenceVerified = onDocumentCreated('transactions/{transactionId}/evidence/{evidenceId}', async (event) => {
@@ -252,33 +241,48 @@ export const onConnectEvidenceVerified = onDocumentCreated('transactions/{transa
   // create-only record ensure one callback lifecycle per accepted evidence file.
   if ((await deliveryRef.get()).exists) return;
   const packet = await generateEvidencePacket(transactionId, 'PACKPROOF_CONNECT_SYSTEM');
-  const [dossierUrl] = await storage.bucket().file(packet.storagePath).getSignedUrl({ action: 'read', expires: Date.now() + 7 * 86400_000 });
   const trackingRequired = Boolean(transaction.source.trackingNumber);
   const trackingSatisfied = trackingRequired
     ? evidence.carrierTrackingMatchStatus === 'MATCHED'
     : evidence.carrierTrackingMatchStatus !== 'MISMATCH';
-  const verificationStatus = evidence.serverVerified === true
-    && evidence.attestationStatus === 'JIT_VERIFIED'
+  const digitalEvidenceReady = evidence.serverFinalized === true
+    && ['ONLINE_APP_CHECK_AND_KEY_POSSESSION', 'JIT_VERIFIED'].includes(String(evidence.attestationStatus))
     && evidence.clientHashMatched === true
     && evidence.clientSizeMatched === true
-    && trackingSatisfied
-    ? 'VERIFIED_FULFILLMENT'
-    : 'VERIFIED_WITH_LIMITATIONS';
+    && evidence.contentTypeMatched === true
+    && evidence.assurance?.byteIntegrity?.status !== 'MISMATCH'
+    && trackingSatisfied;
+  const evidenceStatus = digitalEvidenceReady ? 'DIGITAL_EVIDENCE_READY' : 'DIGITAL_EVIDENCE_WITH_LIMITATIONS';
+  const statusReasonCodes = [
+    ...(evidence.serverFinalized === true ? [] : ['SERVER_FINALIZATION_NOT_RECORDED']),
+    ...(['ONLINE_APP_CHECK_AND_KEY_POSSESSION', 'JIT_VERIFIED'].includes(String(evidence.attestationStatus)) ? [] : ['STRONGEST_APP_DEVICE_CONTEXT_NOT_AVAILABLE']),
+    ...(evidence.clientHashMatched === true ? [] : ['CLIENT_SERVER_HASH_MATCH_NOT_ESTABLISHED']),
+    ...(evidence.clientSizeMatched === true ? [] : ['CLIENT_SERVER_SIZE_MATCH_NOT_ESTABLISHED']),
+    ...(evidence.contentTypeMatched === true ? [] : ['DECLARED_MEDIA_TYPE_MATCH_NOT_ESTABLISHED']),
+    ...(trackingSatisfied ? [] : ['CARRIER_CONTEXT_REQUIREMENT_NOT_SATISFIED']),
+    'PHYSICAL_CORRESPONDENCE_NOT_AVAILABLE',
+    'BUSINESS_LEGAL_REVIEW_REQUIRED',
+  ];
   const payload = {
-    event: 'packproof.verification.completed',
+    event: 'packproof.evidence.finalized',
     orderId: transaction.source.externalOrderId,
     trackingNumber: transaction.shipping?.trackingNumber ?? transaction.source.trackingNumber ?? null,
-    verificationStatus,
+    evidenceStatus,
+    statusReasonCodes,
+    fileSha256: evidence.sha256,
     sha256Hash: evidence.sha256,
     manifestSha256: evidence.manifestSha256,
     evidenceBundleSha256: evidence.evidenceBundleSha256,
-    manifestSignature: evidence.manifestSignature,
+    manifestAuthentication: evidence.manifestAuthentication ?? {
+      type: 'LEGACY_SERVICE_MAC',
+      macBase64url: evidence.manifestSignature ?? null,
+      verificationScope: 'PACKPROOF_SERVICE_ONLY',
+    },
+    assurance: evidence.assurance ?? null,
     attestationStatus: evidence.attestationStatus,
     carrierTrackingMatchStatus: evidence.carrierTrackingMatchStatus ?? 'NOT_SCANNED',
     declaredWeightGrams: transaction.source.declaredWeightGrams ?? null,
-    dossierUrl,
     dossierSha256: packet.sha256,
-    timestamp: new Date().toISOString(),
   };
   await deliveryRef.create({
     integrationId: transaction.source.integrationId,
@@ -286,6 +290,7 @@ export const onConnectEvidenceVerified = onDocumentCreated('transactions/{transa
     evidenceId: event.params.evidenceId,
     callbackUrl: transaction.source.callbackUrl,
     payload,
+    dossierStoragePath: packet.storagePath,
     status: 'PENDING',
     attempts: 1,
     // A process crash after this create is recovered by the scheduled worker.

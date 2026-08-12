@@ -16,7 +16,7 @@ export function useNotifications(uid?: string) {
     if (!uid || !Device.isDevice) return;
     let active = true;
     const register = async () => {
-      if (Platform.OS === 'android') await Notifications.setNotificationChannelAsync('transactions', { name: 'Transaction updates', importance: Notifications.AndroidImportance.DEFAULT, vibrationPattern: [0, 180, 100, 180], lightColor: '#21D4B4' });
+      if (Platform.OS === 'android') await Notifications.setNotificationChannelAsync('transactions', { name: 'Transaction updates', importance: Notifications.AndroidImportance.DEFAULT, vibrationPattern: [0, 180, 100, 180], lightColor: '#467C63' });
       const existing = await Notifications.getPermissionsAsync();
       const permission = existing.status === 'granted' ? existing : await Notifications.requestPermissionsAsync();
       if (permission.status !== 'granted' || !active) return;

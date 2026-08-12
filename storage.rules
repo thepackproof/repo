@@ -14,8 +14,8 @@ service firebase.storage {
         && request.auth.uid == userId
         && isParticipant(transactionId)
         && request.resource.size > 0
-        && request.resource.size < 629145600
-        && request.resource.contentType.matches('^(image/[a-zA-Z0-9.+-]+|video/[a-zA-Z0-9.+-]+|application/pdf)$')
+        && request.resource.size <= 629145600
+        && request.resource.contentType.matches('^(image/(jpeg|png)|video/mp4|application/pdf)$')
         && firestore.exists(/databases/(default)/documents/pendingUploads/$(uploadId))
         && firestore.get(/databases/(default)/documents/pendingUploads/$(uploadId)).data.uploaderId == request.auth.uid
         && firestore.get(/databases/(default)/documents/pendingUploads/$(uploadId)).data.transactionId == transactionId

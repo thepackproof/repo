@@ -18,9 +18,12 @@ Usage:
     --name "Vendor sandbox" \\
     --platform vendor-slug \\
     --environment SANDBOX \\
-    --callback https://vendor.example/packproof/webhook
+    --callback https://vendor.example/packproof/webhook \
+    --button-origin https://shop.vendor.example
 
 Repeat --callback to allow more than one public HTTPS origin. Authentication uses
+Repeat --button-origin to allow the public PackProof Button on additional exact
+storefront origins. If omitted, callback origins are used for backward compatibility.
 Application Default Credentials (gcloud auth application-default login) or the
 GOOGLE_APPLICATION_CREDENTIALS environment variable. Credentials are printed once.
 `);
@@ -32,12 +35,14 @@ const name = valueAfter('--name');
 const platform = valueAfter('--platform');
 const environment = (valueAfter('--environment') || 'SANDBOX').toUpperCase();
 const callbackValues = valuesAfter('--callback');
+const buttonOriginValues = valuesAfter('--button-origin');
 
 if (!projectId) fail('Missing --project FIREBASE_PROJECT_ID.');
 if (!name || name.length < 2 || name.length > 120) fail('--name must contain 2-120 characters.');
 if (!platform || !/^[a-z0-9][a-z0-9._-]{1,79}$/i.test(platform)) fail('--platform must contain 2-80 slug-like characters.');
 if (!['SANDBOX', 'PRODUCTION'].includes(environment)) fail('--environment must be SANDBOX or PRODUCTION.');
 if (!callbackValues.length || callbackValues.length > 10) fail('Provide 1-10 --callback URLs.');
+if (buttonOriginValues.length > 100) fail('Provide no more than 100 --button-origin URLs.');
 
 function isPrivateAddress(address) {
   const value = address.toLowerCase().replace(/^::ffff:/, '');
@@ -68,9 +73,11 @@ async function callbackOrigin(raw) {
 }
 
 const callbackOrigins = Array.from(new Set(await Promise.all(callbackValues.map(callbackOrigin))));
+const allowedOrigins = Array.from(new Set(await Promise.all((buttonOriginValues.length ? buttonOriginValues : callbackValues).map(callbackOrigin))));
 const token = (prefix) => `${prefix}_${randomBytes(32).toString('base64url')}`;
 const apiKey = token(environment === 'PRODUCTION' ? 'pp_live' : 'pp_test');
 const webhookSigningSecret = token('whsec');
+const publishableKey = `pp_pub_${environment === 'PRODUCTION' ? 'live' : 'sandbox'}_${randomBytes(24).toString('base64url')}`;
 const hash = (input) => createHash('sha256').update(input).digest('hex');
 
 initializeApp({ credential: applicationDefault(), projectId });
@@ -84,11 +91,13 @@ await ref.set({
   apiKeyHash: hash(apiKey),
   webhookSigningSecret,
   callbackOrigins,
+  allowedOrigins,
+  publishableKeyHash: hash(publishableKey),
   status: 'ACTIVE',
   createdBy: `CLI:${process.env.USERNAME || process.env.USER || 'operator'}`,
   createdAt: FieldValue.serverTimestamp(),
   updatedAt: FieldValue.serverTimestamp(),
 });
 
-process.stdout.write(`${JSON.stringify({ projectId, integrationId: ref.id, environment, platform, callbackOrigins, apiKey, webhookSigningSecret }, null, 2)}\n`);
+process.stdout.write(`${JSON.stringify({ projectId, integrationId: ref.id, environment, platform, callbackOrigins, allowedOrigins, publishableKey, apiKey, webhookSigningSecret }, null, 2)}\n`);
 process.stderr.write('\nStore the API key and webhook signing secret in the vendor secret manager now. PackProof stores the API key only as a hash; this output is the only copy.\n');

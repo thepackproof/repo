@@ -34,8 +34,8 @@ export type SensorFusionTelemetry = {
   accelerometerMagnitudeMeanG: number | null;
   accelerometerMagnitudeVariance: number | null;
   gyroscopeMagnitudeVariance: number | null;
-  humanHoldLikely: boolean | null;
-  assessment: 'HANDHELD_LIKELY' | 'FIXED_OR_LOW_MOTION' | 'INSUFFICIENT_DATA';
+  assessment: 'MOTION_DETECTED' | 'LOW_MOTION' | 'INSUFFICIENT_DATA';
+  interpretation: 'CONTEXT_SIGNAL_ONLY';
 };
 
 export type NetworkTelemetry = {
@@ -62,13 +62,105 @@ export type CaptureAttestation = {
   issuedAt: string;
   captureWindowEndsAt: string | null;
   tokenReplayDetected: boolean | null;
+  reasonCodes: string[];
   deviceKeyProof: DeviceKeyProof | null;
+  sessionMode?: 'SINGLE' | 'BATCH';
+  maxEvidenceCount?: number;
+  captureGroupId?: string | null;
+};
+
+export type CaptureProfileTelemetry = {
+  profileId: 'packproof-digital-evidence';
+  profileVersion: '2.0.0';
+  profileScope: 'HUMAN_GUIDED_DIGITAL_EVIDENCE';
+  requestedRegions: string[];
+  observedRegions: string[];
+  regionObservationMethod: 'USER_GUIDED_NOT_MACHINE_CONFIRMED';
+  attempt: number;
+};
+
+export type CameraObservationTelemetry = {
+  source: 'EXPO_CAMERA_ORIGINAL_OUTPUT';
+  facing: 'BACK';
+  mode: 'PHOTO' | 'VIDEO';
+  widthPixels: number | null;
+  heightPixels: number | null;
+  orientation: number | null;
+  flashMode: 'OFF';
+  zoom: number;
+  codec: 'PLATFORM_DEFAULT';
+  metadataScope: 'LIMITED_BY_EXPO_CAMERA';
+  packProofTransformationsBeforeHashing: 'NONE';
+};
+
+export type CaptureTimeTelemetry = {
+  deviceWallStartedAt: string;
+  deviceWallFinishedAt: string;
+  monotonicElapsedMs: number;
+  deviceWallProvenance: 'CLIENT_OBSERVED_UNTRUSTED';
+  monotonicProvenance: 'CLIENT_OBSERVED_RELATIVE_ONLY';
+  serverTimeProvenance: 'ADDED_AT_RECEIPT_AND_FINALIZATION';
+};
+
+export type AcquisitionQualityTelemetry = {
+  status: 'NOT_EVALUATED';
+  qualityProfileId: 'none';
+  qualityProfileVersion: '0';
+  reasonCodes: ['NO_CALIBRATED_QUALITY_GATE'];
+};
+
+export type PhysicalCorrespondenceTelemetry = {
+  status: 'NOT_AVAILABLE';
+  mode: 'PRODUCTION_DISABLED';
+  reasonCodes: ['NO_VALIDATED_PHYSICAL_MATCHER_ENABLED'];
+};
+
+export type PhysicalCaptureProfileTelemetry = {
+  profileId: 'PP-PHYSICAL-MATTE-V1';
+  profileVersion: 1;
+  qualityPolicyId: 'PP-QUALITY-V1';
+  intendedUse: 'REFERENCE' | 'VERIFICATION';
+  captureGroupId: string;
+  acquisitionMode: 'GUIDED_MULTI_FRAME';
+  requestedRegions: ('LABEL_IDENTIFIER' | 'INK_EDGE_A' | 'INK_EDGE_B' | 'LABEL_BOX_BOUNDARY' | 'ADJACENT_CARDBOARD')[];
+  observedRegion: 'LABEL_IDENTIFIER' | 'INK_EDGE_A' | 'INK_EDGE_B' | 'LABEL_BOX_BOUNDARY' | 'ADJACENT_CARDBOARD';
+  frameIndex: number;
+  framesPerRegion: number;
+  totalFrameCount: number;
+  captureAttempt: number;
+  clientImage: {
+    widthPx: number | null;
+    heightPx: number | null;
+    gate: 'CLIENT_DIMENSION_PASS_SERVER_QUALITY_PENDING' | 'CLIENT_DIMENSION_FAIL';
+    qualitySignals: {
+      algorithm: 'PP_IMAGE_QUALITY_SIGNAL_V1';
+      sourceWidthPx: number;
+      sourceHeightPx: number;
+      sampleWidthPx: number;
+      sampleHeightPx: number;
+      meanLuminance: number;
+      luminanceStdDev: number;
+      p05Luminance: number;
+      p95Luminance: number;
+      shadowClippingFraction: number;
+      highlightClippingFraction: number;
+      laplacianVariance: number;
+      interpretation: 'MEASUREMENT_SIGNAL_ONLY_THRESHOLDS_NOT_VALIDATED';
+    };
+  };
 };
 
 export type CaptureManifestInput = {
-  schemaVersion: 1;
+  schemaVersion: 2;
+  captureId: string;
   captureStartedAt: string;
   captureFinishedAt: string;
+  time: CaptureTimeTelemetry;
+  captureProfile: CaptureProfileTelemetry;
+  cameraObservation: CameraObservationTelemetry;
+  acquisitionQuality: AcquisitionQualityTelemetry;
+  physicalCorrespondence: PhysicalCorrespondenceTelemetry;
+  physicalCaptureProfile?: PhysicalCaptureProfileTelemetry | null;
   runtimeIntegrity: RuntimeIntegrityTelemetry;
   sensorFusion: SensorFusionTelemetry;
   networkTelemetry: NetworkTelemetry;

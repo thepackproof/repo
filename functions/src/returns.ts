@@ -13,6 +13,17 @@ function normalizeTracking(value: unknown): string | null {
   return normalized.length >= 3 ? normalized : null;
 }
 
+function evidenceReadyForWorkflow(value: FirebaseFirestore.DocumentData | undefined): boolean {
+  if (!value) return false;
+  if (value.serverFinalized === true) {
+    return value.clientHashMatched !== false
+      && value.clientSizeMatched !== false
+      && value.contentTypeMatched !== false
+      && value.assurance?.byteIntegrity?.status !== 'MISMATCH';
+  }
+  return value.serverVerified === true && value.clientHashMatched !== false;
+}
+
 async function getReturnPassport(transactionId: string, returnPassportId: string): Promise<{
   ref: FirebaseFirestore.DocumentReference;
   data: ReturnPassportRecord;
@@ -38,8 +49,11 @@ export const initiateReturnPassport = onCall(callOptions, async (request) => {
   const active = await transactionRef.collection('returns').where('status', 'in', ['REQUESTED', 'AUTHORIZED', 'PACKED', 'IN_TRANSIT', 'RECEIVED_REVIEW', 'DISPUTED']).limit(1).get();
   if (!active.empty) throw new HttpsError('already-exists', 'An active return passport already exists for this transaction.');
 
-  const evidence = await transactionRef.collection('evidence').where('serverVerified', '==', true).get();
-  const originalEvidenceHashes = evidence.docs.map((item) => String(item.data().sha256 ?? '')).filter(Boolean);
+  const evidence = await transactionRef.collection('evidence').get();
+  const originalEvidenceHashes = evidence.docs
+    .filter((item) => item.data().serverFinalized === true || item.data().serverVerified === true)
+    .map((item) => String(item.data().sha256 ?? ''))
+    .filter(Boolean);
   // Either party may request the workflow, but a commerce return always moves
   // from the buyer back to the seller. Keep requester and physical roles separate.
   const returningParticipantId = data.buyerId;
@@ -60,8 +74,8 @@ export const initiateReturnPassport = onCall(callOptions, async (request) => {
     createdAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
   });
-  await appendEvent(input.transactionId, uid, 'RETURN_PASSPORT_REQUESTED', 'A participant requested a symmetric verified return.', { returnPassportId: returnRef.id });
-  await notifyOtherParticipants(input.transactionId, uid, 'Verified return requested', 'Review and authorize the return passport before any repacking begins.');
+  await appendEvent(input.transactionId, uid, 'RETURN_PASSPORT_REQUESTED', 'A participant requested a symmetric return passport.', { returnPassportId: returnRef.id });
+  await notifyOtherParticipants(input.transactionId, uid, 'Return passport requested', 'Review and authorize the return passport before any repacking begins.');
   return { returnPassportId: returnRef.id };
 });
 
@@ -75,7 +89,7 @@ export const authorizeReturnPassport = onCall(callOptions, async (request) => {
   if (data.initiatedBy === uid) throw new HttpsError('permission-denied', 'The other participant must authorize the return.');
   await ref.update({ status: 'AUTHORIZED', authorizedBy: uid, authorizedAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() });
   await appendEvent(input.transactionId, uid, 'RETURN_PASSPORT_AUTHORIZED', 'The return passport was authorized.', { returnPassportId: input.returnPassportId });
-  await notifyOtherParticipants(input.transactionId, uid, 'Verified return authorized', 'The buyer can now record continuous return repacking as the returning participant.');
+  await notifyOtherParticipants(input.transactionId, uid, 'Return passport authorized', 'The buyer can now record continuous return repacking as the returning participant.');
   return { success: true };
 });
 
@@ -88,12 +102,13 @@ export const submitReturnShipping = onCall(callOptions, async (request) => {
   const returningParticipantId = data.returningParticipantId ?? transaction.buyerId;
   if (returningParticipantId !== uid) throw new HttpsError('permission-denied', 'Only the returning participant can record return shipping.');
   if (!['PACKED', 'AUTHORIZED'].includes(data.status)) throw new HttpsError('failed-precondition', 'The return is not ready for shipping.');
-  const packingVideo = await db.collection('transactions').doc(input.transactionId).collection('evidence')
-    .where('returnPassportId', '==', input.returnPassportId).where('type', '==', 'RETURN_PACKING_VIDEO').limit(1).get();
-  if (packingVideo.empty) throw new HttpsError('failed-precondition', 'A verified return repacking video is required first.');
+  const packingVideos = await db.collection('transactions').doc(input.transactionId).collection('evidence')
+    .where('returnPassportId', '==', input.returnPassportId).where('type', '==', 'RETURN_PACKING_VIDEO').get();
+  const packingVideo = packingVideos.docs.find((item) => evidenceReadyForWorkflow(item.data()));
+  if (!packingVideo) throw new HttpsError('failed-precondition', 'A server-finalized return repacking video with no recorded byte-integrity mismatch is required first.');
 
-  const packingEvidenceRef = packingVideo.docs[0].ref;
-  const packingEvidence = packingVideo.docs[0].data();
+  const packingEvidenceRef = packingVideo.ref;
+  const packingEvidence = packingVideo.data();
   const scannedTrackingNumber = normalizeTracking(packingEvidence.scannedTrackingNumber);
   const submittedTrackingNumber = normalizeTracking(input.trackingNumber);
   const labelEvidenceMatchStatus = !scannedTrackingNumber
@@ -108,6 +123,7 @@ export const submitReturnShipping = onCall(callOptions, async (request) => {
     const freshReturnData = freshReturn.data() as ReturnPassportRecord;
     if ((freshReturnData.returningParticipantId ?? transaction.buyerId) !== uid) throw new HttpsError('permission-denied', 'Only the returning participant can record return shipping.');
     if (!['PACKED', 'AUTHORIZED'].includes(freshReturnData.status)) throw new HttpsError('failed-precondition', 'The return is not ready for shipping.');
+    if (!evidenceReadyForWorkflow(freshEvidence.data())) throw new HttpsError('failed-precondition', 'The return packing evidence no longer satisfies byte-integrity workflow requirements.');
 
     tx.update(ref, {
       status: 'IN_TRANSIT',
@@ -137,7 +153,7 @@ export const submitReturnShipping = onCall(callOptions, async (request) => {
     labelEvidenceMatchStatus,
     scannedTrackingNumber,
   });
-  await notifyOtherParticipants(input.transactionId, uid, 'Verified return shipped', 'Return tracking was added to the symmetric passport.');
+  await notifyOtherParticipants(input.transactionId, uid, 'Return shipment recorded', 'Return tracking was added to the symmetric passport.');
   return { success: true, labelEvidenceMatchStatus };
 });
 

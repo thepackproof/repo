@@ -28,6 +28,8 @@ export const evidenceTypes = [
   'RETURN_PACKING_VIDEO',
   'RETURN_SHIPPING_LABEL',
   'RETURN_UNBOXING_VIDEO',
+  'PHYSICAL_REFERENCE_FRAME',
+  'PHYSICAL_VERIFICATION_FRAME',
 ] as const;
 
 export type EvidenceType = (typeof evidenceTypes)[number];
@@ -84,6 +86,7 @@ export type TransactionRecord = {
     platform: string;
     integrationId: string;
     connectSessionId: string;
+    commerceContextId?: string | null;
     externalOrderId: string;
     externalSellerId: string;
     callbackUrl: string;

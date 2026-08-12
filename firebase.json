@@ -4,7 +4,7 @@
       "source": "functions",
       "codebase": "default",
       "predeploy": [
-        "npm --prefix \"$RESOURCE_DIR\" run build"
+        "npm.cmd --prefix \"$RESOURCE_DIR\" run build"
       ],
       "ignore": [
         "node_modules",
@@ -29,6 +29,23 @@
     ],
     "headers": [
       {
+        "source": "/sdk/**",
+        "headers": [
+          {
+            "key": "Access-Control-Allow-Origin",
+            "value": "*"
+          },
+          {
+            "key": "Cross-Origin-Resource-Policy",
+            "value": "cross-origin"
+          },
+          {
+            "key": "Cache-Control",
+            "value": "public, max-age=3600"
+          }
+        ]
+      },
+      {
         "source": "**",
         "headers": [
           {
@@ -52,31 +69,38 @@
     ],
     "rewrites": [
       {
+        "source": "/v1/**",
+        "function": {
+          "functionId": "packproofApi",
+          "region": "us-east1"
+        }
+      },
+      {
         "source": "/api/request-deletion",
         "function": {
           "functionId": "webDeletionRequest",
-          "region": "us-central1"
+          "region": "us-east1"
         }
       },
       {
         "source": "/api/confirm-deletion",
         "function": {
           "functionId": "confirmWebDeletion",
-          "region": "us-central1"
+          "region": "us-east1"
         }
       },
       {
         "source": "/api/tiktok-deletion",
         "function": {
           "functionId": "webTikTokDeletionStart",
-          "region": "us-central1"
+          "region": "us-east1"
         }
       },
       {
         "source": "/api/connect/orders",
         "function": {
           "functionId": "handleMarketplaceOrder",
-          "region": "us-central1"
+          "region": "us-east1"
         }
       }
     ]

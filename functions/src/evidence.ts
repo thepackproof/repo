@@ -1,16 +1,27 @@
 import { createHash, createHmac } from 'node:crypto';
 import { FieldValue, Timestamp } from 'firebase-admin/firestore';
-import { onCall } from 'firebase-functions/v2/https';
+import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import { onObjectFinalized } from 'firebase-functions/v2/storage';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
-import { db, manifestSigningSecret, storage } from './config';
+import { db, manifestSigningKeyId, manifestSigningSecret, storage } from './config';
+import {
+  BUNDLE_BINDING_PROFILE,
+  CANONICALIZATION_PROFILE,
+  EVIDENCE_MANIFEST_SCHEMA_VERSION,
+  canonicalizeJson,
+  createEvidenceBundleSha256,
+  detectSupportedMediaType,
+  sha256Hex,
+} from './evidence-format';
 import { appendEvent, assertParticipant, getTransaction, notifyOtherParticipants, requireUid } from './helpers';
 import type { EvidenceType } from './types';
 import { transactionIdSchema } from './validation';
 
 const MAX_EVIDENCE_BYTES = 600 * 1024 * 1024;
 
-async function sha256File(file: ReturnType<ReturnType<typeof storage.bucket>['file']>): Promise<string> {
+type StorageFile = ReturnType<ReturnType<typeof storage.bucket>['file']>;
+
+async function sha256File(file: StorageFile): Promise<string> {
   const digest = createHash('sha256');
   await new Promise<void>((resolve, reject) => {
     file.createReadStream().on('data', (chunk) => digest.update(chunk)).on('error', reject).on('end', resolve);
@@ -18,13 +29,64 @@ async function sha256File(file: ReturnType<ReturnType<typeof storage.bucket>['fi
   return digest.digest('hex');
 }
 
-function canonicalize(value: unknown): string {
-  if (value === undefined) return 'null';
-  if (value === null || typeof value !== 'object') return JSON.stringify(value);
-  if (Array.isArray(value)) return `[${value.map(canonicalize).join(',')}]`;
-  const record = value as Record<string, unknown>;
-  const keys = Object.keys(record).filter((key) => record[key] !== undefined).sort();
-  return `{${keys.map((key) => `${JSON.stringify(key)}:${canonicalize(record[key])}`).join(',')}}`;
+async function readPrefix(file: StorageFile, length = 32): Promise<Buffer> {
+  const chunks: Buffer[] = [];
+  await new Promise<void>((resolve, reject) => {
+    file.createReadStream({ start: 0, end: length - 1 })
+      .on('data', (chunk: Buffer) => chunks.push(Buffer.from(chunk)))
+      .on('error', reject)
+      .on('end', resolve);
+  });
+  return Buffer.concat(chunks);
+}
+
+function assuranceFor(input: {
+  clientManifest: FirebaseFirestore.DocumentData | null | undefined;
+  attestationStatus: string;
+  clientHashMatched: boolean | null;
+  clientSizeMatched: boolean | null;
+  contentTypeMatched: boolean;
+  carrierStatus: string;
+  clientTimeConsistencyStatus: string;
+}) {
+  const byteMismatch = input.clientHashMatched === false || input.clientSizeMatched === false || !input.contentTypeMatched;
+  return {
+    acquisitionQuality: {
+      status: input.clientManifest?.acquisitionQuality?.status ?? 'NOT_EVALUATED',
+      reasonCodes: input.clientManifest?.acquisitionQuality?.reasonCodes ?? ['NO_CALIBRATED_QUALITY_GATE'],
+    },
+    appDeviceContext: {
+      status: input.attestationStatus,
+      reasonCodes: [
+        ...(input.attestationStatus === 'OFFLINE_UNATTESTED'
+          ? input.clientManifest?.attestation?.reasonCodes ?? ['NO_FRESH_ONLINE_ATTESTATION']
+          : input.attestationStatus === 'ONLINE_APP_CHECK_ONLY'
+            ? ['DEVICE_KEY_PROOF_NOT_AVAILABLE']
+            : []),
+        ...(input.clientTimeConsistencyStatus === 'INCONSISTENT' ? ['CLIENT_WALL_MONOTONIC_DURATION_MISMATCH'] : []),
+      ],
+    },
+    byteIntegrity: {
+      status: byteMismatch ? 'MISMATCH' : input.clientHashMatched === true && input.clientSizeMatched === true ? 'MATCHED' : 'SERVER_HASH_ONLY',
+      reasonCodes: [
+        ...(input.clientHashMatched === false ? ['CLIENT_SERVER_HASH_MISMATCH'] : []),
+        ...(input.clientSizeMatched === false ? ['CLIENT_SERVER_SIZE_MISMATCH'] : []),
+        ...(!input.contentTypeMatched ? ['DECLARED_MEDIA_TYPE_MISMATCH'] : []),
+      ],
+    },
+    physicalCorrespondence: {
+      status: 'NOT_AVAILABLE',
+      reasonCodes: ['NO_VALIDATED_PHYSICAL_MATCHER_ENABLED'],
+    },
+    carrierContext: {
+      status: input.carrierStatus,
+      reasonCodes: input.carrierStatus === 'MISMATCH' ? ['OBSERVED_TRACKING_DOES_NOT_MATCH_EXPECTED_CONTEXT'] : [],
+    },
+    businessLegalRelevance: {
+      status: 'REVIEW_REQUIRED',
+      reasonCodes: ['EXTERNAL_POLICY_AND_HUMAN_INTERPRETATION_REQUIRED'],
+    },
+  } as const;
 }
 
 function timestampIso(value: unknown): string | null {
@@ -33,6 +95,33 @@ function timestampIso(value: unknown): string | null {
     return ((value as { toDate: () => Date }).toDate()).toISOString();
   }
   return typeof value === 'string' ? value : null;
+}
+
+function normalizedAppDeviceContext(value: FirebaseFirestore.DocumentData | null | undefined) {
+  if (!value) return null;
+  const proof = value.deviceKeyProof as FirebaseFirestore.DocumentData | null | undefined;
+  return {
+    mode: typeof value.mode === 'string' ? value.mode : 'NOT_PROVIDED',
+    captureSessionId: typeof value.captureSessionId === 'string' ? value.captureSessionId : null,
+    nonce: typeof value.nonce === 'string' ? value.nonce : null,
+    appId: typeof value.appId === 'string' ? value.appId : null,
+    issuedAt: timestampIso(value.issuedAt),
+    captureWindowEndsAt: timestampIso(value.captureWindowEndsAt),
+    tokenReplayDetected: typeof value.tokenReplayDetected === 'boolean' ? value.tokenReplayDetected : null,
+    reasonCodes: Array.isArray(value.reasonCodes) ? value.reasonCodes.filter((item): item is string => typeof item === 'string') : [],
+    deviceKeyProof: proof ? {
+      algorithm: typeof proof.algorithm === 'string' ? proof.algorithm : null,
+      keyAlias: typeof proof.keyAlias === 'string' ? proof.keyAlias : null,
+      publicKeySpkiBase64: typeof proof.publicKeySpkiBase64 === 'string' ? proof.publicKeySpkiBase64 : null,
+      challengeSignatureBase64: typeof proof.challengeSignatureBase64 === 'string' ? proof.challengeSignatureBase64 : null,
+      hardwareBackedSignal: typeof proof.hardwareBacked === 'boolean' ? proof.hardwareBacked : null,
+    } : null,
+    deviceKeySignatureValid: typeof value.deviceKeySignatureValid === 'boolean' ? value.deviceKeySignatureValid : null,
+    sessionMode: typeof value.sessionMode === 'string' ? value.sessionMode : null,
+    maxEvidenceCount: typeof value.maxEvidenceCount === 'number' ? value.maxEvidenceCount : null,
+    captureProfileId: typeof value.captureProfileId === 'string' ? value.captureProfileId : null,
+    captureGroupId: typeof value.captureGroupId === 'string' ? value.captureGroupId : null,
+  };
 }
 
 export const onEvidenceUploaded = onObjectFinalized({ timeoutSeconds: 540, memory: '1GiB', secrets: [manifestSigningSecret] }, async (event) => {
@@ -84,21 +173,62 @@ export const onEvidenceUploaded = onObjectFinalized({ timeoutSeconds: 540, memor
   }
 
   const digest = await sha256File(file);
+  const detectedContentType = detectSupportedMediaType(await readPrefix(file));
+  const contentTypeMatched = detectedContentType === contentType;
   const clientSha256 = typeof pending?.clientSha256 === 'string' ? pending.clientSha256 : null;
   const clientHashMatched = clientSha256 ? clientSha256 === digest : null;
   const clientSizeBytes = typeof pending?.clientSizeBytes === 'number' ? pending.clientSizeBytes : null;
-  const clientSizeMatched = clientSizeBytes ? clientSizeBytes === size : null;
+  const clientSizeMatched = clientSizeBytes !== null ? clientSizeBytes === size : null;
   const evidenceType = pending!.evidenceType as EvidenceType;
   const attestationStatus = pending?.attestationSnapshot?.mode === 'JIT_APP_CHECK'
-    ? pending?.attestationSnapshot?.deviceKeySignatureValid === true ? 'JIT_VERIFIED' : 'JIT_APP_CHECK_ONLY'
+    ? pending?.attestationSnapshot?.deviceKeySignatureValid === true ? 'ONLINE_APP_CHECK_AND_KEY_POSSESSION' : 'ONLINE_APP_CHECK_ONLY'
     : pending?.clientManifest
       ? 'OFFLINE_UNATTESTED'
       : 'NOT_PROVIDED';
+  const carrierTrackingMatchStatus = pending?.carrierContext?.matchStatus ?? 'NOT_SCANNED';
+  const clientWallDurationMs = pending?.clientManifest
+    ? Date.parse(String(pending.clientManifest.captureFinishedAt)) - Date.parse(String(pending.clientManifest.captureStartedAt))
+    : null;
+  const clientMonotonicElapsedMs = typeof pending?.clientManifest?.time?.monotonicElapsedMs === 'number'
+    ? pending.clientManifest.time.monotonicElapsedMs
+    : null;
+  const clientTimeConsistencyStatus = clientWallDurationMs === null
+    ? 'NOT_PROVIDED'
+    : clientMonotonicElapsedMs === null
+      ? 'NO_MONOTONIC_REFERENCE'
+      : Math.abs(clientWallDurationMs - clientMonotonicElapsedMs) <= 5_000
+        ? 'CONSISTENT_WITHIN_5_SECONDS'
+        : 'INCONSISTENT';
+  const assurance = assuranceFor({
+    clientManifest: pending?.clientManifest,
+    attestationStatus,
+    clientHashMatched,
+    clientSizeMatched,
+    contentTypeMatched,
+    carrierStatus: carrierTrackingMatchStatus,
+    clientTimeConsistencyStatus,
+  });
+  const appDeviceContext = normalizedAppDeviceContext(pending?.attestationSnapshot);
+
+  // Remove any client-upload download token and force private/no-store object
+  // metadata. Participant reads remain available through authenticated Storage
+  // rules; the app obtains only short-lived signed links from a callable.
+  await file.setMetadata({
+    cacheControl: 'private, max-age=0, no-store',
+    contentDisposition: 'attachment',
+    metadata: { transactionId, uploaderId, uploadId, accessClass: 'TRANSACTION_PARTICIPANTS' },
+  });
 
   const manifest = {
-    schemaVersion: 1,
+    schemaVersion: EVIDENCE_MANIFEST_SCHEMA_VERSION,
+    format: {
+      canonicalizationProfile: CANONICALIZATION_PROFILE,
+      canonicalizationStandard: 'RFC8785_JCS',
+      bundleBindingProfile: BUNDLE_BINDING_PROFILE,
+    },
     evidence: {
       uploadId,
+      clientEvidenceId: pending?.clientEvidenceId ?? null,
       transactionId,
       uploaderId,
       uploaderRole: data.sellerId === uploaderId ? 'SELLER' : 'BUYER',
@@ -106,19 +236,20 @@ export const onEvidenceUploaded = onObjectFinalized({ timeoutSeconds: 540, memor
       returnPassportId: pending?.returnPassportId ?? null,
       connectSessionId: pending?.connectSessionId ?? null,
       originalName: pending!.originalName,
-      contentType,
+      declaredContentType: contentType,
+      detectedContentType,
       sizeBytes: size,
       sha256: digest,
+      storageGeneration: object.generation ?? null,
     },
     capture: pending?.clientManifest ?? null,
-    hardwareAttestation: pending?.attestationSnapshot ?? null,
+    appDeviceContext,
     carrierContext: pending?.carrierContext ?? null,
     serverReceipt: {
       bucket: object.bucket,
       storagePath: path,
       storageGeneration: object.generation ?? null,
       receivedAt: object.timeCreated ?? new Date().toISOString(),
-      finalizedEventId: event.id,
       ingressNetwork: pending?.ingressNetwork ?? null,
     },
     verification: {
@@ -127,21 +258,49 @@ export const onEvidenceUploaded = onObjectFinalized({ timeoutSeconds: 540, memor
       clientHashMatched,
       clientSizeBytes,
       clientSizeMatched,
+      declaredContentType: contentType,
+      detectedContentType,
+      contentTypeMatched,
       attestationStatus,
       runtimeIntegrityScope: pending?.clientManifest?.runtimeIntegrity?.integrityScope ?? null,
+      clientWallDurationMs,
+      clientMonotonicElapsedMs,
+      clientTimeConsistencyStatus,
+    },
+    assurance,
+    governance: {
+      accessClass: 'TRANSACTION_PARTICIPANTS',
+      retentionPolicyId: 'DEFAULT_UNCONFIGURED',
+      legalHoldStatus: 'NOT_EVALUATED',
+    },
+    authentication: {
+      type: 'SERVICE_MAC',
+      algorithm: 'HMAC-SHA256',
+      keyId: manifestSigningKeyId.value(),
+      verificationScope: 'PACKPROOF_SERVICE_ONLY',
+      publicVerificationAvailable: false,
     },
   };
-  const manifestJson = canonicalize(manifest);
-  const manifestSha256 = createHash('sha256').update(manifestJson).digest('hex');
-  const evidenceBundleSha256 = createHash('sha256').update(`${digest}\n${manifestSha256}`).digest('hex');
-  const manifestSignature = createHmac('sha256', manifestSigningSecret.value()).update(manifestJson).digest('base64url');
+  const manifestJson = canonicalizeJson(manifest);
+  const manifestSha256 = sha256Hex(manifestJson);
+  const evidenceBundleSha256 = createEvidenceBundleSha256(digest, manifestSha256);
+  const manifestMacBase64url = createHmac('sha256', manifestSigningSecret.value()).update(manifestJson).digest('base64url');
   const manifestPath = `manifests/${transactionId}/${uploadId}.json`;
   await bucket.file(manifestPath).save(Buffer.from(manifestJson), {
     contentType: 'application/json',
     resumable: false,
     metadata: {
       cacheControl: 'private, max-age=0, no-store',
-      metadata: { transactionId, uploadId, manifestSha256, evidenceBundleSha256 },
+      metadata: {
+        transactionId,
+        uploadId,
+        schemaVersion: String(EVIDENCE_MANIFEST_SCHEMA_VERSION),
+        manifestSha256,
+        evidenceBundleSha256,
+        manifestMacAlgorithm: 'HMAC-SHA256',
+        manifestMacKeyId: manifestSigningKeyId.value(),
+        manifestMacBase64url,
+      },
     },
   });
 
@@ -157,32 +316,55 @@ export const onEvidenceUploaded = onObjectFinalized({ timeoutSeconds: 540, memor
     originalName: pending!.originalName,
     sizeBytes: size,
     sha256: digest,
+    requestFingerprint: pending?.requestFingerprint ?? null,
+    clientEvidenceId: pending?.clientEvidenceId ?? null,
     clientSha256,
     clientHashMatched,
     clientSizeMatched,
+    detectedContentType,
+    contentTypeMatched,
+    clientTimeConsistencyStatus,
+    manifestSchemaVersion: EVIDENCE_MANIFEST_SCHEMA_VERSION,
+    canonicalizationProfile: CANONICALIZATION_PROFILE,
+    bundleBindingProfile: BUNDLE_BINDING_PROFILE,
     manifestSha256,
     evidenceBundleSha256,
-    manifestSignature,
+    manifestAuthentication: {
+      type: 'SERVICE_MAC',
+      algorithm: 'HMAC-SHA256',
+      keyId: manifestSigningKeyId.value(),
+      macBase64url: manifestMacBase64url,
+      verificationScope: 'PACKPROOF_SERVICE_ONLY',
+    },
     attestationStatus,
     deviceKeySignatureValid: pending?.attestationSnapshot?.deviceKeySignatureValid ?? null,
-    deviceKeyHardwareBacked: pending?.attestationSnapshot?.deviceKeyProof?.hardwareBacked ?? null,
-    carrierTrackingMatchStatus: pending?.carrierContext?.matchStatus ?? 'NOT_SCANNED',
+    deviceKeyHardwareBackedSignal: pending?.attestationSnapshot?.deviceKeyProof?.hardwareBacked ?? null,
+    carrierTrackingMatchStatus,
     scannedTrackingNumber: pending?.carrierContext?.scannedTrackingNumber ?? null,
     captureSessionId: pending?.captureSessionId ?? null,
     returnPassportId: pending?.returnPassportId ?? null,
     connectSessionId: pending?.connectSessionId ?? null,
+    captureGroupId: pending?.clientManifest?.physicalCaptureProfile?.captureGroupId ?? null,
+    physicalRegionId: pending?.clientManifest?.physicalCaptureProfile?.observedRegion ?? null,
+    captureProfileId: pending?.clientManifest?.physicalCaptureProfile?.profileId ?? null,
+    physicalCaptureIntent: pending?.clientManifest?.physicalCaptureProfile?.intendedUse ?? null,
+    physicalFrameIndex: pending?.clientManifest?.physicalCaptureProfile?.frameIndex ?? null,
     clientCreatedAt: pending!.clientCreatedAt ?? null,
-    capturedAt: object.timeCreated ?? null,
+    serverReceivedAt: object.timeCreated ?? null,
     createdAt: FieldValue.serverTimestamp(),
-    serverVerified: true,
-    moderationStatus: clientHashMatched === false
-      ? 'HASH_MISMATCH_REVIEW'
+    serverFinalized: true,
+    assurance,
+    moderationStatus: clientHashMatched === false || clientSizeMatched === false || !contentTypeMatched
+      ? 'INTEGRITY_MISMATCH_REVIEW'
       : pending?.carrierContext?.matchStatus === 'MISMATCH'
         ? 'TRACKING_MISMATCH_REVIEW'
         : 'UNREVIEWED',
   };
   const returnPassportId = pending?.returnPassportId as string | null | undefined;
-  const summary = `${evidenceType.replaceAll('_', ' ').toLowerCase()} was timestamped, hashed and sealed into a signed manifest.`;
+  const integrityAccepted = clientHashMatched !== false && clientSizeMatched !== false && contentTypeMatched;
+  const summary = integrityAccepted
+    ? `${evidenceType.replaceAll('_', ' ').toLowerCase()} was server-hashed and sealed into a service-authenticated manifest.`
+    : `${evidenceType.replaceAll('_', ' ').toLowerCase()} was preserved but quarantined because an integrity or media-type check failed.`;
   const transactionRef = db.collection('transactions').doc(transactionId);
   const returnRef = returnPassportId ? transactionRef.collection('returns').doc(returnPassportId) : null;
   const captureSessionRef = pending?.captureSessionId ? db.collection('captureSessions').doc(String(pending.captureSessionId)) : null;
@@ -210,19 +392,19 @@ export const onEvidenceUploaded = onObjectFinalized({ timeoutSeconds: 540, memor
     if (captureSessionRef) {
       tx.set(captureSessionRef, { finalizedAt: FieldValue.serverTimestamp(), evidenceId: uploadId }, { merge: true });
     }
-    if (evidenceType === 'PACKING_VIDEO' && freshTransactionData?.status === 'TERMS_LOCKED') {
+    if (integrityAccepted && evidenceType === 'PACKING_VIDEO' && freshTransactionData?.status === 'TERMS_LOCKED') {
       tx.update(transactionRef, { status: 'PACKED', updatedAt: FieldValue.serverTimestamp() });
-    } else if (evidenceType === 'UNBOXING_VIDEO' && freshTransactionData?.status === 'SHIPPED') {
+    } else if (integrityAccepted && evidenceType === 'UNBOXING_VIDEO' && freshTransactionData?.status === 'SHIPPED') {
       tx.update(transactionRef, { status: 'BUYER_REVIEW', updatedAt: FieldValue.serverTimestamp() });
     }
-    if (returnRef && freshReturn?.exists && evidenceType === 'RETURN_PACKING_VIDEO' && freshReturn.data()?.status === 'AUTHORIZED') {
+    if (integrityAccepted && returnRef && freshReturn?.exists && evidenceType === 'RETURN_PACKING_VIDEO' && freshReturn.data()?.status === 'AUTHORIZED') {
       tx.update(returnRef, { status: 'PACKED', updatedAt: FieldValue.serverTimestamp() });
-    } else if (returnRef && freshReturn?.exists && evidenceType === 'RETURN_UNBOXING_VIDEO' && freshReturn.data()?.status === 'IN_TRANSIT') {
+    } else if (integrityAccepted && returnRef && freshReturn?.exists && evidenceType === 'RETURN_UNBOXING_VIDEO' && freshReturn.data()?.status === 'IN_TRANSIT') {
       tx.update(returnRef, { status: 'RECEIVED_REVIEW', receivedAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() });
     }
     tx.create(eventRef, {
       actorId: uploaderId,
-      type: clientHashMatched === false ? 'EVIDENCE_HASH_MISMATCH' : 'EVIDENCE_VERIFIED',
+      type: integrityAccepted ? 'EVIDENCE_FINALIZED' : 'EVIDENCE_INTEGRITY_MISMATCH',
       summary: summary.slice(0, 500),
       metadata: {
         evidenceId: uploadId,
@@ -231,6 +413,8 @@ export const onEvidenceUploaded = onObjectFinalized({ timeoutSeconds: 540, memor
         evidenceBundleSha256,
         attestationStatus,
         clientHashMatched,
+        clientSizeMatched,
+        contentTypeMatched,
         carrierTrackingMatchStatus: pending?.carrierContext?.matchStatus ?? 'NOT_SCANNED',
         returnPassportId: returnPassportId ?? null,
       },
@@ -240,7 +424,14 @@ export const onEvidenceUploaded = onObjectFinalized({ timeoutSeconds: 540, memor
   });
 
   if (created) {
-    await notifyOtherParticipants(transactionId, uploaderId, 'New evidence verified', `${evidenceType.replaceAll('_', ' ').toLowerCase()} was added to the PackProof.`);
+    await notifyOtherParticipants(
+      transactionId,
+      uploaderId,
+      integrityAccepted ? 'New evidence finalized' : 'Evidence requires integrity review',
+      integrityAccepted
+        ? `${evidenceType.replaceAll('_', ' ').toLowerCase()} was server-hashed and added to the evidence record.`
+        : `${evidenceType.replaceAll('_', ' ').toLowerCase()} did not advance the workflow because an integrity check failed.`,
+    );
   }
 });
 
@@ -300,10 +491,10 @@ export async function generateEvidencePacket(transactionId: string, generatedBy:
     y -= options.gap ?? 2;
   };
 
-  addLine('PACKPROOF FORENSIC EVIDENCE DOSSIER', { bold: true, size: 18, color: teal, gap: 8 });
+  addLine('PACKPROOF EVIDENCE DOSSIER', { bold: true, size: 18, color: teal, gap: 8 });
   addLine(`Generated: ${new Date().toISOString()}`);
   addLine(`Transaction ID: ${transactionId}`);
-  addLine('This dossier records user-confirmed terms, server-computed file hashes, signed manifest fingerprints and attestation status. PackProof does not authenticate items, insure shipments, provide escrow, or decide disputes.', { gap: 12 });
+  addLine('This dossier inventories participant-entered terms, server-computed byte hashes, service-authenticated manifest fingerprints, and separately reported assurance dimensions. PackProof does not authenticate item contents, prove uninterrupted physical custody, insure shipments, provide escrow, decide fraud, or guarantee a legal, carrier, marketplace, or payment outcome.', { gap: 12 });
 
   addLine('TRANSACTION', { bold: true, size: 12, gap: 5 });
   addLine(`Item: ${data.title}`);
@@ -318,16 +509,20 @@ export async function generateEvidencePacket(transactionId: string, generatedBy:
   if (data.source) addLine(`PackProof Connect: ${data.source.platform}; external order: ${data.source.externalOrderId}`);
   y -= 8;
 
-  addLine('VERIFIED EVIDENCE', { bold: true, size: 12, gap: 5 });
+  addLine('FINALIZED EVIDENCE', { bold: true, size: 12, gap: 5 });
   if (!evidence.length) addLine('No evidence files were present when this dossier was generated.');
   for (const item of evidence) {
-    const created = timestampIso(item.createdAt) ?? item.capturedAt ?? 'Unknown time';
+    const serverReceived = timestampIso(item.serverReceivedAt) ?? timestampIso(item.createdAt) ?? item.capturedAt ?? 'Unknown time';
     addLine(`${item.type} — ${item.originalName}`, { bold: true });
-    addLine(`Captured: ${created}; uploader role: ${item.role}; size: ${item.sizeBytes} bytes`);
+    addLine(`Client-reported capture/start time: ${item.clientCreatedAt ?? 'NOT_RECORDED'}; source: CLIENT_OBSERVED_UNTRUSTED`);
+    addLine(`Server received/finalized record time: ${serverReceived}; uploader role: ${item.role}; size: ${item.sizeBytes} bytes`);
     addLine(`File SHA-256: ${item.sha256}`);
     addLine(`Manifest SHA-256: ${item.manifestSha256 ?? 'Legacy evidence without manifest'}`);
-    addLine(`Bundle SHA-256: ${item.evidenceBundleSha256 ?? 'Legacy evidence without bundle hash'}`);
-    addLine(`Attestation: ${item.attestationStatus ?? 'NOT_RECORDED'}; device-key signature: ${String(item.deviceKeySignatureValid ?? 'not supplied')}; client hash matched: ${String(item.clientHashMatched ?? 'not supplied')}`);
+    addLine(`Bundle SHA-256: ${item.evidenceBundleSha256 ?? 'Legacy evidence without bundle hash'}; binding: ${item.bundleBindingProfile ?? 'LEGACY_V1'}`);
+    addLine(`Manifest authentication: ${item.manifestAuthentication?.algorithm ?? 'LEGACY_HMAC_OR_NOT_RECORDED'}; key: ${item.manifestAuthentication?.keyId ?? 'not recorded'}; scope: ${item.manifestAuthentication?.verificationScope ?? 'service verification only'}`);
+    addLine(`App/device context: ${item.assurance?.appDeviceContext?.status ?? item.attestationStatus ?? 'NOT_RECORDED'}; device-key possession signature: ${String(item.deviceKeySignatureValid ?? 'not supplied')}; client-reported hardware signal: ${String(item.deviceKeyHardwareBackedSignal ?? item.deviceKeyHardwareBacked ?? 'not supplied')}`);
+    addLine(`Byte integrity: ${item.assurance?.byteIntegrity?.status ?? (item.clientHashMatched === false ? 'MISMATCH' : 'SERVER_HASH_ONLY')}; client hash matched: ${String(item.clientHashMatched ?? 'not supplied')}; size matched: ${String(item.clientSizeMatched ?? 'not supplied')}; declared media type matched: ${String(item.contentTypeMatched ?? 'not supplied')}`);
+    addLine(`Acquisition quality: ${item.assurance?.acquisitionQuality?.status ?? 'NOT_EVALUATED'}; physical correspondence: ${item.assurance?.physicalCorrespondence?.status ?? 'NOT_AVAILABLE'}; business/legal relevance: ${item.assurance?.businessLegalRelevance?.status ?? 'REVIEW_REQUIRED'}`);
     addLine(`Capture-time tracking context: ${item.carrierTrackingMatchStatus ?? 'NOT_SCANNED'}${item.scannedTrackingNumber ? `; barcode ${item.scannedTrackingNumber}` : ''}`);
     if (item.postSubmissionTrackingMatchStatus) {
       addLine(`Later submitted-tracking comparison: ${item.postSubmissionTrackingMatchStatus}${item.postSubmissionExpectedTrackingNumber ? `; submitted ${item.postSubmissionExpectedTrackingNumber}` : ''}; compared ${timestampIso(item.postSubmissionComparedAt) ?? 'after capture'}`, { gap: 6 });
@@ -354,7 +549,7 @@ export async function generateEvidencePacket(transactionId: string, generatedBy:
   }
 
   pdf.setTitle(`PackProof ${transactionId}`);
-  pdf.setSubject('Transaction evidence inventory, signed manifests and audit timeline');
+  pdf.setSubject('Transaction evidence inventory, service-authenticated manifests, layered assurance and audit timeline');
   pdf.setCreator('PackProof');
   const bytes = await pdf.save();
   const reportId = db.collection('transactions').doc(transactionId).collection('packets').doc().id;
@@ -371,9 +566,17 @@ export async function generateEvidencePacket(transactionId: string, generatedBy:
     storagePath,
     sha256: digest,
     evidenceCount: evidence.length,
+    sourceEvidenceBundleSha256s: evidence.map((item) => item.evidenceBundleSha256).filter((value): value is string => typeof value === 'string'),
+    transformation: {
+      id: 'packproof-evidence-dossier-pdf',
+      version: '2.0.0',
+      source: 'SERVER_DERIVED',
+      presentationOnly: true,
+      originalsReplaced: false,
+    },
     createdAt: FieldValue.serverTimestamp(),
   });
-  await appendEvent(transactionId, generatedBy, 'PACKET_GENERATED', 'A forensic evidence dossier was generated.', { reportId, sha256: digest });
+  await appendEvent(transactionId, generatedBy, 'PACKET_GENERATED', 'A presentation evidence dossier was generated from the retained originals and manifests.', { reportId, sha256: digest });
   return { reportId, storagePath, sha256: digest, evidenceCount: evidence.length };
 }
 
@@ -383,4 +586,30 @@ export const createEvidencePacket = onCall({ enforceAppCheck: true, timeoutSecon
   const { data } = await getTransaction(transactionId);
   assertParticipant(data, uid);
   return generateEvidencePacket(transactionId, uid);
+});
+
+export const createPrivateDownloadUrl = onCall({ enforceAppCheck: true }, async (request) => {
+  const uid = requireUid(request);
+  const storagePath = typeof request.data?.storagePath === 'string' ? request.data.storagePath : '';
+  if (!storagePath || storagePath.length > 500 || storagePath.includes('\\') || storagePath.includes('..')) {
+    throw new HttpsError('invalid-argument', 'A valid private object path is required.');
+  }
+
+  const transactionMatch = /^(?:evidence|manifests|reports)\/([^/]+)\//.exec(storagePath);
+  const exportMatch = /^exports\/([^/]+)\/[^/]+\.json$/.exec(storagePath);
+  if (transactionMatch) {
+    const { data } = await getTransaction(transactionMatch[1]);
+    assertParticipant(data, uid);
+  } else if (exportMatch) {
+    if (exportMatch[1] !== uid) throw new HttpsError('permission-denied', 'This export belongs to another account.');
+  } else {
+    throw new HttpsError('invalid-argument', 'This object class is not available through the private download endpoint.');
+  }
+
+  const file = storage.bucket().file(storagePath);
+  const [exists] = await file.exists();
+  if (!exists) throw new HttpsError('not-found', 'Private object not found.');
+  const expiresAtMs = Date.now() + 5 * 60_000;
+  const [url] = await file.getSignedUrl({ action: 'read', expires: expiresAtMs });
+  return { url, expiresAt: new Date(expiresAtMs).toISOString() };
 });

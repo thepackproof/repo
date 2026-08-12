@@ -1,78 +1,95 @@
-# PackProof
+# PackProof 0.3.0
 
-PackProof is a production-oriented Android application and Firebase backend for documenting high-value private and platform-originated transactions. It connects locked transaction terms, continuous packing/unboxing evidence, return evidence, shipping-label context, server-computed hashes, signed forensic manifests and exportable dossiers in one private record.
+PackProof is an Android application and Firebase backend for documenting high-value private and platform-originated transactions. It connects mutually confirmed terms, native packing/unboxing capture, return evidence, shipping-label context, exact-byte fingerprints, private evidence manifests, and presentation dossiers in one participant-restricted record.
 
-PackProof deliberately **does not** authenticate items, provide escrow, move sale funds, insure shipments or decide disputes.
+PackProof is a documentation system. It does **not** authenticate an item or person, prove that a physical package is the same object seen earlier, establish uninterrupted custody, provide escrow or insurance, decide fraud, guarantee a dispute outcome, or promise that a carrier, marketplace, payment provider, insurer, court, or other third party will accept a record.
 
-## What is new in 0.2.1
+## Scientific and claim boundary
 
-- Android Keystore-backed AES-256-GCM offline evidence queue with streaming SHA-256 and reconnect synchronization.
-- Symmetric Return Passports for authorized return repacking, return shipment and returned-item unboxing.
-- Just-in-time Firebase App Check / Play Integrity refresh at the record action, a server nonce receipt and an Android Keystore ECDSA challenge signature.
-- Canonical forensic manifests with runtime metadata fingerprint, final-three-second sensor statistics, network telemetry, optional location and camera barcode context.
-- Server-computed file, manifest and evidence-bundle SHA-256 values plus server HMAC authentication.
-- PackProof Connect: idempotent order API, universal/deep-link handoff, locked order context, signed webhook callbacks, retry delivery, OpenAPI definition and JavaScript SDK.
+Version 0.3.0 implements the digital-evidence path described below. It deliberately reports physical correspondence as `NOT_AVAILABLE` because this repository contains no validated physical feature extractor, matcher, calibrated thresholds, or PackProof-specific blind validation corpus. Acquisition quality is `NOT_EVALUATED` until a versioned, calibrated quality gate exists.
+
+The source includes:
+
+- [`docs/WHITEPAPER_COMPLIANCE.md`](docs/WHITEPAPER_COMPLIANCE.md), which translates the 7 August 2026 technical white paper into release gates;
+- [`docs/CLAIMS_REGISTER.json`](docs/CLAIMS_REGISTER.json), which records bounded, prohibited, research-only, and runtime-dependent claims;
+- [`docs/EVIDENCE_FORMAT_V2.md`](docs/EVIDENCE_FORMAT_V2.md), which specifies canonicalization, hashing, bundle binding, manifest authentication, and layered assurance; and
+- [`docs/architecture/ARCHITECTURE_CONTRACT.md`](docs/architecture/ARCHITECTURE_CONTRACT.md), which governs the incremental migration to one commerce, mobile, API, evidence, event, and integration core; and
+- a production-source claim-language test (`npm run test:claims`).
+
+These controls are not certification, scientific validation, a penetration test, laboratory accreditation, or a legal opinion.
+
+## What changed in 0.3.0
+
+- Removed the disabled Facebook integration's eager native import, which previously prevented the supplied Android build from reaching its startup UI.
+- Added an explicit encrypted-queue state machine and retry-stable client evidence identity. Ciphertext is retained until the Firestore evidence record confirms server finalization.
+- Upgraded PPQ1 offline containers to version 2, authenticating the magic/version/IV-length header as AES-GCM associated data while retaining version-1 decryption compatibility.
+- Disabled Android application-data backup because queue ciphertext is bound to a non-exportable, installation-specific Android Keystore key.
+- Published manifest schema 2, `PACKPROOF_JCS_1`, `PACKPROOF_EVIDENCE_BUNDLE_V2`, deterministic known-answer vectors, and an independent command-line verifier.
+- Labeled manifest authentication as an HMAC service MAC with explicit key ID and `PACKPROOF_SERVICE_ONLY` scope—not a publicly verifiable digital signature.
+- Added exact client/server byte-length comparison, media magic-byte inspection, declared/detected media-type comparison, and fail-closed workflow transitions for integrity mismatches.
+- Split assurance into acquisition quality, app/device context, byte integrity, physical correspondence, carrier context, and business/legal relevance. Missing dimensions never collapse into one green verdict.
+- Routed supporting PDFs through the same encrypted, idempotent queue as camera evidence.
+- Changed PackProof Connect to emit `packproof.evidence.finalized`, bounded digital-evidence states, reason codes, layered assurance, and a freshly generated 15-minute dossier URL for each callback attempt.
+
+## Architecture included
+
+- Expo SDK 57 / React Native 0.86 Android client targeting API 36.
+- Firebase Authentication, Firestore, Cloud Storage, Cloud Functions, Hosting, and App Check / Play Integrity.
+- Default-deny database and object rules with participant-only reads and server-authoritative writes.
+- One-use buyer invitations, mutually locked terms, and controlled transaction/return state machines.
+- Continuous packing, unboxing, return-repacking, and return-unboxing capture.
+- Android Keystore AES-256-GCM app-private offline queue with streaming SHA-256.
+- Server-side authorization, exact-path upload grants, independent hashing, media sniffing, JCS manifest creation, and HMAC service authentication.
+- Private native evidence and manifests plus separately labeled, source-linked PDF presentation dossiers.
+- PackProof Connect order ingestion, idempotent handoff, exact-body webhook HMAC, and retry delivery.
+- Contract-first PackProof Merchant API v1 foundation with scoped merchant credentials, organization-isolated transaction create/read/list, idempotency, rate controls, structured errors/logs, and hash-linked audit events. See [`docs/API_ARCHITECTURE.md`](docs/API_ARCHITECTURE.md).
+- Google Play / RevenueCat subscription scaffolding and policy templates.
 
 ## Start here
 
-No Android Studio is required for the recommended EAS cloud-build path. For a repeatable Windows launch, start with [`PC_DEMO.md`](PC_DEMO.md); for the complete real-service setup, follow [`EXTERNAL_DEMO.md`](EXTERNAL_DEMO.md). These paths build the native application against live staging services and do not substitute mock uploads or a demo database.
+Use Node 22 and Java 21. Expo Go is not supported because the application uses native Firebase modules and a custom Android Keystore module.
 
-1. Read [`PC_DEMO.md`](PC_DEMO.md) and [`EXTERNAL_DEMO.md`](EXTERNAL_DEMO.md); use [`SETUP_WIZARD.md`](SETUP_WIZARD.md) for the longer production-launch checklist.
-2. Use Node 22 and run `npm ci` plus `npm --prefix functions ci`.
-3. Run `npm run configure` and provide the requested service values.
-4. Place Firebase `google-services.json` in this folder.
-5. Configure `MANIFEST_SIGNING_SECRET`, App Check and the PackProof Connect link domain as described below.
-6. Run `npm run sync:eas`, then `npm run doctor`.
-7. Build, deploy and execute [`docs/TEST_PLAN.md`](docs/TEST_PLAN.md) before onboarding real evidence.
-
-## Included architecture
-
-- Expo SDK 57 / React Native 0.86 Android client targeting API 36.
-- Firebase Authentication, Firestore, Storage, Cloud Functions and App Check with Play Integrity.
-- Server-authoritative state changes and default-deny security rules.
-- One-use buyer invitations and mutual locked terms.
-- Continuous packing, unboxing, return-repacking and return-unboxing capture.
-- Encrypted offline queue under app-private storage.
-- Server-side validation, timestamps, SHA-256 fingerprints and signed manifests.
-- PackProof Connect order ingestion and signed callback framework.
-- Private shipment tracking context, reports, blocking, notifications and account export.
-- PDF forensic evidence dossier generation.
-- Google Play/RevenueCat subscription scaffolding and policy templates.
-
-## Required 0.2.1 deployment configuration
-
-```bash
-npx firebase-tools@15.25.1 functions:secrets:set MANIFEST_SIGNING_SECRET
-```
-
-`npm run configure` writes `CONNECT_LINK_BASE_URL`, `PUBLIC_APP_URL`, and `TIKTOK_REDIRECT_URI` into the ignored `functions/.env` file used by Firebase deployment. Use a high-entropy, independently generated manifest secret. Register the Android app with Firebase App Check / Play Integrity, enable enforcement after internal testing, and publish Android App Links association data for the configured domain. See:
-
-- [`docs/OFFLINE_EVIDENCE.md`](docs/OFFLINE_EVIDENCE.md)
-- [`docs/RETURN_PASSPORT.md`](docs/RETURN_PASSPORT.md)
-- [`docs/FORENSIC_MANIFEST.md`](docs/FORENSIC_MANIFEST.md)
-- [`docs/PACKPROOF_CONNECT.md`](docs/PACKPROOF_CONNECT.md)
+1. Read the [`architecture governance index`](docs/architecture/README.md), then [`PC_DEMO.md`](PC_DEMO.md) for a Windows launch and [`EXTERNAL_DEMO.md`](EXTERNAL_DEMO.md) for live-service staging.
+2. Run `npm ci` and `npm --prefix functions ci`.
+3. Run `npm run configure`, then place the matching Firebase `google-services.json` beside `package.json`.
+4. Configure `MANIFEST_SIGNING_SECRET` in Firebase Secret Manager and set a non-secret `MANIFEST_SIGNING_KEY_ID` in `functions/.env`.
+5. Register the signed Android app with Firebase App Check / Play Integrity and configure Android App Links for the actual signing certificate.
+6. Run every applicable automated and manual gate in [`docs/TEST_PLAN.md`](docs/TEST_PLAN.md).
+7. Treat compilation, APK assembly, installation, and prior build reports as intermediate evidence. A release label depends on real-device startup, log inspection, and live-backend evidence finalization.
 
 ## Common commands
 
-```bash
-npm run configure
-npm run sync:eas
-npm run doctor
-npm run demo:pc -- check
-npm run verify:pc
-npm run generate:assetlinks
-npm run typecheck
-npm --prefix functions run build
-npm run test:rules
-npm run test:billing
-npm run test:sdk
-npm run build:android:preview
-npm run build:android:production
-npm run submit:android
+```powershell
+npm.cmd run configure
+npm.cmd run doctor
+npm.cmd run typecheck
+npm.cmd run lint
+npm.cmd --prefix functions run build
+npm.cmd run test:evidence-format
+npm.cmd run test:evidence-verifier
+npm.cmd run test:claims
+npm.cmd run test:rules
+npm.cmd run test:billing
+npm.cmd run test:api
+npm.cmd run test:api:firestore
+npm.cmd run test:api:functions
+npm.cmd run test:sdk
+npm.cmd run verify:pc
+npm.cmd run build:android:preview
 ```
 
-## Launch boundary
+## Evidence verification
 
-Third-party credentials, approved OAuth apps, Play Console products, final legal identity, support operations, retention policy, production DNS and marketplace/carrier agreements cannot be embedded in this source handoff. Clear every setup placeholder, complete real-device and emulator testing, and obtain independent legal/security review before public production use.
+Given an exported native manifest and original file:
 
-See [`REMEDIATION_REPORT.md`](REMEDIATION_REPORT.md) for the 0.2.0-to-0.2.1 correction summary.
+```powershell
+node tools/verify-evidence.mjs manifest.json original-file --expected-manifest-sha256 HEX --expected-bundle-sha256 HEX
+```
+
+The verifier checks canonical bytes, required format profiles, exact original-file SHA-256, the digest recorded in the manifest, and the v2 bundle binding. It cannot publicly prove PackProof service origin because HMAC verification requires the service secret. See [`docs/EVIDENCE_FORMAT_V2.md`](docs/EVIDENCE_FORMAT_V2.md).
+
+## Deployment boundary
+
+Source code cannot embed or prove owner credentials, approved OAuth applications, Play signing, App Check enforcement, deployed secrets, alerting, retention and legal-hold policy, regional controls, support/moderation operations, public DNS, marketplace/carrier agreements, independent security review, or scientific validation. Clear every launch placeholder and attach current deployment/runtime evidence before onboarding real customer evidence.
+
+The supplied [`BUILD_REPORT.md`](BUILD_REPORT.md) and [`REMEDIATION_REPORT.md`](REMEDIATION_REPORT.md) are historical 0.2.1 records. They are not evidence that 0.3.0 is deployed or runtime-accepted.

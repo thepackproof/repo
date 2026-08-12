@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { createHmac } from 'node:crypto';
 import { PackProofConnect, PackProofConnectError, verifyPackProofWebhook } from '../sdk/javascript/index.js';
+import { buildCommerceContext, createCommerceHandoff, extractStructuredProduct } from '../sdk/javascript/browser.js';
 
 const request = {
   platform: 'marketplace',
@@ -27,7 +28,7 @@ const client = new PackProofConnect({
   },
 });
 
-const result = await client.createVerification(request);
+const result = await client.createEvidenceSession(request);
 assert.deepEqual(result, { success: true, sessionId: 'session-123' });
 assert.equal(observed.url, 'https://packproof.example/api/connect/orders');
 assert.equal(observed.init.method, 'POST');
@@ -47,7 +48,10 @@ await assert.rejects(
   (error) => error instanceof PackProofConnectError && error.status === 409 && error.code === 'idempotency_conflict',
 );
 
-const rawBody = JSON.stringify({ event: 'packproof.verification.completed', orderId: 'order-123' });
+const legacyResult = await client.createVerification(request);
+assert.deepEqual(legacyResult, { success: true, sessionId: 'session-123' });
+
+const rawBody = JSON.stringify({ event: 'packproof.evidence.finalized', orderId: 'order-123', evidenceStatus: 'DIGITAL_EVIDENCE_WITH_LIMITATIONS' });
 const secret = 'whsec_validation_secret';
 const timestamp = '1786039200';
 const signature = `v1=${createHmac('sha256', secret).update(`${timestamp}.${rawBody}`).digest('hex')}`;
@@ -58,4 +62,83 @@ assert.equal(verifyPackProofWebhook({ rawBody, timestamp, signature, secret, now
 const tamperedSignature = `${signature.slice(0, -1)}${signature.endsWith('0') ? '1' : '0'}`;
 assert.equal(verifyPackProofWebhook({ rawBody, timestamp, signature: tamperedSignature, secret, now }), false);
 
-process.stdout.write('PackProof Connect SDK request and exact-body HMAC tests passed.\n');
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'Product',
+  productID: 'product-42',
+  name: 'Structured collectible camera',
+  description: 'Full listing description with lens, case, strap, and disclosed base-plate wear.',
+  category: 'Vintage cameras',
+  brand: { '@type': 'Brand', name: 'Example Optics' },
+  model: 'RF-50',
+  sku: 'RF50-42',
+  image: ['https://cdn.merchant.example/camera-front.jpg'],
+  additionalProperty: [{ '@type': 'PropertyValue', name: 'Finish', value: 'Black' }],
+  offers: { '@type': 'Offer', price: '1299.00', priceCurrency: 'USD', sku: 'RF50-BLACK' },
+};
+const metadata = new Map([
+  ['meta[name="generator"]', 'Shopify'],
+  ['meta[property="og:url"]', 'https://merchant.example/products/rf50'],
+]);
+const documentRef = {
+  title: 'Fallback title',
+  querySelectorAll(selector) { return selector === 'script[type="application/ld+json"]' ? [{ textContent: JSON.stringify(jsonLd) }] : []; },
+  querySelector(selector) {
+    const content = metadata.get(selector);
+    return content ? { getAttribute: (name) => name === 'content' ? content : null } : null;
+  },
+};
+const locationRef = { href: 'https://merchant.example/products/rf50' };
+const extracted = extractStructuredProduct(documentRef, locationRef);
+assert.equal(extracted.schemaVersion, 1);
+assert.equal(extracted.source.platform, 'SHOPIFY');
+assert.equal(extracted.source.productUrl, locationRef.href);
+assert.equal(extracted.source.externalProductId, 'product-42');
+assert.equal(extracted.item.title, jsonLd.name);
+assert.equal(extracted.item.description, jsonLd.description);
+assert.deepEqual(extracted.item.amount, { currency: 'USD', minorUnits: 129900 });
+assert.deepEqual(extracted.item.selectedOptions, [{ name: 'Finish', value: 'Black' }]);
+assert.equal(extracted.item.imageReferences[0].url, 'https://cdn.merchant.example/camera-front.jpg');
+
+const explicit = buildCommerceContext({
+  documentRef,
+  locationRef,
+  data: { item: { title: 'Selected black RF-50 variant', quantity: 2 }, source: { externalVariantId: 'variant-black' } },
+});
+assert.equal(explicit.item.title, 'Selected black RF-50 variant');
+assert.equal(explicit.item.quantity, 2);
+assert.equal(explicit.item.description, jsonLd.description);
+assert.equal(explicit.source.externalVariantId, 'variant-black');
+
+let buttonRequest;
+const publishableKey = `pp_pub_sandbox_${'A'.repeat(24)}`;
+const handoff = await createCommerceHandoff({
+  publishableKey,
+  context: explicit,
+  operationKey: 'button-operation-123',
+  apiBaseUrl: 'https://packproof.example/',
+  fetchImpl: async (url, init) => {
+    buttonRequest = { url, init };
+    return new Response(JSON.stringify({ data: {
+      id: `hnd_${'a'.repeat(40)}`,
+      object: 'commerce_handoff',
+      schemaVersion: 1,
+      commerceContextId: `ctx_${'b'.repeat(40)}`,
+      passportDraftId: `draft_${'c'.repeat(40)}`,
+      trustLevel: 'PAGE_DECLARED',
+      status: 'PENDING_CLAIM',
+      reviewUrl: 'https://packproof.example/handoff/review?redacted-for-test',
+      expiresAt: '2026-08-11T12:30:00.000Z',
+    } }), { status: 201, headers: { 'Content-Type': 'application/json' } });
+  },
+});
+assert.equal(handoff.trustLevel, 'PAGE_DECLARED');
+assert.equal(buttonRequest.url, `https://packproof.example/v1/public/integrations/${publishableKey}/handoffs`);
+assert.equal(buttonRequest.init.method, 'POST');
+assert.equal(buttonRequest.init.credentials, 'omit');
+assert.equal(buttonRequest.init.headers['Idempotency-Key'], 'button-operation-123');
+assert.equal('Authorization' in buttonRequest.init.headers, false);
+assert.equal(JSON.parse(buttonRequest.init.body).source.externalOrderId, undefined);
+assert.equal(JSON.parse(buttonRequest.init.body).item.description, jsonLd.description);
+
+process.stdout.write('PackProof Connect SDK, browser extraction, and publishable-button request tests passed.\n');

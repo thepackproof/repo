@@ -1,5 +1,7 @@
 # PackProof 0.2.1 review and validation report
 
+> **Historical record — not a 0.3.0 release result.** This file describes an earlier named 0.2.1 archive and is retained for provenance. It does not establish that the current source, Firebase deployment, or Android artifact is externally demonstrable. In particular, compilation/installation did not establish startup readiness; the reviewed 0.2.1 app still eagerly loaded a disabled Facebook native module and failed at runtime on the tested device. Use the current release evidence and `docs/TEST_PLAN.md` for 0.3.0 status.
+
 Reviewed on August 6, 2026 from a clean extraction of `PackProof-Android-Full-Stack-v0.2.1-External-Demo-Ready.zip` (SHA-256 `EF070E665B8EC58575180FE5E2FED322A788FA49194D967A594EE8CA187FCB7E`).
 
 ## Material archive defect repaired
@@ -16,7 +18,7 @@ The Android module has been restored and hardened with:
 - Android Keystore P-256 / SHA256withECDSA capture-nonce signing and hardware-backed-key reporting.
 - Complete Expo Android-library metadata, including the version fields required by Expo's Gradle plugin.
 
-## Passed local gates
+## Gates reported as passed for that historical source snapshot
 
 - Root `npm ci` and Functions `npm ci` completed from the supplied lockfiles.
 - Mobile `npm run typecheck` passed.

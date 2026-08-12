@@ -8,17 +8,28 @@
   "scripts": {
     "build": "tsc",
     "build:watch": "tsc --watch",
+    "test:domain": "npm run build && node --test tests/domain-v1.test.mjs",
+    "test:application": "npm run build && node --test tests/application-v1.test.mjs",
+    "test:application:firestore:inner": "npm run build && node --test tests/application-firestore.integration.mjs",
+    "test:api": "npm run build && node --test tests/api-v1.test.mjs tests/openapi-v1.test.mjs",
+    "test:api:firestore:inner": "npm run build && node --test tests/firestore-api-v1.integration.mjs tests/webhook-delivery.integration.mjs tests/webhook-attempts.integration.mjs tests/idempotency-cleanup.integration.mjs tests/admin-requeue.integration.mjs",
+    "test:evidence-format": "npm run build && node scripts/test-evidence-format.mjs",
     "serve": "npm run build && npx --yes firebase-tools@15.25.1 emulators:start --only functions",
     "deploy": "npx --yes firebase-tools@15.25.1 deploy --only functions",
     "lint": "tsc --noEmit",
-    "provision:connect": "node scripts/provision-connect.mjs"
+    "provision:connect": "node scripts/provision-connect.mjs",
+    "provision:api-client": "npm run build && node scripts/provision-api-client.mjs"
   },
   "dependencies": {
+    "@firebase/app": "0.16.0",
+    "@firebase/app-compat": "0.5.16",
+    "express": "5.2.1",
     "firebase-admin": "^14.2.0",
     "firebase-functions": "^7.3.2",
     "pdf-lib": "^1.17.1"
   },
   "devDependencies": {
+    "@types/express": "5.0.6",
     "@types/node": "^24.10.1",
     "typescript": "~6.0.3"
   }

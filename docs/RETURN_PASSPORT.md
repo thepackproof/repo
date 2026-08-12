@@ -1,24 +1,38 @@
-# Symmetric Return Passport
+# Return Passport
 
-A Return Passport creates a separate, participant-visible evidence lifecycle for authorized returns instead of overwriting the outbound shipment record.
+A Return Passport applies the same participant-restricted digital-evidence workflow to an authorized buyer-to-seller return. “Symmetric” means both outbound and return legs can retain packing, shipping-label, condition, and unboxing records; it is not a claim that the evidence proves physical identity or condition.
 
-## State flow
+## Roles and states
 
-`REQUESTED → AUTHORIZED → PACKED → IN_TRANSIT → RECEIVED_REVIEW → COMPLETED`
+- Either participant can request a return when the locked terms/state allow it.
+- The other participant must authorize it.
+- The buyer is the returning participant and the seller is the recipient, independently of who requested the workflow.
+- Only the returning participant can record return packing/shipping evidence.
+- Only the recipient can record returned-item unboxing and acknowledge receipt.
 
-Either transaction participant may request a return when the locked return terms allow it, or while the transaction is disputed. The other participant must authorize the request. The buyer is the physical returning participant and records a continuous return-repacking video before return shipment can be submitted, regardless of which participant originally requested the return. The recipient can record a continuous returned-item unboxing video or mark the return received, and both participants independently confirm completion.
+```text
+REQUESTED -> AUTHORIZED -> PACKED -> IN_TRANSIT -> RECEIVED_REVIEW -> COMPLETED
+```
 
-## Evidence linkage
+Cancelled and disputed branches remain explicit. Both participants must confirm completion.
 
-At request time, the server snapshots every existing server-verified evidence SHA-256 into `originalEvidenceHashes`. New return evidence includes a `returnPassportId` in its upload grant, signed manifest, evidence record and timeline event. Return evidence types are:
+## Digital linkage
 
-- `RETURN_CONDITION_PHOTO`
-- `RETURN_PACKING_VIDEO`
-- `RETURN_SHIPPING_LABEL`
-- `RETURN_UNBOXING_VIDEO`
+At request time, the backend snapshots the SHA-256 values of existing server-finalized evidence (plus labeled historical v0.2 compatibility records) into `originalEvidenceHashes`. New return records carry `returnPassportId` through the upload reservation, manifest, evidence metadata, and timeline event.
 
-The barcode observed during return repacking is sealed into the original manifest. When the returning participant later submits the carrier tracking number, the server performs a separate reproducible comparison against that already-signed barcode. The later value and result are stored as post-capture audit fields; they are not misrepresented as part of the original signed capture. A mismatch is retained and flagged for review; it is never silently corrected.
+Return evidence types are:
 
-## Product boundary
+- `RETURN_CONDITION_PHOTO`;
+- `RETURN_PACKING_VIDEO`;
+- `RETURN_SHIPPING_LABEL`; and
+- `RETURN_UNBOXING_VIDEO`.
 
-A Return Passport documents what participants captured and confirmed. It does not approve a refund, adjudicate condition, authenticate an item, determine counterfeit status or override marketplace return policy.
+Return shipping requires a server-finalized return packing video with no recorded byte-integrity mismatch. A hash/length/media mismatch is retained for review but cannot advance the return state.
+
+The original-hash snapshot binds digital source records; it does not by itself show that the same physical item was returned. Version 0.3.0 reports physical correspondence as `NOT_AVAILABLE`.
+
+## Carrier and dossier semantics
+
+If a barcode was observed during capture, a later submitted return tracking number is compared under the documented normalization rule and stored as a separate post-submission result. It is not backdated into the original manifest and is not a live carrier-custody assertion.
+
+Presentation dossiers inventory the outbound and return evidence, hashes, manifest authentication, assurance dimensions, timeline, and return roles. They do not approve a refund, adjudicate condition, authenticate an item, determine counterfeit status, establish custody, or override marketplace/payment/carrier policy.

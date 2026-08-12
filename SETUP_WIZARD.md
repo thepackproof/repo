@@ -92,7 +92,7 @@ Never put the Facebook App Secret in the mobile app.
 2. Request the `user.info.basic` scope.
 3. Add the exact redirect URI:
 
-   `https://us-central1-YOUR_FIREBASE_PROJECT.cloudfunctions.net/tiktokAuthCallback`
+   `https://us-east1-YOUR_FIREBASE_PROJECT.cloudfunctions.net/tiktokAuthCallback`
 
 4. Add Android package `com.packproof.app`, privacy URL, terms URL and required branding.
 5. Set the backend secrets from this folder:
@@ -123,7 +123,7 @@ npx firebase-tools functions:secrets:set REVENUECAT_WEBHOOK_SECRET
 
 8. RevenueCat → Integrations → Webhooks. URL:
 
-   `https://us-central1-YOUR_FIREBASE_PROJECT.cloudfunctions.net/revenueCatWebhook`
+   `https://us-east1-YOUR_FIREBASE_PROJECT.cloudfunctions.net/revenueCatWebhook`
 
    Authorization header: `Bearer THE_SAME_RANDOM_SECRET`
 
@@ -211,13 +211,27 @@ After the first AAB is manually uploaded and the Play app exists, future builds 
 
 If something fails, run `npm run doctor` and copy only its output. Never share `.env`, `google-services.json`, service-account JSON, SMTP passwords or Firebase secret values.
 
-## 14. PackProof 0.2.1 security and Connect setup
+## 14. PackProof 0.3.0 evidence security and Connect setup
 
-1. Generate and store the forensic-manifest HMAC secret:
+1. Generate and store the evidence-manifest HMAC secret, then set a non-secret key identifier in `functions/.env` (for example, `MANIFEST_SIGNING_KEY_ID=manifest-hmac-v1`):
 
 ```bash
 openssl rand -base64 48
 npx firebase-tools functions:secrets:set MANIFEST_SIGNING_SECRET
+```
+
+Generate a different secret for short-lived public Button handoffs. Do not reuse the manifest key or merchant credential pepper:
+
+```bash
+openssl rand -base64 48
+npx firebase-tools functions:secrets:set PUBLIC_HANDOFF_SIGNING_SECRET
+```
+
+Generate one more independent secret for participant claims and actor-bound evidence-session redemption. Do not reuse any other PackProof key:
+
+```bash
+openssl rand -base64 48
+npx firebase-tools functions:secrets:set PARTICIPANT_HANDOFF_SIGNING_SECRET
 ```
 
 2. Set the verified link base used in Connect order responses:
@@ -226,10 +240,10 @@ npx firebase-tools functions:secrets:set MANIFEST_SIGNING_SECRET
 Open `functions/.env` and verify `CONNECT_LINK_BASE_URL=https://YOUR_LINK_DOMAIN` (the configuration helper normally writes it).
 ```
 
-3. Put the EAS and/or Play App Signing SHA-256 certificate fingerprints in `ANDROID_APP_LINK_SHA256_CERT_FINGERPRINT` inside `.env`, run `npm run generate:assetlinks`, and deploy Hosting. The package has HTTPS intent filters for `/connect/capture` and `/invite`; without valid association, users can still use the hosted fallback but Android may open the browser first.
+3. Put the EAS and/or Play App Signing SHA-256 certificate fingerprints in `ANDROID_APP_LINK_SHA256_CERT_FINGERPRINT` inside `.env`, run `npm run generate:assetlinks`, and deploy Hosting. The package has HTTPS intent filters for `/connect/capture`, `/handoff/review`, `/invite`, `/claim/participant`, and `/evidence-session/redeem`; without valid association, users can still use the hosted fallback but Android may open the browser first.
 
 4. Install a signed internal-test build from Google Play, verify valid App Check metrics, then enable enforcement for Functions. Test the record action after the app has been idle, after an App Check token expires and while offline.
 
-5. Run the offline queue and Return Passport cases in `docs/TEST_PLAN.md`. Because the Keystore key is local to the installation, uninstalling/clearing app data intentionally makes queued evidence unrecoverable.
+5. Run the offline queue and Return Passport cases in `docs/TEST_PLAN.md`. Because the Keystore key is local to the installation, uninstalling/clearing app data can make queued evidence unrecoverable. Android data backup is disabled so ciphertext is not restored without its key.
 
 6. Provision Connect integrations either from an admin account carrying custom claim `packproofAdmin: true` or with the authorized staging CLI documented in `docs/PACKPROOF_CONNECT.md`. Save the returned API key and webhook signing secret in the marketplace’s secret manager. Review the OpenAPI file and JavaScript SDK before exposing the endpoint.

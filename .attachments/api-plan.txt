@@ -1,0 +1,923 @@
+﻿Proposed direction 
+We should evolve PackProof into a unified, API-first evidence platform organized around a canonical  
+Commerce Context â†’ Passport â†’ Evidence Session â†’ Evidence Result 
+ pipeline. 
+The PayPal-button analogy is useful for integration simplicity, but PackProof should not imitate PayPalâ€™s payment semantics. The PackProof button should behave like this: 
+The merchant installs a PackProof app, plugin, extension, or JavaScript component. 
+The integration supplies structured listing, product, variant, cart, or order data to PackProof. 
+PackProof creates an immutable, provenance-bearing commerce-context snapshot. 
+The button receives only a short-lived handoff tokenâ€”never the merchantâ€™s private API credential. 
+Clicking the button opens a hosted or native PackProof flow. 
+The passport form is already populated with the item description, identifiers, selected variant, price, currency, product URL, and other available information. 
+The user reviews and confirms the imported information instead of retyping it. 
+Once an actual order exists, the merchantâ€™s server binds the passport to the authoritative order and line item. 
+PackProof capture, evidence, return, notification, reporting, and webhook components all operate on that same canonical record. 
+The critical architectural principle is: 
+PackProof elements should interoperate through shared domain services, stable resource contracts, and versioned eventsâ€”not by allowing every component to call every other component or write directly to Firestore. 
+That gives us seamless interoperability without creating an unmaintainable web of dependencies. 
+The existing master plan already calls for shared domain services, a stable API, webhooks, SDKs, and commerce integrations. The important sequencing change is that the  
+commerce-context model must be established near the beginning 
+, while Shopify/WooCommerce-specific adapters remain later. The current plan waits until Phase 10 to address commerce, which is too late to influence the underlying transaction model cleanly. See the existing direction in [PackProof_Coding_AI_Development_Master_Plan.md (line 154)](C:/src/PackProof/documentation/PackProof_Coding_AI_Development_Master_Plan.md:154). 
+No files or code were changed in preparing this plan. 
+Target architecture 
+î°ƒ 
+```mermaid 
+flowchart LR 
+    subgraph Commerce["Commerce systems"] 
+        S["Shopify"] 
+        W["WooCommerce"] 
+        M["Marketplace"] 
+        C["Custom checkout"] 
+        P["Product or listing page"] 
+    end 
+    subgraph Integration["PackProof integration edge"] 
+        A["Platform adapters"] 
+        B["Server SDK"] 
+        J["PackProof Button / hosted component"] 
+        T["Short-lived handoff tokens"] 
+    end 
+    subgraph Core["Unified PackProof application services"] 
+        CC["Commerce Context Service"] 
+        TX["Transaction / Passport Service"] 
+        CL["Participant Claim Service"] 
+        ES["Evidence Session Service"] 
+        EV["Evidence Finalization Service"] 
+        SH["Shipment Service"] 
+        RT["Return Passport Service"] 
+        RP["Report Service"] 
+    end 
+    subgraph Infrastructure["Infrastructure adapters"] 
+        DB["Firestore repositories"] 
+        ST["Cloud Storage"] 
+        FN["Firebase callable and REST transports"] 
+        CR["Android capture and encrypted queue"] 
+        WB["Webhook outbox and dispatcher"] 
+        AU["Audit event stream"] 
+    end 
+    S & W & M & C & P --> A 
+    C --> B 
+    A & B --> CC 
+    CC --> T 
+    T --> J 
+    J --> TX 
+    TX --> CL 
+    CL --> ES 
+    ES --> CR 
+    CR --> EV 
+    EV --> RP 
+    TX --> SH 
+    TX --> RT 
+    EV & SH & RT & RP --> WB 
+    CC & TX & CL & ES & EV & SH & RT & RP --> AU 
+    CC & TX & CL & ES & EV & SH & RT & RP --> DB 
+    EV --> ST 
+    FN --> CC & TX & CL & ES & SH & RT & RP 
+``` 
+î°‚ 
+The canonical interoperability rule 
+Each UI, API, plugin, and background worker becomes an  
+adapter 
+ around the same application services: 
+Mobile Firebase callable functions call the shared services. 
+REST  
+/v1 
+ routes call the same shared services. 
+PackProof Connect becomes a compatibility adapter around the same services. 
+Shopify and WooCommerce integrations call the same  
+/v1 
+ resources. 
+Background finalizers emit the same domain events. 
+Reports and webhooks consume finalized events. 
+No adapter directly invents its own transaction or evidence rules. 
+No platform integration directly writes PackProof database documents. 
+No browser component receives a private merchant credential. 
+This resolves the current architectural split where consumer callables, Connect, and the merchant API contain partially parallel concepts. 
+The commerce-context model 
+The imported product/listing information should not be inserted directly into the transaction as an undifferentiated description. It needs a first-class provenance model. 
+Proposed  
+CommerceContext 
+A commerce context represents a snapshot of what the commerce system asserted about an item at a particular time. 
+Conceptual shape: 
+î°ƒ 
+type CommerceContext = { 
+  id: string; 
+  schemaVersion: '1'; 
+  organizationId: string; 
+  integrationId: string; 
+  environment: 'sandbox' | 'live'; 
+  source: { 
+    platform: 
+      | 'SHOPIFY' 
+      | 'WOOCOMMERCE' 
+      | 'MAGENTO' 
+      | 'CUSTOM' 
+      | 'MARKETPLACE' 
+      | 'STRUCTURED_PAGE_DATA'; 
+    trustLevel: 
+      | 'MERCHANT_SERVER_ATTESTED' 
+      | 'PLATFORM_API_ATTESTED' 
+      | 'PAGE_DECLARED'; 
+    externalShopId?: string; 
+    externalProductId?: string; 
+    externalListingId?: string; 
+    externalVariantId?: string; 
+    externalOrderId?: string; 
+    externalLineItemId?: string; 
+    productUrl?: string; 
+    capturedAt: string; 
+  }; 
+  item: { 
+    title: string; 
+    description: string; 
+    category?: string; 
+    brand?: string; 
+    model?: string; 
+    sku?: string; 
+    gtin?: string; 
+    upc?: string; 
+    mpn?: string; 
+    serialNumber?: string; 
+    selectedOptions: Array<{ 
+      name: string; 
+      value: string; 
+    }>; 
+    identifiers: Array<{ 
+      type: string; 
+      value: string; 
+    }>; 
+    quantity: number; 
+    amount?: { 
+      currency: string; 
+      minorUnits: number; 
+    }; 
+    imageReferences: Array<{ 
+      url: string; 
+      altText?: string; 
+    }>; 
+  }; 
+  provenance: { 
+    canonicalPayloadSha256: string; 
+    platformUpdatedAt?: string; 
+    importedFields: Record<string, FieldProvenance>; 
+  }; 
+  status: 
+    | 'CREATED' 
+    | 'HANDOFF_ISSUED' 
+    | 'CLAIMED' 
+    | 'ORDER_BOUND' 
+    | 'EXPIRED' 
+    | 'REVOKED'; 
+  createdAt: string; 
+  expiresAt?: string; 
+}; 
+î°‚ 
+Field-level provenance 
+Every imported field should retain where it came from: 
+î°ƒ 
+type FieldProvenance = { 
+  source: 
+    | 'MERCHANT_API' 
+    | 'PLATFORM_API' 
+    | 'MERCHANT_PAGE_STRUCTURED_DATA' 
+    | 'SELLER_ENTERED' 
+    | 'BUYER_ENTERED' 
+    | 'PACKPROOF_OBSERVED'; 
+  importedAt: string; 
+  sourceReference?: string; 
+  confidenceClass: 'ASSERTED' | 'OBSERVED' | 'DERIVED'; 
+}; 
+î°‚ 
+This allows PackProof to display: 
+â€œImported from merchant listing.â€ 
+â€œImported from Shopify order.â€ 
+â€œEntered by seller.â€ 
+â€œConfirmed by buyer.â€ 
+â€œObserved in PackProof capture.â€ 
+â€œDerived from server-side evidence processing.â€ 
+Those are meaningfully different assertions and must never be collapsed into one ambiguous description. 
+Immutable source plus participant-confirmed overlay 
+When users review imported information, PackProof should not mutate the original listing snapshot. 
+Instead: 
+î°ƒ 
+Immutable commerce snapshot 
+       + 
+Participant corrections or additions 
+       + 
+Explicit seller/buyer confirmation 
+       = 
+Locked PackProof passport terms 
+î°‚ 
+For example, if a merchant listing says: 
+â€œ2024 Limited Edition Watch, stainless steel, blue dial.â€ 
+and the seller adds: 
+â€œIncludes original box but no warranty card.â€ 
+PackProof preserves both: 
+Original merchant assertion. 
+Seller-added transaction detail. 
+Which participants confirmed the resulting terms. 
+When those terms were locked. 
+That is much stronger than copying text into one mutable description field. 
+Three PackProof button modes 
+A single integration component can support three modes, but they must have different evidentiary meaning. 
+1. Listing mode 
+Placement: 
+Product page. 
+Marketplace listing. 
+Merchant catalog page. 
+Behavior: 
+Imports product/listing data. 
+Creates a prefilled passport draft. 
+Does not claim an order or purchase exists. 
+Does not assume a buyer identity. 
+Can allow a user to begin or save a PackProof intent. 
+Trust level: 
+PLATFORM_API_ATTESTED 
+ when obtained through a server/platform API. 
+PAGE_DECLARED 
+ when obtained only from page JSON-LD or JavaScript configuration. 
+2. Checkout mode 
+Placement: 
+Cart. 
+Checkout extension. 
+Checkout-review screen. 
+Behavior: 
+Imports selected variant, quantity, amount, and seller context. 
+Creates or updates a checkout-bound PackProof intent. 
+Can associate the eventual order through a checkout completion callback. 
+Still does not treat browser-provided payment state as authoritative. 
+3. Order mode 
+Placement: 
+Order confirmation. 
+Merchant administration. 
+Marketplace seller workflow. 
+Fulfillment workflow. 
+Behavior: 
+Merchant server supplies the authoritative order and line-item identifiers. 
+Creates or binds the PackProof transaction. 
+Issues seller/buyer claim or capture invitations. 
+Starts the normal evidence and shipment lifecycle. 
+Produces final status and webhook events back to the commerce system. 
+This should become the strongest and preferred integration mode because the merchant serverâ€”not the browserâ€”confirms that the order exists. 
+Trust tiers for automatically populated data 
+The button must not treat all page data equally. 
+Trust tier 
+Source 
+Allowed use 
+Platform-attested 
+Shopify/WooCommerce/marketplace API response received server-to-server 
+Can establish authoritative merchant, product, variant, order, and line-item context. 
+Merchant-server-attested 
+Merchant backend sends data using scoped PackProof credentials 
+Can establish authoritative merchant assertions and external references. 
+Page-declared 
+Product-page JSON-LD, data attributes, or browser JavaScript 
+Can prefill a draft, but cannot establish an order, buyer identity, payment, shipment, or verified product fact. 
+Participant-entered 
+Seller or buyer adds information 
+Preserved as that participantâ€™s assertion. 
+Participant-confirmed 
+One or both participants explicitly confirm locked terms 
+Establishes agreement to the terms, not objective physical truth. 
+PackProof-observed 
+Barcode, hash, timestamps, server receipt, media properties 
+Preserved as a bounded technical observation. 
+Externally retrieved 
+Carrier or platform adapter response 
+Preserved with source, retrieval time, and adapter version. 
+This is how we get convenient automatic form filling without weakening PackProofâ€™s evidentiary discipline. 
+Numbered implementation program 
+Each section below is a separate execution gate. After completing one section, I will provide a concise report containing: 
+What changed. 
+Files and interfaces created or modified. 
+Tests run and exact results. 
+What the section now enables. 
+Remaining limitations. 
+Any decisions needed from you. 
+I will then stop and wait for your confirmation before beginning the next section. 
+Section 1 â€” Establish the canonical source and architecture contract 
+Objective 
+Create a reliable foundation so we know exactly which source represents PackProof and what architectural rules all later work must follow. 
+Work 
+Inventory and classify the current large uncommitted working tree. 
+Separate source, generated code, documentation, configuration, artifacts, and historical archives. 
+Define the policy for committed versus generated  
+functions/lib 
+ output. 
+Establish a reproducible baseline gate: 
+application typecheck; 
+function typecheck/build; 
+API tests; 
+Firestore/Storage rules tests; 
+evidence-format tests; 
+billing tests; 
+SDK tests; 
+claim-discipline tests. 
+Create architecture decision records covering: 
+canonical domain/application-service boundaries; 
+adapters versus core services; 
+commerce-context provenance; 
+REST/callable/Connect convergence; 
+event/outbox model; 
+Android-first secure-capture boundary; 
+physical matcher validation gate; 
+manifest-authentication limitations. 
+Produce a migration map from the current modules to the target layers. 
+Propose a controlled commit/checkpoint structure. 
+Do not commit, tag, or push unrelated existing work without identifying it and obtaining the appropriate confirmation. 
+Exit gate 
+Current source boundary is explicit. 
+Current gates have recorded results. 
+Every major existing module has a target architectural destination. 
+No later section depends on an unidentified or ambiguous source copy. 
+A proposed checkpoint/commit plan is ready for approval. 
+Prior recommendation covered 
+Freeze and version the current v0.3.0 source boundary. 
+Resolve source/APK/release provenance risk. 
+Section 2 â€” Define the canonical domain and resource model 
+Objective 
+Create one shared model used by mobile, REST, Connect, webhooks, commerce adapters, reports, and future physical matching. 
+Work 
+Define and version the canonical resources: 
+Organization 
+Integration 
+ApiClient 
+CommerceContext 
+PassportDraft 
+Transaction 
+ParticipantReference 
+ParticipantClaim 
+EvidenceSession 
+EvidenceArtifact 
+EvidenceManifest 
+AssuranceAssessment 
+Shipment 
+ReturnPassport 
+EvidenceReport 
+WebhookEndpoint 
+WebhookEvent 
+WebhookDelivery 
+AuditEvent 
+For each resource: 
+Stable identifier format. 
+Organization ownership. 
+Schema version. 
+Runtime validation. 
+State machine. 
+Allowed transition table. 
+Idempotency behavior. 
+Audit events. 
+Firestore representation. 
+Public API DTO representation. 
+Sensitive/internal fields that must never be serialized externally. 
+Migration behavior for existing records. 
+The commerce-context and field-provenance models described above will be part of this section. 
+Exit gate 
+No competing transaction/evidence models remain undefined. 
+Consumer and merchant transactions can be represented without unsafe null-field assumptions. 
+Existing consumer records remain readable. 
+Merchant references remain non-authorizing labels. 
+State-transition tests pass. 
+Public DTOs are explicitly separate from persistence records. 
+Prior areas covered 
+Hardened transaction model. 
+Shared domain model. 
+Identity and authorization boundary. 
+Commerce/listing/order prepopulation foundation. 
+Return and shipment compatibility. 
+Assurance dimension normalization. 
+Section 3 â€” Extract shared application services and the event/outbox backbone 
+Objective 
+Ensure every PackProof entry point uses the same business logic. 
+Work 
+Introduce shared services such as: 
+CommerceContextService 
+PassportService 
+ParticipantClaimService 
+TransactionService 
+CaptureSessionService 
+EvidenceReservationService 
+EvidenceFinalizationService 
+ShipmentService 
+ReturnPassportService 
+ReportService 
+WebhookService 
+AuditService 
+Introduce ports/interfaces for: 
+Repositories. 
+Object storage. 
+App/device attestation. 
+Encryption/signing. 
+Notifications. 
+Carrier data. 
+Webhook delivery. 
+Clock and identifier generation. 
+Introduce a transactional outbox: 
+A state mutation and its domain event are committed atomically. 
+Dispatch is at least once. 
+Every event has a stable ID and schema version. 
+Consumers are idempotent. 
+Failures enter retry/dead-letter state. 
+Webhooks, notifications, report generation, and external integrations consume events rather than embedding side effects in core transitions. 
+Then migrate: 
+Consumer callable functions into thin transport adapters. 
+REST API handlers into thin transport adapters. 
+Connect into a compatibility adapter. 
+Background triggers into event processors. 
+Exit gate 
+Mobile and REST requests execute the same application services. 
+Connect does not own a separate transaction/evidence implementation. 
+Domain services have no React, Express, Firebase Functions, or direct Firestore dependency. 
+Core transitions produce auditable events. 
+Side-effect failures cannot silently undo successful domain transitions. 
+Prior areas covered 
+â€œAny part of PackProof can work with any other.â€ 
+Connect/REST convergence. 
+Notification reliability. 
+Webhook architecture. 
+Removal of parallel business logic. 
+Section 4 â€” Implement commerce-context ingestion and passport prepopulation 
+Objective 
+Create the secure backend foundation for the PackProof button. 
+Proposed resources 
+î°ƒ 
+POST /v1/commerce-contexts 
+GET  /v1/commerce-contexts/{commerceContextId} 
+POST /v1/commerce-contexts/{commerceContextId}/handoff-sessions 
+POST /v1/commerce-contexts/{commerceContextId}/order-binding 
+POST /v1/commerce-contexts/{commerceContextId}/revoke 
+î°‚ 
+Work 
+Accept normalized product, listing, variant, cart, and order context. 
+Enforce organization, integration, scope, and environment boundaries. 
+Reject unknown fields and oversized descriptions. 
+Canonicalize the imported payload. 
+Calculate a source snapshot hash. 
+Preserve field-level provenance. 
+Prevent silent mutation after handoff or order binding. 
+Permit controlled superseding snapshots with explicit lineage. 
+Support: 
+merchant-server-attested context; 
+platform-API-attested context; 
+page-declared draft context. 
+Issue single-purpose, short-lived, one-time handoff tokens. 
+Keep merchant API credentials off the page and out of the app. 
+Add data-minimization rules: 
+no payment-card data; 
+no passwords; 
+no unnecessary customer PII; 
+no arbitrary raw checkout payload retention. 
+Define image-reference treatment without misclassifying listing images as captured evidence. 
+Exit gate 
+A merchant can send structured listing/order data. 
+PackProof creates an immutable, hashed context. 
+The resulting passport draft is populated without retyping. 
+Every fieldâ€™s source can be explained. 
+Browser-only data cannot impersonate an authoritative order. 
+Exact retries return the same resource. 
+Changed retries are rejected or explicitly versioned. 
+New capability delivered 
+This is the first backend-complete version of the â€œPackProof button prepopulates the passportâ€ feature. 
+Section 5 â€” Complete capture-session and participant-claim APIs 
+Objective 
+Bridge commerce-created transactions to authenticated people and native evidence capture. 
+Proposed resources 
+î°ƒ 
+POST /v1/transactions/{transactionId}/participant-invitations 
+POST /v1/participant-claims 
+POST /v1/transactions/{transactionId}/evidence-sessions 
+GET  /v1/evidence-sessions/{evidenceSessionId} 
+POST /v1/evidence-sessions/{evidenceSessionId}/redeem 
+POST /v1/evidence-sessions/{evidenceSessionId}/cancel 
+î°‚ 
+Work 
+Bind external merchant references to real PackProof identities only through explicit claim. 
+Keep email, marketplace ID, seller ID, and customer ID as non-authorizing references until claim. 
+Support bounded roles: 
+seller; 
+buyer/receiver; 
+return sender; 
+return recipient; 
+authorized witness later. 
+Create actor-bound, purpose-bound, evidence-type-bound capture sessions. 
+Bind: 
+transaction; 
+commerce context; 
+intended actor; 
+session type; 
+allowed evidence types; 
+expiry; 
+maximum redemption count; 
+App Check/device context; 
+capture profile. 
+Make handoff tokens one-time and hashed at rest. 
+Preserve existing offline-capture semantics. 
+Add revocation and expiration. 
+Ensure capture links cannot grant transaction read access by themselves. 
+Reuse the current native  
+beginCaptureSession 
+ and queue path through shared application services. 
+Exit gate 
+A commerce-created passport can be claimed safely. 
+The correct person can enter the native PackProof capture flow without retyping item data. 
+Possession of a transaction ID, email address, merchant reference, or handoff URL is insufficient to access unrelated resources. 
+App Check augments identity rather than replacing it. 
+Claim and capture-session replay/security tests pass. 
+Prior recommendations covered 
+Add  
+/v1 
+ capture-session issuance. 
+Add authenticated participant/native claim. 
+Close the merchant-record-to-native-capture gap. 
+Section 6 â€” Prove and expose the evidence vertical slice 
+Objective 
+Make the complete evidence lifecycle both operationally proven and accessible through stable APIs. 
+Proposed resources 
+î°ƒ 
+GET /v1/transactions/{transactionId}/evidence-sessions 
+GET /v1/evidence-sessions/{evidenceSessionId} 
+GET /v1/evidence-sessions/{evidenceSessionId}/artifacts 
+GET /v1/evidence/artifacts/{artifactId} 
+GET /v1/evidence/artifacts/{artifactId}/manifest 
+GET /v1/evidence/artifacts/{artifactId}/download 
+GET /v1/transactions/{transactionId}/assurance 
+î°‚ 
+Work 
+Converge the native queue and REST evidence model. 
+Prove: 
+native capture; 
+encryption; 
+retained queue identity; 
+upload reservation; 
+create-only Storage upload; 
+Eventarc finalization; 
+server hash/type/length comparison; 
+canonical manifest; 
+service authentication; 
+Firestore evidence record; 
+transaction transition; 
+observable  
+FINALIZED 
+; 
+safe local deletion. 
+Expose machine-readable evidence status. 
+Expose reason codes and layered assurance. 
+Return short-lived authorized URLs instead of Storage tokens. 
+Preserve quarantined mismatch records. 
+Add retry/status APIs that do not duplicate evidence. 
+Add full emulator and exact-device acceptance tests. 
+Exit gate 
+The exact Android binary completes the full live path. 
+Evidence secured offline 
+ is not counted as completion. 
+A merchant can retrieve finalized evidence metadata and its limitations. 
+Finalizer redelivery is deterministic and idempotent. 
+The queue survives offline and interruption tests. 
+Every advertised evidence state has test evidence. 
+Prior recommendations covered 
+Prove the consumer evidence vertical slice. 
+Expose evidence status and manifests through  
+/v1 
+. 
+Confirm the real server finalization path. 
+Section 7 â€” Standardized reports, webhook platform, and SDK convergence 
+Objective 
+Let existing commerce systems consume PackProof results without understanding internal evidence architecture. 
+Work 
+Define versioned lifecycle events: 
+commerce_context.created 
+transaction.created 
+transaction.claimed 
+transaction.terms_locked 
+evidence_session.started 
+evidence_session.finalized 
+evidence_artifact.quarantined 
+shipment.associated 
+return.requested 
+return.completed 
+report.available 
+Add webhook endpoint resources: 
+register; 
+disable; 
+rotate secret; 
+inspect delivery; 
+replay delivery. 
+Reuse exact-body HMAC verification from Connect. 
+Add: 
+timestamp; 
+event ID; 
+organization ID; 
+API version; 
+replay protection; 
+exponential retry; 
+dead-letter state; 
+delivery history; 
+fresh short-lived report links. 
+Standardize the evidence report. 
+Update the JavaScript/Node SDK around  
+/v1 
+. 
+Keep compatibility methods for Connect without preserving duplicate logic. 
+Provide typed webhook verification and idempotent-consumer examples. 
+Exit gate 
+A merchant can create a passport, receive lifecycle updates, and retrieve a standardized result. 
+Webhook retries cannot create duplicate merchant actions when documented guidance is followed. 
+Delivery status is inspectable. 
+PackProof Connect uses the unified event platform. 
+The SDK and OpenAPI contract agree. 
+Prior recommendations covered 
+Move webhook configuration and delivery under  
+/v1 
+. 
+Standardized report. 
+Connect convergence. 
+Public integration usability. 
+Section 8 â€” Build the PackProof Button and hosted handoff experience 
+Objective 
+Deliver the PayPal-button-level integration experience. 
+Components 
+@packproof/button 
+Hosted PackProof handoff page. 
+Native app universal-link/deep-link flow. 
+Web fallback and QR option. 
+Merchant backend SDK helper. 
+Development sandbox. 
+Example custom integration 
+î°ƒ 
+<script src="https://js.packproof.com/v1/packproof.js"></script> 
+<div 
+  id="packproof-button" 
+  data-session-token="short-lived-token-from-merchant-server"> 
+</div> 
+<script> 
+  PackProof.mount('#packproof-button', { 
+    mode: 'order', 
+    onStatusChange(event) { 
+      // Update the merchant interface without receiving evidence secrets. 
+    } 
+  }); 
+</script> 
+î°‚ 
+The browser receives a restricted session token, not an API secret. 
+Optional listing-page helper 
+For lower-trust product-page use, the SDK can accept explicit structured data or read  
+schema.org/Product 
+ JSON-LD: 
+î°ƒ 
+PackProof.mountFromProductPage('#packproof-button', { 
+  mode: 'listing', 
+  publishableIntegrationId: 'pk_sandbox_...', 
+}); 
+î°‚ 
+This creates a  
+PAGE_DECLARED 
+ draft only. A merchant server or platform API must later confirm the order. 
+User experience 
+After clicking: 
+Show the imported item summary. 
+Identify the source, such as â€œImported from Shopify listing.â€ 
+Let the user add missing transaction-specific details. 
+Keep original imported fields visible and immutable. 
+Require confirmation before terms lock. 
+Sign in or claim identity when necessary. 
+Open the native app for secure capture. 
+Return to the merchant page or provide a status panel. 
+Exit gate 
+A custom merchant can add PackProof with a small HTML/SDK integration. 
+The form arrives prepopulated. 
+No private secret exists in browser code. 
+The token is origin-, purpose-, and expiry-bound. 
+Accessibility, mobile web, popup-blocking, deep-link, cancellation, retry, and duplicate-click behavior pass. 
+A browser cannot falsely turn page-declared data into an order-attested record. 
+Section 9 â€” Build first-party commerce-platform adapters 
+Objective 
+Make the button and lifecycle installable by non-technical merchants. 
+Priority order 
+Shopify. 
+WooCommerce. 
+Custom merchant checkout reference implementation. 
+Marketplace seller-workflow adapter. 
+Magento/Adobe Commerce after the first integrations stabilize. 
+Shopify adapter 
+Likely components: 
+Shopify app installation. 
+OAuth and shop binding. 
+Product/variant lookup. 
+Checkout or post-purchase extension where permitted. 
+Order-created/updated/refunded webhooks. 
+Fulfillment/tracking synchronization. 
+Theme/app block for listing mode. 
+Admin order action for PackProof status. 
+Customer/seller handoff links. 
+WooCommerce adapter 
+Likely components: 
+WordPress plugin. 
+Merchant credential provisioning. 
+Product/cart/order hooks. 
+Server-side order snapshot. 
+PackProof button shortcode/block. 
+Order administration panel. 
+Webhook/status synchronization. 
+Credential rotation and uninstall cleanup. 
+Custom checkout reference 
+Node/TypeScript reference service. 
+HTML button example. 
+React component example. 
+Server-generated handoff-token example. 
+Order confirmation example. 
+Webhook consumer example. 
+Idempotency and replay example. 
+Exit gate 
+A non-technical test merchant can install and configure the integration. 
+Product and order fields populate correctly. 
+Order changes produce explicit revisions rather than silent mutation. 
+Uninstallation revokes credentials without deleting evidence records. 
+Sandbox and live environments cannot be mixed. 
+End-to-end test orders complete the PackProof flow. 
+Section 10 â€” Converge shipment, receiver, returns, notifications, billing, and account lifecycle 
+Objective 
+Ensure the rest of PackProof operates on the same canonical transaction and event architecture. 
+Work 
+Move shipment operations behind shared services. 
+Add carrier adapter interfaces and authoritative-source labeling. 
+Add REST resources for shipment association. 
+Connect receiver and buyer-review flows to evidence sessions. 
+Move Return Passport behind shared services and  
+/v1 
+. 
+Create return-specific evidence-session types. 
+Preserve original evidence hash snapshots. 
+Convert notifications into event consumers. 
+Add push-receipt handling, token invalidation, and monitoring. 
+Keep billing as an entitlement service, not transaction evidence. 
+Ensure account deletion/export respects: 
+participant-retained shared records; 
+merchant records; 
+retention policy; 
+legal holds; 
+audit preservation; 
+user PII minimization. 
+Make public web status/viewer pages consume authorized report APIs rather than Storage paths. 
+Exit gate 
+Shipment, receipt, return, notifications, billing, and account lifecycle do not bypass the canonical services. 
+A platform can reflect shipment/return status through APIs and webhooks. 
+Deletion/export behavior is explicit and tested. 
+Optional integrations remain gated at import and initialization boundaries. 
+No lifecycle feature weakens evidence immutability. 
+Prior recommendations covered 
+Shipment, receiver, and return resources. 
+Push-notification maturity. 
+Billing separation. 
+Account lifecycle. 
+Public web/evidence viewer convergence. 
+Section 11 â€” Preserve the physical-science and public-provenance boundaries 
+Objective 
+Improve the physical and cryptographic architecture without manufacturing unsupported claims. 
+Work 
+Keep physical acquisition as an evidence-session protocol. 
+Preserve the 15-frame frozen capture plan. 
+Version: 
+profile; 
+acquisition implementation; 
+measurement algorithm; 
+device/app build; 
+future matcher artifact; 
+threshold policy. 
+Keep matcher output unavailable until independent validation. 
+Create a pluggable matcher interface whose production implementation remains disabled. 
+Define validation-dataset governance and blind acceptance requirements. 
+Keep FMR, FNMR, FTA, inconclusive rate, subgroup, and attack results separate. 
+Introduce an optional future asymmetric manifest-signing provider: 
+KMS/HSM signing; 
+public verification keys; 
+key version; 
+retirement/revocation status; 
+historical verification. 
+Retain the current HMAC scheme during migration with explicit authentication type/version. 
+Ensure reports distinguish: 
+merchant assertions; 
+participant assertions; 
+PackProof technical observations; 
+byte integrity; 
+physical correspondence; 
+business/legal review. 
+Exit gate 
+No API, UI, report, button, or partner callback claims a physical match without validated support. 
+Acquisition research data is versioned and usable. 
+Current and future signature types are unambiguous. 
+Public verification can be added without rewriting the evidence model. 
+Claim-regression tests prevent accidental overstatement. 
+Prior recommendation covered 
+Keep physical matching behind the validation gate. 
+Address public provenance limitations. 
+Preserve the scientific-compliance boundary. 
+Section 12 â€” Production deployment, security, observability, and release acceptance 
+Objective 
+Turn the architecture into an operable platform rather than merely a well-structured repository. 
+Work 
+Create isolated development, sandbox, staging, and production environments. 
+Separate: 
+Firebase projects; 
+Storage buckets; 
+API peppers; 
+signing keys; 
+OAuth credentials; 
+webhook secrets; 
+RevenueCat projects/keys where appropriate. 
+Establish least-privilege IAM. 
+Add secret and signing-key rotation. 
+Retain historical verification keys. 
+Add infrastructure/deployment manifests. 
+Add schema/index migration gates. 
+Add observability: 
+API availability; 
+latency/error rate; 
+capture-session issuance; 
+upload queue age; 
+finalization backlog; 
+quarantine rate; 
+webhook delivery health; 
+dead-letter count; 
+notification delivery; 
+credential abuse; 
+App Check failures. 
+Add backup, restore, and rehash drills. 
+Add retention/legal-hold enforcement. 
+Add dependency, SBOM, vulnerability, and release-provenance gates. 
+Conduct load, abuse, BOLA/IDOR, replay, SSRF, webhook, and penetration testing. 
+Build the exact production-signed Android artifact. 
+Test the exact artifact on a real device against the intended backend. 
+Run a real sandbox merchant integration from product/order import through final webhook. 
+Record each gate as: 
+Passed on device/live environment 
+; 
+Failed with concrete evidence 
+; 
+Not yet tested 
+. 
+Exit gate 
+A release candidate is accepted only when: 
+A platform-created order prepopulates a passport. 
+The correct participant claims it. 
+Native evidence is captured and survives interruption. 
+The server finalizes and seals it. 
+The merchant receives a signed webhook. 
+The merchant retrieves a standardized report. 
+Shipping and returns operate through the same architecture. 
+The exact production artifact passes on-device acceptance. 
+Operational monitoring and recovery procedures are active. 
+Physical and legal claims remain correctly bounded. 
+How the previous numbered recommendations map into this plan 
+Previous recommendation 
+New section 
+1. Freeze and version current source 
+Section 1 
+2. Prove consumer evidence vertical slice 
+Section 6 
+3. Add  
+/v1 
+ capture-session issuance 
+Section 5 
+4. Add authenticated participant/native claim 
+Section 5 
+5. Expose evidence status and manifests 
+Section 6 
+6. Move webhooks under  
+/v1 
+Section 7 
+7. Add shipment, receiver, and return resources 
+Section 10 
+8. Keep physical matching validation-gated 
+Section 11 
+The new commerce-button work is covered by Sections 2, 4, 5, 8, and 9. Production operations and exact release proof are consolidated into Section 12. 
+Expected end-state merchant experience 
+Once these sections are complete, a merchantâ€™s interaction should be approximately: 
+Install PackProof or create an integration. 
+Enable the PackProof button. 
+Select where it appears: 
+product listing; 
+checkout; 
+order confirmation; 
+merchant fulfillment panel. 
+PackProof automatically receives the permitted product/order fields. 
+Customer or seller clicks the button. 
+The passport opens already populated. 
+The user reviews rather than retypes. 
+After purchase, the passport binds to the authoritative order and line item. 
+The seller performs guided evidence capture. 
+PackProof synchronizes and finalizes evidence. 
+The merchant receives status through webhook/API. 
+PackProof status and the authorized report appear inside the merchantâ€™s existing order or dispute workflow. 
+That satisfies the ease-of-use goal while maintaining the evidentiary difference between: 
+What a listing said. 
+What the merchantâ€™s order system recorded. 
+What participants agreed to. 
+What the camera captured. 
+What PackProofâ€™s server technically verified. 
+What PackProof cannot scientifically or legally determine. 
+Execution cadence 
+I will not begin Section 2 automatically after Section 1. At the end of each section I will stop with a brief evidence report and wait for an explicit instruction such as  
+continue 
+. 
+The next action, upon your confirmation, is  
+Section 1 â€” Establish the canonical source and architecture contract 
+. Its first pass will be read-only classification of the current uncommitted tree and a proposed checkpoint structure; I will not blindly commit or overwrite the existing work.

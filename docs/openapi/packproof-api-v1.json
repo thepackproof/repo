@@ -1,0 +1,1083 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "PackProof API",
+    "version": "1.0.0",
+    "description": "The contract for PackProof's versioned merchant transaction and public page-declared commerce-handoff API. Transaction and handoff identifiers never confer merchant authority, and API responses intentionally exclude internal persistence, support, secret, and forensic-only fields."
+  },
+  "servers": [
+    {
+      "url": "https://YOUR_PACKPROOF_DOMAIN.example",
+      "description": "Environment-specific PackProof API origin"
+    }
+  ],
+  "tags": [
+    { "name": "System" },
+    { "name": "Commerce Handoffs" },
+    { "name": "Transactions" },
+    { "name": "Participant Claims" },
+    { "name": "Evidence Sessions" }
+  ],
+  "paths": {
+    "/v1/health": {
+      "get": {
+        "operationId": "getHealth",
+        "tags": ["System"],
+        "summary": "Process health",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "The API process is healthy.",
+            "headers": { "X-Request-Id": { "$ref": "#/components/headers/XRequestId" } },
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/HealthResponse" } } }
+          },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/v1/ready": {
+      "get": {
+        "operationId": "getReadiness",
+        "tags": ["System"],
+        "summary": "Dependency readiness",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Required API dependencies are reachable.",
+            "headers": { "X-Request-Id": { "$ref": "#/components/headers/XRequestId" } },
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ReadinessResponse" } } }
+          },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" }
+        }
+      }
+    },
+    "/v1/public/integrations/{publishableKey}/handoffs": {
+      "post": {
+        "operationId": "createPublicCommerceHandoff",
+        "tags": ["Commerce Handoffs"],
+        "summary": "Create or replay a page-declared passport-draft handoff",
+        "description": "Browser-safe endpoint for the PackProof Button. The publishable installation key identifies an integration but is not a secret or merchant authorization. PackProof requires an exact allowlisted HTTPS Origin, binds idempotency to the integration, origin, and canonical request, and caps the result at PAGE_DECLARED trust. This endpoint cannot assert payment, create or bind an external order, or finalize evidence.",
+        "security": [],
+        "parameters": [
+          { "$ref": "#/components/parameters/PublishableKey" },
+          { "$ref": "#/components/parameters/Origin" },
+          { "$ref": "#/components/parameters/IdempotencyKey" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreatePublicCommerceHandoffRequest" } } }
+        },
+        "responses": {
+          "201": { "$ref": "#/components/responses/PublicCommerceHandoffCreated" },
+          "200": { "$ref": "#/components/responses/PublicCommerceHandoffReplayed" },
+          "400": { "$ref": "#/components/responses/InvalidRequest" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "413": { "$ref": "#/components/responses/RequestTooLarge" },
+          "415": { "$ref": "#/components/responses/UnsupportedMediaType" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/v1/transactions": {
+      "post": {
+        "operationId": "createTransaction",
+        "tags": ["Transactions"],
+        "summary": "Create or replay a merchant transaction",
+        "description": "Creates one immutable PackProof transaction identifier. An exact Idempotency-Key replay returns the original result; a key reused with different input is rejected.",
+        "security": [{ "merchantApiKey": [] }],
+        "parameters": [
+          { "$ref": "#/components/parameters/IdempotencyKey" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CreateTransactionRequest" }
+            }
+          }
+        },
+        "responses": {
+          "201": { "$ref": "#/components/responses/TransactionCreated" },
+          "200": { "$ref": "#/components/responses/TransactionReplayed" },
+          "400": { "$ref": "#/components/responses/InvalidRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "413": { "$ref": "#/components/responses/RequestTooLarge" },
+          "415": { "$ref": "#/components/responses/UnsupportedMediaType" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      },
+      "get": {
+        "operationId": "listTransactions",
+        "tags": ["Transactions"],
+        "summary": "List organization transactions",
+        "description": "Returns only transactions owned by the authenticated credential's organization, ordered by server creation time and PackProof transaction ID.",
+        "security": [{ "merchantApiKey": [] }],
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "schema": { "$ref": "#/components/schemas/TransactionStatus" }
+          },
+          {
+            "name": "merchantReference",
+            "in": "query",
+            "schema": { "type": "string", "minLength": 1, "maxLength": 200 }
+          },
+          {
+            "name": "createdAfter",
+            "in": "query",
+            "schema": { "type": "string", "format": "date-time" }
+          },
+          {
+            "name": "createdBefore",
+            "in": "query",
+            "schema": { "type": "string", "format": "date-time" }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": { "type": "string", "minLength": 8, "maxLength": 2000 }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": { "type": "integer", "minimum": 1, "maximum": 100, "default": 25 }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "An organization-isolated transaction page.",
+            "headers": {
+              "X-Request-Id": { "$ref": "#/components/headers/XRequestId" },
+              "RateLimit-Limit": { "$ref": "#/components/headers/RateLimitLimit" },
+              "RateLimit-Remaining": { "$ref": "#/components/headers/RateLimitRemaining" },
+              "RateLimit-Reset": { "$ref": "#/components/headers/RateLimitReset" }
+            },
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ListTransactionsResponse" } } }
+          },
+          "400": { "$ref": "#/components/responses/InvalidRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/v1/transactions/{transactionId}": {
+      "get": {
+        "operationId": "getTransaction",
+        "tags": ["Transactions"],
+        "summary": "Retrieve one organization transaction",
+        "security": [{ "merchantApiKey": [] }],
+        "parameters": [
+          { "$ref": "#/components/parameters/TransactionId" }
+        ],
+        "responses": {
+          "200": {
+            "description": "The authorized merchant transaction.",
+            "headers": {
+              "X-Request-Id": { "$ref": "#/components/headers/XRequestId" },
+              "RateLimit-Limit": { "$ref": "#/components/headers/RateLimitLimit" },
+              "RateLimit-Remaining": { "$ref": "#/components/headers/RateLimitRemaining" },
+              "RateLimit-Reset": { "$ref": "#/components/headers/RateLimitReset" }
+            },
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/GetTransactionResponse" } } }
+          },
+          "400": { "$ref": "#/components/responses/InvalidRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/v1/transactions/{transactionId}/participant-invitations": {
+      "post": {
+        "operationId": "createParticipantInvitation",
+        "tags": ["Participant Claims"],
+        "summary": "Create or replay a participant invitation",
+        "description": "Issues a short-lived, one-time claim capability for a participant reference already declared on this merchant transaction. The external reference is a non-authorizing merchant label: only a successful claim made by an authenticated PackProof user binds an actor to the role. The plaintext token is returned only in this response and is stored by PackProof only as a digest.",
+        "security": [{ "merchantApiKey": [] }],
+        "parameters": [
+          { "$ref": "#/components/parameters/TransactionId" },
+          { "$ref": "#/components/parameters/IdempotencyKey" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateParticipantInvitationRequest" } } }
+        },
+        "responses": {
+          "201": { "$ref": "#/components/responses/ParticipantInvitationCreated" },
+          "200": { "$ref": "#/components/responses/ParticipantInvitationReplayed" },
+          "400": { "$ref": "#/components/responses/InvalidRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "413": { "$ref": "#/components/responses/RequestTooLarge" },
+          "415": { "$ref": "#/components/responses/UnsupportedMediaType" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/v1/participant-claims": {
+      "post": {
+        "operationId": "claimParticipantInvitation",
+        "tags": ["Participant Claims"],
+        "summary": "Claim a declared transaction role",
+        "description": "Binds the authenticated PackProof user to the invitation's transaction role after validating the one-time claim token. Firebase App Check augments, but never replaces, Firebase user identity. Possession of a claim link alone provides no transaction read authority.",
+        "security": [{ "firebaseUserBearer": [], "firebaseAppCheck": [] }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ClaimParticipantRequest" } } }
+        },
+        "responses": {
+          "201": { "$ref": "#/components/responses/ParticipantClaimed" },
+          "200": { "$ref": "#/components/responses/ParticipantClaimReplayed" },
+          "400": { "$ref": "#/components/responses/InvalidRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "413": { "$ref": "#/components/responses/RequestTooLarge" },
+          "415": { "$ref": "#/components/responses/UnsupportedMediaType" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/v1/transactions/{transactionId}/evidence-sessions": {
+      "post": {
+        "operationId": "createEvidenceSession",
+        "tags": ["Evidence Sessions"],
+        "summary": "Create or replay an actor-bound evidence session",
+        "description": "Creates a bounded capture authorization for an already claimed participant: transaction, actor, role, purpose, artifact types, capture profile, expiry, and redemption count are fixed by the server. Creation authorizes acquisition only; it does not establish evidence authenticity, physical correspondence, or finalization.",
+        "security": [{ "merchantApiKey": [] }],
+        "parameters": [
+          { "$ref": "#/components/parameters/TransactionId" },
+          { "$ref": "#/components/parameters/IdempotencyKey" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateEvidenceSessionRequest" } } }
+        },
+        "responses": {
+          "201": { "$ref": "#/components/responses/EvidenceSessionCreated" },
+          "200": { "$ref": "#/components/responses/EvidenceSessionReplayed" },
+          "400": { "$ref": "#/components/responses/InvalidRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "413": { "$ref": "#/components/responses/RequestTooLarge" },
+          "415": { "$ref": "#/components/responses/UnsupportedMediaType" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/v1/evidence-sessions/{evidenceSessionId}": {
+      "get": {
+        "operationId": "getEvidenceSession",
+        "tags": ["Evidence Sessions"],
+        "summary": "Retrieve an organization evidence session",
+        "description": "Returns only an evidence session owned by the authenticated merchant organization. An evidence-session identifier or redemption link does not grant this read authority.",
+        "security": [{ "merchantApiKey": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/EvidenceSessionId" }],
+        "responses": {
+          "200": { "$ref": "#/components/responses/EvidenceSessionRetrieved" },
+          "400": { "$ref": "#/components/responses/InvalidRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/v1/evidence-sessions/{evidenceSessionId}/redeem": {
+      "post": {
+        "operationId": "redeemEvidenceSession",
+        "tags": ["Evidence Sessions"],
+        "summary": "Redeem an actor-bound evidence session",
+        "description": "Validates Firebase user identity, App Check, actor binding, expiry, cancellation, redemption limit, and the one-time token before issuing a legacy native capture-session nonce. Exact operation-key retries replay the same capture authorization; unrelated replays are rejected.",
+        "security": [{ "firebaseUserBearer": [], "firebaseAppCheck": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/EvidenceSessionId" }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RedeemEvidenceSessionRequest" } } }
+        },
+        "responses": {
+          "201": { "$ref": "#/components/responses/EvidenceSessionRedeemed" },
+          "200": { "$ref": "#/components/responses/EvidenceSessionRedemptionReplayed" },
+          "400": { "$ref": "#/components/responses/InvalidRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "413": { "$ref": "#/components/responses/RequestTooLarge" },
+          "415": { "$ref": "#/components/responses/UnsupportedMediaType" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/v1/evidence-sessions/{evidenceSessionId}/cancel": {
+      "post": {
+        "operationId": "cancelEvidenceSession",
+        "tags": ["Evidence Sessions"],
+        "summary": "Cancel an organization evidence session",
+        "description": "Revokes an unfinalized evidence session for the authenticated merchant organization and removes any remaining redemption capability. Cancellation does not erase already captured records.",
+        "security": [{ "merchantApiKey": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/EvidenceSessionId" }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CancelEvidenceSessionRequest" } } }
+        },
+        "responses": {
+          "200": { "$ref": "#/components/responses/EvidenceSessionCancelled" },
+          "400": { "$ref": "#/components/responses/InvalidRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "413": { "$ref": "#/components/responses/RequestTooLarge" },
+          "415": { "$ref": "#/components/responses/UnsupportedMediaType" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "merchantApiKey": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "pp_{environment}_{credentialId}.{secret}",
+        "description": "Environment-scoped merchant credential. The secret is shown once and is never stored in plaintext by PackProof."
+      },
+      "firebaseUserBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "Firebase ID token",
+        "description": "A current Firebase ID token identifying the PackProof user. Claim and redemption links do not replace user authentication."
+      },
+      "firebaseAppCheck": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-Firebase-AppCheck",
+        "description": "A valid Firebase App Check token. It supplies application context and augments, but does not replace, user identity or resource authorization."
+      }
+    },
+    "parameters": {
+      "IdempotencyKey": {
+        "name": "Idempotency-Key",
+        "in": "header",
+        "required": true,
+        "description": "A unique key for this logical mutation. Reuse only for an exact retry.",
+        "schema": { "type": "string", "minLength": 8, "maxLength": 200, "pattern": "^[!-~]+$" }
+      },
+      "PublishableKey": {
+        "name": "publishableKey",
+        "in": "path",
+        "required": true,
+        "description": "Public PackProof Button installation identifier. It is safe to place in browser code and grants no merchant or order authority.",
+        "schema": { "type": "string", "pattern": "^pp_pub_(sandbox|live)_[A-Za-z0-9_-]{20,80}$" }
+      },
+      "Origin": {
+        "name": "Origin",
+        "in": "header",
+        "required": true,
+        "description": "Browser-supplied exact HTTPS origin. Origin allowlisting constrains browser embedding but is not treated as cryptographic merchant authentication.",
+        "schema": { "type": "string", "format": "uri", "maxLength": 500 }
+      },
+      "TransactionId": {
+        "name": "transactionId",
+        "in": "path",
+        "required": true,
+        "schema": { "type": "string", "pattern": "^txn_[a-f0-9]{32}$" }
+      },
+      "EvidenceSessionId": {
+        "name": "evidenceSessionId",
+        "in": "path",
+        "required": true,
+        "schema": { "type": "string", "pattern": "^es_[a-f0-9]{40}$" }
+      }
+    },
+    "headers": {
+      "XRequestId": { "description": "Correlation identifier for logs and support.", "schema": { "type": "string" } },
+      "RateLimitLimit": { "description": "Maximum requests in the active operation window.", "schema": { "type": "integer" } },
+      "RateLimitRemaining": { "description": "Requests remaining in the active operation window.", "schema": { "type": "integer" } },
+      "RateLimitReset": { "description": "Unix time in seconds when the active window resets.", "schema": { "type": "integer" } },
+      "IdempotentReplayed": { "description": "True when the original idempotent result was returned.", "schema": { "type": "boolean" } },
+      "RetryAfter": { "description": "Seconds before retrying the request.", "schema": { "type": "integer", "minimum": 1 } }
+    },
+    "schemas": {
+      "HealthResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["data"],
+        "properties": {
+          "data": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["service", "apiVersion", "status"],
+            "properties": {
+              "service": { "const": "packproof-api" },
+              "apiVersion": { "const": "v1" },
+              "status": { "const": "OK" }
+            }
+          }
+        }
+      },
+      "ReadinessResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["data"],
+        "properties": {
+          "data": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["service", "apiVersion", "status"],
+            "properties": {
+              "service": { "const": "packproof-api" },
+              "apiVersion": { "const": "v1" },
+              "status": { "const": "READY" }
+            }
+          }
+        }
+      },
+      "Amount": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["currency", "minorUnits"],
+        "properties": {
+          "currency": { "type": "string", "pattern": "^[A-Z]{3}$" },
+          "minorUnits": { "type": "integer", "minimum": 0, "maximum": 10000000000 }
+        }
+      },
+      "ItemOption": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "value"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1, "maxLength": 120 },
+          "value": { "type": "string", "minLength": 1, "maxLength": 300 }
+        }
+      },
+      "ItemIdentifier": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["type", "value"],
+        "properties": {
+          "type": { "type": "string", "minLength": 1, "maxLength": 80, "pattern": "^[A-Z0-9_-]+$" },
+          "value": { "type": "string", "minLength": 1, "maxLength": 300 }
+        }
+      },
+      "ImageReference": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["url", "altText"],
+        "properties": {
+          "url": { "type": "string", "format": "uri", "maxLength": 2000, "description": "HTTPS listing-image reference only; it is not captured or finalized PackProof evidence." },
+          "altText": { "type": ["string", "null"], "maxLength": 500 }
+        }
+      },
+      "CommerceItemDescriptor": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["title", "description", "category", "brand", "model", "sku", "gtin", "upc", "mpn", "serialNumber", "selectedOptions", "identifiers", "quantity", "amount", "imageReferences"],
+        "properties": {
+          "title": { "type": "string", "minLength": 1, "maxLength": 300 },
+          "description": { "type": "string", "maxLength": 10000 },
+          "category": { "type": ["string", "null"], "minLength": 1, "maxLength": 160 },
+          "brand": { "type": ["string", "null"], "minLength": 1, "maxLength": 160 },
+          "model": { "type": ["string", "null"], "minLength": 1, "maxLength": 160 },
+          "sku": { "type": ["string", "null"], "minLength": 1, "maxLength": 160 },
+          "gtin": { "type": ["string", "null"], "pattern": "^[0-9]{8,14}$" },
+          "upc": { "type": ["string", "null"], "pattern": "^[0-9]{8,14}$" },
+          "mpn": { "type": ["string", "null"], "minLength": 1, "maxLength": 160 },
+          "serialNumber": { "type": ["string", "null"], "minLength": 1, "maxLength": 200 },
+          "selectedOptions": { "type": "array", "maxItems": 30, "items": { "$ref": "#/components/schemas/ItemOption" } },
+          "identifiers": { "type": "array", "maxItems": 30, "items": { "$ref": "#/components/schemas/ItemIdentifier" } },
+          "quantity": { "type": "integer", "minimum": 1, "maximum": 100000 },
+          "amount": { "oneOf": [{ "$ref": "#/components/schemas/Amount" }, { "type": "null" }] },
+          "imageReferences": { "type": "array", "maxItems": 20, "items": { "$ref": "#/components/schemas/ImageReference" } }
+        }
+      },
+      "PublicCommerceSource": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["platform", "productUrl", "externalProductId", "externalListingId", "externalVariantId"],
+        "properties": {
+          "platform": { "type": "string", "enum": ["SHOPIFY", "WOOCOMMERCE", "MAGENTO", "CUSTOM", "MARKETPLACE", "STRUCTURED_PAGE_DATA"] },
+          "productUrl": { "type": "string", "format": "uri", "maxLength": 2000, "description": "HTTPS URL whose origin must exactly match the calling Origin header." },
+          "externalProductId": { "type": ["string", "null"], "minLength": 1, "maxLength": 200 },
+          "externalListingId": { "type": ["string", "null"], "minLength": 1, "maxLength": 200 },
+          "externalVariantId": { "type": ["string", "null"], "minLength": 1, "maxLength": 200 }
+        }
+      },
+      "CreatePublicCommerceHandoffRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["schemaVersion", "source", "item"],
+        "properties": {
+          "schemaVersion": { "const": 1 },
+          "source": { "$ref": "#/components/schemas/PublicCommerceSource" },
+          "item": { "$ref": "#/components/schemas/CommerceItemDescriptor" }
+        }
+      },
+      "PublicCommerceHandoff": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "object", "schemaVersion", "commerceContextId", "passportDraftId", "trustLevel", "status", "reviewUrl", "expiresAt"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^hnd_[a-f0-9]{40}$" },
+          "object": { "const": "commerce_handoff" },
+          "schemaVersion": { "const": 1 },
+          "commerceContextId": { "type": "string", "pattern": "^ctx_[a-f0-9]{40}$" },
+          "passportDraftId": { "type": "string", "pattern": "^draft_[a-f0-9]{40}$" },
+          "trustLevel": { "const": "PAGE_DECLARED" },
+          "status": { "const": "PENDING_CLAIM" },
+          "reviewUrl": { "type": "string", "format": "uri", "description": "Short-lived bearer handoff URL. Do not log, persist, or send it to third parties." },
+          "expiresAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "PublicCommerceHandoffResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["data"],
+        "properties": { "data": { "$ref": "#/components/schemas/PublicCommerceHandoff" } }
+      },
+      "ParticipantReference": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["role", "externalReference"],
+        "properties": {
+          "role": { "type": "string", "enum": ["SELLER", "BUYER", "RECEIVER"] },
+          "externalReference": { "type": "string", "minLength": 1, "maxLength": 200 }
+        }
+      },
+      "CaptureRequirements": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["requiredArtifactTypes"],
+        "properties": {
+          "requiredArtifactTypes": {
+            "type": "array",
+            "uniqueItems": true,
+            "maxItems": 8,
+            "items": {
+              "type": "string",
+              "enum": ["ITEM_PHOTO", "CONDITION_PHOTO", "IDENTIFIER_PHOTO", "PACKING_VIDEO", "SHIPPING_LABEL", "UNBOXING_VIDEO", "DELIVERY_PHOTO", "SUPPORTING_DOCUMENT"]
+            }
+          }
+        }
+      },
+      "CreateTransactionRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["merchantReference", "title"],
+        "properties": {
+          "merchantReference": { "type": "string", "minLength": 1, "maxLength": 200 },
+          "title": { "type": "string", "minLength": 1, "maxLength": 300 },
+          "description": { "type": "string", "maxLength": 3000, "default": "" },
+          "category": { "type": "string", "minLength": 1, "maxLength": 120 },
+          "amount": { "$ref": "#/components/schemas/Amount" },
+          "participants": {
+            "type": "array",
+            "maxItems": 3,
+            "items": { "$ref": "#/components/schemas/ParticipantReference" }
+          },
+          "captureRequirements": { "$ref": "#/components/schemas/CaptureRequirements" }
+        }
+      },
+      "TransactionStatus": {
+        "type": "string",
+        "enum": ["CREATED", "CAPTURE_PENDING", "CAPTURE_IN_PROGRESS", "EVIDENCE_RECEIVED", "VERIFICATION_PENDING", "COMPLETED", "CANCELLED"]
+      },
+      "Transaction": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "object", "merchantReference", "title", "description", "category", "amount", "participants", "captureRequirements", "status", "captureStatus", "shipmentStatus", "receiverStatus", "returnStatus", "verificationStatus", "createdAt", "updatedAt"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^txn_[a-f0-9]{32}$" },
+          "object": { "const": "transaction" },
+          "merchantReference": { "type": "string" },
+          "title": { "type": "string" },
+          "description": { "type": "string" },
+          "category": { "type": ["string", "null"] },
+          "amount": { "oneOf": [{ "$ref": "#/components/schemas/Amount" }, { "type": "null" }] },
+          "participants": { "type": "array", "items": { "$ref": "#/components/schemas/ParticipantReference" } },
+          "captureRequirements": { "$ref": "#/components/schemas/CaptureRequirements" },
+          "status": { "$ref": "#/components/schemas/TransactionStatus" },
+          "captureStatus": { "type": "string", "enum": ["NOT_STARTED", "IN_PROGRESS", "COMPLETE"] },
+          "shipmentStatus": { "type": "string", "enum": ["NOT_ASSOCIATED", "ASSOCIATED"] },
+          "receiverStatus": { "type": "string", "enum": ["NOT_STARTED", "IN_PROGRESS", "COMPLETE"] },
+          "returnStatus": { "type": "string", "enum": ["NOT_STARTED", "IN_PROGRESS", "COMPLETE"] },
+          "verificationStatus": { "type": "string", "enum": ["PENDING_EVIDENCE", "PENDING", "PROCESSING", "COMPLETE"] },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "CaptureInstructions": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["state", "reason"],
+        "description": "No capture authorization or bearer link is issued by transaction creation. A separately authenticated capture-session endpoint is required before capture can begin.",
+        "properties": {
+          "state": { "const": "NOT_ISSUED" },
+          "reason": { "const": "CAPTURE_SESSION_REQUIRED" }
+        }
+      },
+      "CreateTransactionResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["data", "captureInstructions"],
+        "properties": {
+          "data": { "$ref": "#/components/schemas/Transaction" },
+          "captureInstructions": { "$ref": "#/components/schemas/CaptureInstructions" }
+        }
+      },
+      "GetTransactionResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["data"],
+        "properties": { "data": { "$ref": "#/components/schemas/Transaction" } }
+      },
+      "ListTransactionsResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["data", "pagination"],
+        "properties": {
+          "data": { "type": "array", "items": { "$ref": "#/components/schemas/Transaction" } },
+          "pagination": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["nextCursor"],
+            "properties": { "nextCursor": { "type": ["string", "null"] } }
+          }
+        }
+      },
+      "ParticipantRole": {
+        "type": "string",
+        "enum": ["SELLER", "BUYER", "RECEIVER", "RETURN_SENDER", "RETURN_RECIPIENT", "WITNESS"]
+      },
+      "ParticipantClaimStatus": {
+        "type": "string",
+        "enum": ["ISSUED", "CLAIMED", "EXPIRED", "REVOKED"]
+      },
+      "ParticipantClaim": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "object", "schemaVersion", "transactionId", "role", "status", "expiresAt", "claimedAt", "createdAt", "updatedAt"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^claim_[a-f0-9]{40}$" },
+          "object": { "const": "participant_claim" },
+          "schemaVersion": { "const": 1 },
+          "transactionId": { "type": "string", "pattern": "^txn_[a-f0-9]{32}$" },
+          "role": { "$ref": "#/components/schemas/ParticipantRole" },
+          "status": { "$ref": "#/components/schemas/ParticipantClaimStatus" },
+          "expiresAt": { "type": "string", "format": "date-time" },
+          "claimedAt": { "type": ["string", "null"], "format": "date-time" },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" }
+        },
+        "description": "Public participant-claim projection. External references, actor identifiers, token digests, and internal ownership fields are intentionally excluded."
+      },
+      "CreateParticipantInvitationRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["schemaVersion", "role", "externalReference"],
+        "properties": {
+          "schemaVersion": { "const": 1 },
+          "role": { "$ref": "#/components/schemas/ParticipantRole" },
+          "externalReference": { "type": "string", "minLength": 1, "maxLength": 300, "description": "Must exactly match the merchant-declared participant reference for this role. It remains non-authorizing and is not returned by the API." },
+          "expiresInSeconds": { "type": "integer", "minimum": 300, "maximum": 604800, "default": 86400 }
+        }
+      },
+      "ClaimParticipantRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["schemaVersion", "claimId", "token"],
+        "properties": {
+          "schemaVersion": { "const": 1 },
+          "claimId": { "type": "string", "pattern": "^claim_[a-f0-9]{40}$" },
+          "token": { "type": "string", "pattern": "^pp_claim_v1_[A-Za-z0-9_-]{43}$", "writeOnly": true, "description": "Short-lived one-time claim capability. PackProof persists only its digest." }
+        }
+      },
+      "ParticipantClaimInstructions": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["state", "claimUrl", "token", "expiresAt"],
+        "properties": {
+          "state": { "const": "ISSUED" },
+          "claimUrl": { "type": "string", "format": "uri", "description": "Short-lived handoff URL. The URL alone grants no read access and does not replace Firebase user authentication or App Check." },
+          "token": { "type": "string", "pattern": "^pp_claim_v1_[A-Za-z0-9_-]{43}$", "writeOnly": true },
+          "expiresAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "ParticipantInvitationResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["data", "claimInstructions"],
+        "properties": {
+          "data": { "$ref": "#/components/schemas/ParticipantClaim" },
+          "claimInstructions": { "$ref": "#/components/schemas/ParticipantClaimInstructions" }
+        }
+      },
+      "ParticipantClaimResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["data", "transactionId", "role"],
+        "properties": {
+          "data": { "$ref": "#/components/schemas/ParticipantClaim" },
+          "transactionId": { "type": "string", "pattern": "^txn_[a-f0-9]{32}$" },
+          "role": { "$ref": "#/components/schemas/ParticipantRole" }
+        }
+      },
+      "EvidenceArtifactType": {
+        "type": "string",
+        "enum": ["ITEM_PHOTO", "CONDITION_PHOTO", "IDENTIFIER_PHOTO", "COA_PHOTO", "PACKING_VIDEO", "SHIPPING_LABEL", "UNBOXING_VIDEO", "DELIVERY_PHOTO", "SUPPORTING_DOCUMENT", "RETURN_CONDITION_PHOTO", "RETURN_PACKING_VIDEO", "RETURN_SHIPPING_LABEL", "RETURN_UNBOXING_VIDEO", "PHYSICAL_REFERENCE_FRAME", "PHYSICAL_VERIFICATION_FRAME"]
+      },
+      "EvidenceSessionType": {
+        "type": "string",
+        "enum": ["OUTBOUND_PACK", "RECEIVER_OPEN", "RETURN_PACK", "RETURN_RECEIVE", "PHYSICAL_REFERENCE", "PHYSICAL_VERIFICATION", "SUPPORTING_DOCUMENT"]
+      },
+      "EvidenceSessionStatus": {
+        "type": "string",
+        "enum": ["CREATED", "READY", "CAPTURING", "CAPTURED", "SYNCING", "PROCESSING", "FINALIZED", "FINALIZED_WITH_LIMITATIONS", "FAILED_RETRYABLE", "FAILED_TERMINAL", "CANCELLED"]
+      },
+      "CreateEvidenceSessionRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["schemaVersion", "participantClaimId", "type", "allowedArtifactTypes"],
+        "properties": {
+          "schemaVersion": { "const": 1 },
+          "participantClaimId": { "type": "string", "pattern": "^claim_[a-f0-9]{40}$" },
+          "type": { "$ref": "#/components/schemas/EvidenceSessionType" },
+          "allowedArtifactTypes": { "type": "array", "minItems": 1, "maxItems": 15, "uniqueItems": true, "items": { "$ref": "#/components/schemas/EvidenceArtifactType" } },
+          "expiresInSeconds": { "type": "integer", "minimum": 300, "maximum": 604800, "default": 86400 },
+          "maximumRedemptions": { "type": "integer", "minimum": 1, "maximum": 3, "default": 1 },
+          "requestedEvidenceCount": { "type": "integer", "minimum": 1, "maximum": 24, "default": 1 },
+          "captureProfileId": { "type": ["string", "null"], "minLength": 1, "maxLength": 120, "pattern": "^[A-Za-z0-9._-]+$" },
+          "captureGroupId": { "type": ["string", "null"], "minLength": 1, "maxLength": 160, "pattern": "^[A-Za-z0-9_-]+$" }
+        }
+      },
+      "EvidenceSession": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "object", "schemaVersion", "transactionId", "commerceContextId", "returnPassportId", "actorRole", "type", "protocolVersion", "allowedArtifactTypes", "status", "captureState", "syncState", "processingState", "maximumRedemptions", "redemptionCount", "requestedEvidenceCount", "captureProfileId", "captureGroupId", "expiresAt", "startedAt", "completedAt", "createdAt", "updatedAt"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^es_[a-f0-9]{40}$" },
+          "object": { "const": "evidence_session" },
+          "schemaVersion": { "const": 1 },
+          "transactionId": { "type": "string", "pattern": "^txn_[a-f0-9]{32}$" },
+          "commerceContextId": { "type": ["string", "null"], "pattern": "^ctx_[a-f0-9]{40}$" },
+          "returnPassportId": { "type": ["string", "null"] },
+          "actorRole": { "$ref": "#/components/schemas/ParticipantRole" },
+          "type": { "$ref": "#/components/schemas/EvidenceSessionType" },
+          "protocolVersion": { "type": "string", "minLength": 1, "maxLength": 80 },
+          "allowedArtifactTypes": { "type": "array", "minItems": 1, "maxItems": 15, "uniqueItems": true, "items": { "$ref": "#/components/schemas/EvidenceArtifactType" } },
+          "status": { "$ref": "#/components/schemas/EvidenceSessionStatus" },
+          "captureState": { "type": "string", "enum": ["NOT_STARTED", "READY", "CAPTURING", "CAPTURED", "FAILED", "CANCELLED"] },
+          "syncState": { "type": "string", "enum": ["NOT_STARTED", "QUEUED", "UPLOADING", "AWAITING_FINALIZATION", "COMPLETE", "FAILED_RETRYABLE", "FAILED_TERMINAL"] },
+          "processingState": { "type": "string", "enum": ["NOT_STARTED", "PROCESSING", "COMPLETE", "QUARANTINED", "FAILED"] },
+          "maximumRedemptions": { "type": "integer", "minimum": 1, "maximum": 10 },
+          "redemptionCount": { "type": "integer", "minimum": 0, "maximum": 10 },
+          "requestedEvidenceCount": { "type": "integer", "minimum": 1, "maximum": 24 },
+          "captureProfileId": { "type": ["string", "null"] },
+          "captureGroupId": { "type": ["string", "null"] },
+          "expiresAt": { "type": "string", "format": "date-time" },
+          "startedAt": { "type": ["string", "null"], "format": "date-time" },
+          "completedAt": { "type": ["string", "null"], "format": "date-time" },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" }
+        },
+        "description": "Public actor- and purpose-bound acquisition authorization. It is not a claim of evidence authenticity or server finalization. Internal actor IDs, organization ownership, and token digests are excluded."
+      },
+      "EvidenceSessionRedemptionInstructions": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["state", "redemptionUrl", "token", "expiresAt"],
+        "properties": {
+          "state": { "const": "READY" },
+          "redemptionUrl": { "type": "string", "format": "uri", "description": "Short-lived native-app handoff. Possession alone grants no session read or redemption authority." },
+          "token": { "type": "string", "pattern": "^pp_capture_v1_[A-Za-z0-9_-]{43}$", "writeOnly": true },
+          "expiresAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "CreateEvidenceSessionResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["data", "redemptionInstructions"],
+        "properties": {
+          "data": { "$ref": "#/components/schemas/EvidenceSession" },
+          "redemptionInstructions": { "$ref": "#/components/schemas/EvidenceSessionRedemptionInstructions" }
+        }
+      },
+      "EvidenceSessionResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["data"],
+        "properties": { "data": { "$ref": "#/components/schemas/EvidenceSession" } }
+      },
+      "RedeemEvidenceSessionRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["schemaVersion", "operationKey", "token"],
+        "properties": {
+          "schemaVersion": { "const": 1 },
+          "operationKey": { "type": "string", "minLength": 8, "maxLength": 200, "description": "Stable client operation identity for an exact redemption retry." },
+          "token": { "type": "string", "pattern": "^pp_capture_v1_[A-Za-z0-9_-]{43}$", "writeOnly": true },
+          "runtimeArtifactHash": { "type": ["string", "null"], "pattern": "^[a-fA-F0-9]{64}$" }
+        }
+      },
+      "CaptureAttestation": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["mode", "captureSessionId", "nonce", "appId", "issuedAt", "captureWindowEndsAt", "tokenReplayDetected", "reasonCodes", "sessionMode", "maxEvidenceCount", "captureGroupId"],
+        "properties": {
+          "mode": { "const": "JIT_APP_CHECK" },
+          "captureSessionId": { "type": "string", "pattern": "^cap_[a-f0-9]{40}$" },
+          "nonce": { "type": "string", "minLength": 43, "maxLength": 44, "writeOnly": true },
+          "appId": { "type": "string", "minLength": 1, "maxLength": 300 },
+          "issuedAt": { "type": "string", "format": "date-time" },
+          "captureWindowEndsAt": { "type": "string", "format": "date-time" },
+          "tokenReplayDetected": { "const": false },
+          "reasonCodes": { "type": "array", "items": { "type": "string" } },
+          "sessionMode": { "type": "string", "enum": ["SINGLE", "BATCH"] },
+          "maxEvidenceCount": { "type": "integer", "minimum": 1, "maximum": 24 },
+          "captureGroupId": { "type": ["string", "null"] }
+        },
+        "description": "A bounded nonce for the existing native capture pipeline. It proves successful authorization issuance, not that evidence was captured, uploaded, or finalized."
+      },
+      "RedeemEvidenceSessionResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["data", "captureAttestation"],
+        "properties": {
+          "data": { "$ref": "#/components/schemas/EvidenceSession" },
+          "captureAttestation": { "$ref": "#/components/schemas/CaptureAttestation" }
+        }
+      },
+      "CancelEvidenceSessionRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["schemaVersion"],
+        "properties": { "schemaVersion": { "const": 1 } }
+      },
+      "ErrorDetail": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "message"],
+        "properties": {
+          "field": { "type": "string" },
+          "code": { "type": "string" },
+          "message": { "type": "string" }
+        }
+      },
+      "ErrorEnvelope": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["error"],
+        "properties": {
+          "error": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["code", "message", "requestId", "details"],
+            "properties": {
+              "code": { "type": "string" },
+              "message": { "type": "string" },
+              "requestId": { "type": "string" },
+              "details": { "type": "array", "items": { "$ref": "#/components/schemas/ErrorDetail" } }
+            }
+          }
+        }
+      }
+    },
+    "responses": {
+      "PublicCommerceHandoffCreated": {
+        "description": "A new short-lived page-declared passport-draft handoff was created.",
+        "headers": {
+          "X-Request-Id": { "$ref": "#/components/headers/XRequestId" },
+          "Idempotent-Replayed": { "$ref": "#/components/headers/IdempotentReplayed" },
+          "RateLimit-Limit": { "$ref": "#/components/headers/RateLimitLimit" },
+          "RateLimit-Remaining": { "$ref": "#/components/headers/RateLimitRemaining" },
+          "RateLimit-Reset": { "$ref": "#/components/headers/RateLimitReset" }
+        },
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PublicCommerceHandoffResponse" } } }
+      },
+      "PublicCommerceHandoffReplayed": {
+        "description": "The original short-lived result for an exact browser idempotency replay.",
+        "headers": {
+          "X-Request-Id": { "$ref": "#/components/headers/XRequestId" },
+          "Idempotent-Replayed": { "$ref": "#/components/headers/IdempotentReplayed" },
+          "RateLimit-Limit": { "$ref": "#/components/headers/RateLimitLimit" },
+          "RateLimit-Remaining": { "$ref": "#/components/headers/RateLimitRemaining" },
+          "RateLimit-Reset": { "$ref": "#/components/headers/RateLimitReset" }
+        },
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PublicCommerceHandoffResponse" } } }
+      },
+      "TransactionCreated": {
+        "description": "A new transaction was created.",
+        "headers": {
+          "X-Request-Id": { "$ref": "#/components/headers/XRequestId" },
+          "Idempotent-Replayed": { "$ref": "#/components/headers/IdempotentReplayed" },
+          "RateLimit-Limit": { "$ref": "#/components/headers/RateLimitLimit" },
+          "RateLimit-Remaining": { "$ref": "#/components/headers/RateLimitRemaining" },
+          "RateLimit-Reset": { "$ref": "#/components/headers/RateLimitReset" }
+        },
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateTransactionResponse" } } }
+      },
+      "TransactionReplayed": {
+        "description": "The original result for an exact idempotent replay.",
+        "headers": {
+          "X-Request-Id": { "$ref": "#/components/headers/XRequestId" },
+          "Idempotent-Replayed": { "$ref": "#/components/headers/IdempotentReplayed" },
+          "RateLimit-Limit": { "$ref": "#/components/headers/RateLimitLimit" },
+          "RateLimit-Remaining": { "$ref": "#/components/headers/RateLimitRemaining" },
+          "RateLimit-Reset": { "$ref": "#/components/headers/RateLimitReset" }
+        },
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateTransactionResponse" } } }
+      },
+      "ParticipantInvitationCreated": {
+        "description": "A participant claim capability was issued for a declared merchant reference.",
+        "headers": {
+          "X-Request-Id": { "$ref": "#/components/headers/XRequestId" },
+          "Idempotent-Replayed": { "$ref": "#/components/headers/IdempotentReplayed" },
+          "RateLimit-Limit": { "$ref": "#/components/headers/RateLimitLimit" },
+          "RateLimit-Remaining": { "$ref": "#/components/headers/RateLimitRemaining" },
+          "RateLimit-Reset": { "$ref": "#/components/headers/RateLimitReset" }
+        },
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ParticipantInvitationResponse" } } }
+      },
+      "ParticipantInvitationReplayed": {
+        "description": "The original invitation and token for an exact idempotent retry.",
+        "headers": {
+          "X-Request-Id": { "$ref": "#/components/headers/XRequestId" },
+          "Idempotent-Replayed": { "$ref": "#/components/headers/IdempotentReplayed" },
+          "RateLimit-Limit": { "$ref": "#/components/headers/RateLimitLimit" },
+          "RateLimit-Remaining": { "$ref": "#/components/headers/RateLimitRemaining" },
+          "RateLimit-Reset": { "$ref": "#/components/headers/RateLimitReset" }
+        },
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ParticipantInvitationResponse" } } }
+      },
+      "ParticipantClaimed": {
+        "description": "The authenticated PackProof user was bound to the declared transaction role.",
+        "headers": {
+          "X-Request-Id": { "$ref": "#/components/headers/XRequestId" },
+          "Idempotent-Replayed": { "$ref": "#/components/headers/IdempotentReplayed" },
+          "RateLimit-Limit": { "$ref": "#/components/headers/RateLimitLimit" },
+          "RateLimit-Remaining": { "$ref": "#/components/headers/RateLimitRemaining" },
+          "RateLimit-Reset": { "$ref": "#/components/headers/RateLimitReset" }
+        },
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ParticipantClaimResponse" } } }
+      },
+      "ParticipantClaimReplayed": {
+        "description": "The same authenticated actor replayed an already completed claim.",
+        "headers": {
+          "X-Request-Id": { "$ref": "#/components/headers/XRequestId" },
+          "Idempotent-Replayed": { "$ref": "#/components/headers/IdempotentReplayed" },
+          "RateLimit-Limit": { "$ref": "#/components/headers/RateLimitLimit" },
+          "RateLimit-Remaining": { "$ref": "#/components/headers/RateLimitRemaining" },
+          "RateLimit-Reset": { "$ref": "#/components/headers/RateLimitReset" }
+        },
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ParticipantClaimResponse" } } }
+      },
+      "EvidenceSessionCreated": {
+        "description": "A bounded evidence session and one-time redemption capability were created.",
+        "headers": {
+          "X-Request-Id": { "$ref": "#/components/headers/XRequestId" },
+          "Idempotent-Replayed": { "$ref": "#/components/headers/IdempotentReplayed" },
+          "RateLimit-Limit": { "$ref": "#/components/headers/RateLimitLimit" },
+          "RateLimit-Remaining": { "$ref": "#/components/headers/RateLimitRemaining" },
+          "RateLimit-Reset": { "$ref": "#/components/headers/RateLimitReset" }
+        },
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateEvidenceSessionResponse" } } }
+      },
+      "EvidenceSessionReplayed": {
+        "description": "The original evidence session and token for an exact idempotent retry.",
+        "headers": {
+          "X-Request-Id": { "$ref": "#/components/headers/XRequestId" },
+          "Idempotent-Replayed": { "$ref": "#/components/headers/IdempotentReplayed" },
+          "RateLimit-Limit": { "$ref": "#/components/headers/RateLimitLimit" },
+          "RateLimit-Remaining": { "$ref": "#/components/headers/RateLimitRemaining" },
+          "RateLimit-Reset": { "$ref": "#/components/headers/RateLimitReset" }
+        },
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateEvidenceSessionResponse" } } }
+      },
+      "EvidenceSessionRetrieved": {
+        "description": "The organization-authorized evidence session projection.",
+        "headers": {
+          "X-Request-Id": { "$ref": "#/components/headers/XRequestId" },
+          "RateLimit-Limit": { "$ref": "#/components/headers/RateLimitLimit" },
+          "RateLimit-Remaining": { "$ref": "#/components/headers/RateLimitRemaining" },
+          "RateLimit-Reset": { "$ref": "#/components/headers/RateLimitReset" }
+        },
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EvidenceSessionResponse" } } }
+      },
+      "EvidenceSessionRedeemed": {
+        "description": "The actor-bound capability was redeemed and a native capture-session nonce was issued.",
+        "headers": {
+          "X-Request-Id": { "$ref": "#/components/headers/XRequestId" },
+          "Idempotent-Replayed": { "$ref": "#/components/headers/IdempotentReplayed" },
+          "RateLimit-Limit": { "$ref": "#/components/headers/RateLimitLimit" },
+          "RateLimit-Remaining": { "$ref": "#/components/headers/RateLimitRemaining" },
+          "RateLimit-Reset": { "$ref": "#/components/headers/RateLimitReset" }
+        },
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RedeemEvidenceSessionResponse" } } }
+      },
+      "EvidenceSessionRedemptionReplayed": {
+        "description": "An exact operation-key retry returned the original native capture-session nonce.",
+        "headers": {
+          "X-Request-Id": { "$ref": "#/components/headers/XRequestId" },
+          "Idempotent-Replayed": { "$ref": "#/components/headers/IdempotentReplayed" },
+          "RateLimit-Limit": { "$ref": "#/components/headers/RateLimitLimit" },
+          "RateLimit-Remaining": { "$ref": "#/components/headers/RateLimitRemaining" },
+          "RateLimit-Reset": { "$ref": "#/components/headers/RateLimitReset" }
+        },
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RedeemEvidenceSessionResponse" } } }
+      },
+      "EvidenceSessionCancelled": {
+        "description": "The evidence session is cancelled, or an exact cancellation retry returned the cancelled session.",
+        "headers": {
+          "X-Request-Id": { "$ref": "#/components/headers/XRequestId" },
+          "Idempotent-Replayed": { "$ref": "#/components/headers/IdempotentReplayed" },
+          "RateLimit-Limit": { "$ref": "#/components/headers/RateLimitLimit" },
+          "RateLimit-Remaining": { "$ref": "#/components/headers/RateLimitRemaining" },
+          "RateLimit-Reset": { "$ref": "#/components/headers/RateLimitReset" }
+        },
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EvidenceSessionResponse" } } }
+      },
+      "InvalidRequest": { "$ref": "#/components/responses/Error400" },
+      "Unauthorized": { "$ref": "#/components/responses/Error401" },
+      "Forbidden": { "$ref": "#/components/responses/Error403" },
+      "NotFound": { "$ref": "#/components/responses/Error404" },
+      "Conflict": { "$ref": "#/components/responses/Error409" },
+      "RequestTooLarge": { "$ref": "#/components/responses/Error413" },
+      "UnsupportedMediaType": { "$ref": "#/components/responses/Error415" },
+      "RateLimited": { "$ref": "#/components/responses/Error429" },
+      "InternalError": { "$ref": "#/components/responses/Error500" },
+      "ServiceUnavailable": { "$ref": "#/components/responses/Error503" },
+      "Error400": { "description": "Invalid request.", "headers": { "X-Request-Id": { "$ref": "#/components/headers/XRequestId" } }, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } } },
+      "Error401": { "description": "Missing or invalid authentication.", "headers": { "X-Request-Id": { "$ref": "#/components/headers/XRequestId" }, "RateLimit-Limit": { "$ref": "#/components/headers/RateLimitLimit" }, "RateLimit-Remaining": { "$ref": "#/components/headers/RateLimitRemaining" }, "RateLimit-Reset": { "$ref": "#/components/headers/RateLimitReset" } }, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } } },
+      "Error403": { "description": "Authenticated but not authorized.", "headers": { "X-Request-Id": { "$ref": "#/components/headers/XRequestId" } }, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } } },
+      "Error404": { "description": "The resource was not found in the authenticated organization.", "headers": { "X-Request-Id": { "$ref": "#/components/headers/XRequestId" } }, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } } },
+      "Error409": { "description": "The request conflicts with idempotency or resource state.", "headers": { "X-Request-Id": { "$ref": "#/components/headers/XRequestId" } }, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } } },
+      "Error413": { "description": "The request body exceeded 256 KiB.", "headers": { "X-Request-Id": { "$ref": "#/components/headers/XRequestId" } }, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } } },
+      "Error415": { "description": "The request Content-Type is unsupported.", "headers": { "X-Request-Id": { "$ref": "#/components/headers/XRequestId" } }, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } } },
+      "Error429": { "description": "The operation rate limit was exceeded.", "headers": { "X-Request-Id": { "$ref": "#/components/headers/XRequestId" }, "Retry-After": { "$ref": "#/components/headers/RetryAfter" } }, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } } },
+      "Error500": { "description": "An internal failure occurred without exposing implementation details.", "headers": { "X-Request-Id": { "$ref": "#/components/headers/XRequestId" } }, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } } },
+      "Error503": { "description": "A required dependency is unavailable.", "headers": { "X-Request-Id": { "$ref": "#/components/headers/XRequestId" }, "Retry-After": { "$ref": "#/components/headers/RetryAfter" } }, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } } }
+    }
+  }
+}

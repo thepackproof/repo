@@ -1,4 +1,4 @@
-import Purchases, { type CustomerInfo, type PurchasesOfferings, type PurchasesPackage } from 'react-native-purchases';
+import type { CustomerInfo, PurchasesOfferings, PurchasesPackage } from 'react-native-purchases';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type PropsWithChildren } from 'react';
 import { useAuth } from './auth-provider';
 import { featureFlags } from '@/constants/features';
@@ -16,6 +16,13 @@ type PurchasesContextValue = {
 
 const PurchasesContext = createContext<PurchasesContextValue | null>(null);
 let configured = false;
+let purchasesModule: Promise<typeof import('react-native-purchases')['default']> | null = null;
+
+async function purchases() {
+  if (!featureFlags.billing) throw new Error('Purchases are not enabled in this PackProof build.');
+  purchasesModule ??= import('react-native-purchases').then((module) => module.default);
+  return purchasesModule;
+}
 
 const hasPro = (info: CustomerInfo) => Boolean(info.entitlements.active.pro);
 
@@ -29,6 +36,7 @@ export function PurchasesProvider({ children }: PropsWithChildren) {
 
   const refresh = useCallback(async () => {
     if (!user || !configured) return;
+    const Purchases = await purchases();
     const [info, nextOfferings] = await Promise.all([Purchases.getCustomerInfo(), Purchases.getOfferings()]);
     setPro(hasPro(info));
     setManagementUrl(info.managementURL ?? null);
@@ -37,25 +45,28 @@ export function PurchasesProvider({ children }: PropsWithChildren) {
 
   useEffect(() => {
     if (!user) {
-      if (configured) Purchases.logOut().catch(() => undefined);
+      if (configured) purchases().then((Purchases) => Purchases.logOut()).catch(() => undefined);
       return;
     }
+    if (!available) return;
     let active = true;
     const setup = async () => {
       setLoading(true);
       const apiKey = process.env.EXPO_PUBLIC_REVENUECAT_GOOGLE_API_KEY;
       if (!apiKey) return;
+      const Purchases = await purchases();
       if (!configured) { Purchases.configure({ apiKey, appUserID: user.uid }); configured = true; }
       else await Purchases.logIn(user.uid);
       if (active) await refresh();
     };
     setup().finally(() => active && setLoading(false));
     return () => { active = false; };
-  }, [refresh, user]);
+  }, [available, refresh, user]);
 
   const purchase = useCallback(async (selectedPackage: PurchasesPackage) => {
     setLoading(true);
     try {
+      const Purchases = await purchases();
       const result = await Purchases.purchasePackage(selectedPackage);
       setPro(hasPro(result.customerInfo));
       setManagementUrl(result.customerInfo.managementURL ?? null);
@@ -66,6 +77,7 @@ export function PurchasesProvider({ children }: PropsWithChildren) {
   const restore = useCallback(async () => {
     setLoading(true);
     try {
+      const Purchases = await purchases();
       const info = await Purchases.restorePurchases();
       setPro(hasPro(info));
       setManagementUrl(info.managementURL ?? null);

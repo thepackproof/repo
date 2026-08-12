@@ -13,8 +13,10 @@ type VectorSample = { x: number; y: number; z: number; at: number };
 type TelemetryCollector = {
   startedAt: string;
   runtimeIntegrity: RuntimeIntegrityTelemetry;
+  markCaptureStarted(): string;
   finish(): Promise<{
     finishedAt: string;
+    monotonicElapsedMs: number;
     runtimeIntegrity: RuntimeIntegrityTelemetry;
     sensorFusion: SensorFusionTelemetry;
     networkTelemetry: NetworkTelemetry;
@@ -25,6 +27,10 @@ type TelemetryCollector = {
 const SAMPLE_INTERVAL_MS = 50;
 const ANALYSIS_WINDOW_MS = 3000;
 const MAX_SAMPLES = 1800;
+
+function monotonicNow(): number {
+  return globalThis.performance?.now?.() ?? Date.now();
+}
 
 function magnitude(sample: VectorSample): number {
   return Math.sqrt(sample.x ** 2 + sample.y ** 2 + sample.z ** 2);
@@ -94,16 +100,17 @@ async function collectLocation(enabled: boolean): Promise<GeolocationTelemetry |
 
 export async function startCaptureTelemetry(includeLocation: boolean): Promise<TelemetryCollector> {
   const startedAt = new Date().toISOString();
+  let monotonicCaptureStartedAt = monotonicNow();
   const accelerometer: VectorSample[] = [];
   const gyroscope: VectorSample[] = [];
   Accelerometer.setUpdateInterval(SAMPLE_INTERVAL_MS);
   Gyroscope.setUpdateInterval(SAMPLE_INTERVAL_MS);
   const accelerometerSubscription = Accelerometer.addListener((sample) => {
-    accelerometer.push({ ...sample, at: Date.now() });
+    accelerometer.push({ ...sample, at: monotonicNow() });
     if (accelerometer.length > MAX_SAMPLES) accelerometer.shift();
   });
   const gyroscopeSubscription = Gyroscope.addListener((sample) => {
-    gyroscope.push({ ...sample, at: Date.now() });
+    gyroscope.push({ ...sample, at: monotonicNow() });
     if (gyroscope.length > MAX_SAMPLES) gyroscope.shift();
   });
 
@@ -129,11 +136,18 @@ export async function startCaptureTelemetry(includeLocation: boolean): Promise<T
   return {
     startedAt,
     runtimeIntegrity,
+    markCaptureStarted() {
+      accelerometer.length = 0;
+      gyroscope.length = 0;
+      monotonicCaptureStartedAt = monotonicNow();
+      return new Date().toISOString();
+    },
     async finish() {
       accelerometerSubscription.remove();
       gyroscopeSubscription.remove();
       const finishedAt = new Date().toISOString();
-      const cutoff = Date.now() - ANALYSIS_WINDOW_MS;
+      const monotonicFinishedAt = monotonicNow();
+      const cutoff = monotonicFinishedAt - ANALYSIS_WINDOW_MS;
       const accelerometerWindow = accelerometer.filter((sample) => sample.at >= cutoff);
       const gyroscopeWindow = gyroscope.filter((sample) => sample.at >= cutoff);
       const accelerometerMagnitudes = accelerometerWindow.map(magnitude);
@@ -144,7 +158,7 @@ export async function startCaptureTelemetry(includeLocation: boolean): Promise<T
         ? accelerometerMagnitudes.reduce((sum, value) => sum + value, 0) / accelerometerMagnitudes.length
         : null;
       const sufficient = accelerometerWindow.length >= 20 && gyroscopeWindow.length >= 20;
-      const microMotion = sufficient
+      const motionObserved = sufficient
         && ((accelerometerMagnitudeVariance ?? 0) > 0.0000005 || (gyroscopeMagnitudeVariance ?? 0) > 0.0000005);
       const sensorFusion: SensorFusionTelemetry = {
         sampleWindowMs: ANALYSIS_WINDOW_MS,
@@ -153,11 +167,18 @@ export async function startCaptureTelemetry(includeLocation: boolean): Promise<T
         accelerometerMagnitudeMeanG: round(accelerometerMagnitudeMeanG, 6),
         accelerometerMagnitudeVariance: round(accelerometerMagnitudeVariance),
         gyroscopeMagnitudeVariance: round(gyroscopeMagnitudeVariance),
-        humanHoldLikely: sufficient ? microMotion : null,
-        assessment: !sufficient ? 'INSUFFICIENT_DATA' : microMotion ? 'HANDHELD_LIKELY' : 'FIXED_OR_LOW_MOTION',
+        assessment: !sufficient ? 'INSUFFICIENT_DATA' : motionObserved ? 'MOTION_DETECTED' : 'LOW_MOTION',
+        interpretation: 'CONTEXT_SIGNAL_ONLY',
       };
       const [networkTelemetry, geolocation] = await Promise.all([networkPromise, geolocationPromise]);
-      return { finishedAt, runtimeIntegrity, sensorFusion, networkTelemetry, geolocation };
+      return {
+        finishedAt,
+        monotonicElapsedMs: Math.max(0, Math.round(monotonicFinishedAt - monotonicCaptureStartedAt)),
+        runtimeIntegrity,
+        sensorFusion,
+        networkTelemetry,
+        geolocation,
+      };
     },
   };
 }

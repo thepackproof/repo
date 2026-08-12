@@ -1,0 +1,15 @@
+{
+  "protocol": "PP-PHYSICAL-MATTE-V1-DEVELOPMENT-EXAMPLE",
+  "blindTest": false,
+  "frozenArtifacts": {
+    "captureProfileId": "PP-PHYSICAL-MATTE-V1",
+    "qualityPolicyVersion": "PP-QUALITY-V1",
+    "modelHash": null,
+    "thresholdPolicyVersion": null
+  },
+  "trials": [
+    {"trialId":"dev-same-001","independentUnitId":"package-001","groundTruth":"SAME_SOURCE","decision":"INCONCLUSIVE"},
+    {"trialId":"dev-diff-001","independentUnitId":"package-002","groundTruth":"DIFFERENT_SOURCE","decision":"INCONCLUSIVE"},
+    {"trialId":"dev-attack-001","independentUnitId":"package-003","groundTruth":"DIFFERENT_SOURCE","decision":"FTA","attackClass":"PRINT_SCAN"}
+  ]
+}

@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>PackProof Button custom-checkout example</title>
+  <link rel="stylesheet" href="/site.css">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "Product",
+    "productID": "camera-1978-black",
+    "name": "1978 Rangefinder Camera",
+    "description": "Black body with 50 mm lens, original case, strap, and documented cosmetic wear on the base plate.",
+    "category": "Vintage cameras",
+    "brand": { "@type": "Brand", "name": "Example Optics" },
+    "model": "RF-50",
+    "sku": "RF50-BLK-1978",
+    "image": [{ "url": "https://images.example.com/rf50-front.jpg", "caption": "Front listing image" }],
+    "additionalProperty": [{ "@type": "PropertyValue", "name": "Finish", "value": "Black" }],
+    "offers": { "@type": "Offer", "price": "1299.00", "priceCurrency": "USD" }
+  }
+  </script>
+</head>
+<body>
+  <main>
+    <div class="brand">PACKPROOF BUTTON · REFERENCE INTEGRATION</div>
+    <h1>1978 Rangefinder Camera</h1>
+    <p>Black body with 50 mm lens, original case, strap, and documented cosmetic wear on the base plate.</p>
+    <div class="card">
+      <h2 class="card-heading">$1,299.00</h2>
+      <p>The checkout owns payment and order creation. PackProof receives only the structured listing context declared above.</p>
+      <div
+        data-packproof-button
+        data-packproof-publishable-key="pp_pub_sandbox_REPLACE_WITH_YOUR_PUBLIC_KEY"
+        data-packproof-api-base-url="https://packproof.link"
+        data-packproof-label="Create passport with PackProof">
+      </div>
+      <p class="muted">Replace the publishable key and allowlist this page's exact HTTPS origin. Never put a merchant API key or webhook secret in browser code.</p>
+    </div>
+  </main>
+  <script type="module">
+    import { autoMountPackProofButtons } from '/sdk/packproof-button-v1.js';
+    autoMountPackProofButtons();
+  </script>
+</body>
+</html>

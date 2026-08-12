@@ -1,0 +1,83 @@
+name: PackProof quality gates
+
+on:
+  pull_request:
+  push:
+    branches: [master, main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: packproof-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  source-and-api:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Use Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            functions/package-lock.json
+
+      - name: Use Java 21 for Firebase emulators
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Install deterministic dependencies
+        run: |
+          npm ci
+          npm --prefix functions ci
+
+      - name: Type and lint gates
+        run: |
+          npm run typecheck
+          npm run lint
+          npm --prefix functions run build
+
+      - name: Merchant API unit and contract tests
+        run: npm run test:api
+
+      - name: Canonical domain contract tests
+        run: npm run test:domain
+
+      - name: Shared application service tests
+        run: npm run test:application
+
+      - name: Merchant API Firestore integration tests
+        run: npm run test:api:firestore
+
+      - name: Shared application Firestore integration tests
+        run: npm run test:application:firestore
+
+      - name: Merchant API Firebase export and Hosting rewrite smoke test
+        run: npm run test:api:functions
+
+      - name: Evidence and claim regression tests
+        run: |
+          npm run test:evidence-format
+          npm run test:evidence-verifier
+          npm run test:claims
+          npm run test:billing
+          npm run test:sdk
+
+      - name: Firestore and Storage rules tests
+        run: npm run test:rules
+
+      - name: Functions production dependency high-severity gate
+        run: npm --prefix functions audit --omit=dev --audit-level=high
+
+      - name: Record full application dependency advisories
+        continue-on-error: true
+        run: npm audit --omit=dev

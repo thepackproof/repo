@@ -91,11 +91,11 @@ Use two staging identities and preferably two Android devices. Rehearse this exa
 
 1. Seller signs in, creates a shipped PackProof, saves exact item/condition/return terms, and invites the buyer.
 2. Buyer redeems the one-use link; both identities confirm the same terms.
-3. Seller records one continuous packing video. Show the encrypted queue status and wait for the server-verified file, manifest, and bundle hashes.
+3. Seller records one continuous packing video. Show the encrypted queue status and wait for the server-finalized record, exact-byte checks, manifest and bundle hashes, and six separately reported assurance dimensions.
 4. Seller adds tracking; buyer records continuous unboxing and both complete the transaction.
 5. Generate and open the PDF evidence packet.
 6. Start, authorize, pack, ship, receive, and complete a Return Passport if returns are in the meeting scope.
-7. For Connect, provision a staging integration, create the same idempotent order twice, redeem the universal link, capture packing evidence, and verify the signed callback with the SDK.
+7. For Connect, provision a staging integration, create the same idempotent order twice, redeem the universal link, capture packing evidence, and verify the exact-body HMAC on the layered `packproof.evidence.finalized` callback with the SDK.
 8. If billing or optional identity providers are in scope, use the Play internal-test build and preapproved provider test accounts. Do not enable controls backed by placeholder credentials.
 
 `docs/TEST_PLAN.md` remains the release acceptance matrix. The commands above verify builds, types, rules, and SDK behavior; they do not replace real-device, two-identity, App Check, provider, billing, email, or webhook acceptance tests.

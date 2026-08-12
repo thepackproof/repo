@@ -20,7 +20,7 @@ export class PackProofConnect {
     this.fetch = fetchImpl;
   }
 
-  async createVerification(input, { signal } = {}) {
+  async createEvidenceSession(input, { signal } = {}) {
     const response = await this.fetch(`${this.baseUrl}/api/connect/orders`, {
       method: 'POST',
       headers: {
@@ -40,6 +40,12 @@ export class PackProofConnect {
       });
     }
     return body;
+  }
+
+  // Backward-compatible alias for v0.2 clients. The response is an evidence
+  // capture handoff, not a product-authenticity or legal verification result.
+  async createVerification(input, options = {}) {
+    return this.createEvidenceSession(input, options);
   }
 }
 

@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.retryConnectCallbacks = exports.onConnectEvidenceVerified = exports.redeemConnectSession = exports.handleMarketplaceOrder = exports.provisionConnectIntegration = void 0;
+exports.retryConnectCallbacks = exports.onConnectEvidenceVerified = exports.redeemPublicCommerceHandoff = exports.redeemConnectSession = exports.handleMarketplaceOrder = exports.provisionConnectIntegration = void 0;
 const node_crypto_1 = require("node:crypto");
 const promises_1 = require("node:dns/promises");
 const node_net_1 = require("node:net");
@@ -8,11 +8,30 @@ const firestore_1 = require("firebase-admin/firestore");
 const https_1 = require("firebase-functions/v2/https");
 const firestore_2 = require("firebase-functions/v2/firestore");
 const scheduler_1 = require("firebase-functions/v2/scheduler");
+const commerce_context_service_1 = require("./application/v1/commerce-context-service");
+const connect_handoff_service_1 = require("./application/v1/connect-handoff-service");
+const public_commerce_handoff_service_1 = require("./application/v1/public-commerce-handoff-service");
+const errors_1 = require("./application/v1/errors");
 const config_1 = require("./config");
 const evidence_1 = require("./evidence");
 const helpers_1 = require("./helpers");
+const connect_session_token_issuer_1 = require("./infrastructure/crypto/connect-session-token-issuer");
+const public_handoff_token_issuer_1 = require("./infrastructure/crypto/public-handoff-token-issuer");
+const sha256_token_verifier_1 = require("./infrastructure/crypto/sha256-token-verifier");
+const callable_errors_1 = require("./infrastructure/firebase/v1/callable-errors");
+const connect_handoff_repository_1 = require("./infrastructure/firebase/v1/connect-handoff-repository");
+const commerce_context_repository_1 = require("./infrastructure/firebase/v1/commerce-context-repository");
+const public_commerce_handoff_repository_1 = require("./infrastructure/firebase/v1/public-commerce-handoff-repository");
 const validation_1 = require("./validation");
 const provisionSchema = validation_1.connectProvisionSchema;
+const commerceContextService = new commerce_context_service_1.CommerceContextApplicationService(new commerce_context_repository_1.FirestoreCommerceContextRepository(config_1.db), new connect_session_token_issuer_1.HmacConnectSessionTokenIssuer());
+const connectHandoffService = new connect_handoff_service_1.ConnectHandoffApplicationService(new connect_handoff_repository_1.FirestoreConnectHandoffRepository(config_1.db), new sha256_token_verifier_1.Sha256TokenVerifier());
+const publicCommerceHandoffService = new public_commerce_handoff_service_1.PublicCommerceHandoffApplicationService(new public_commerce_handoff_repository_1.FirestorePublicCommerceHandoffRepository(config_1.db), new public_handoff_token_issuer_1.HmacPublicHandoffTokenIssuer(() => config_1.publicHandoffSigningSecret.value()), new sha256_token_verifier_1.Sha256TokenVerifier(), () => {
+    const value = config_1.apiEnvironment.value();
+    if (value !== 'sandbox' && value !== 'live')
+        throw new Error('API_ENVIRONMENT must be sandbox or live.');
+    return value;
+});
 function isPrivateAddress(address) {
     const value = address.toLowerCase().replace(/^::ffff:/, '');
     if ((0, node_net_1.isIP)(value) === 4) {
@@ -47,18 +66,15 @@ async function validateCallbackUrl(callbackUrl, allowedOrigins) {
     }
     return parsed;
 }
-function safeKeyEquals(actual, expected) {
-    const a = Buffer.from(actual);
-    const b = Buffer.from(expected);
-    return a.length === b.length && (0, node_crypto_1.timingSafeEqual)(a, b);
-}
 exports.provisionConnectIntegration = (0, https_1.onCall)({ enforceAppCheck: true }, async (request) => {
     (0, helpers_1.requireUid)(request);
     if (request.auth?.token.packproofAdmin !== true)
         throw new https_1.HttpsError('permission-denied', 'PackProof administrator approval is required.');
     const input = provisionSchema.parse(request.data);
     const callbackOrigins = await Promise.all(input.callbackOrigins.map(async (value) => (await validateCallbackUrl(value)).origin));
+    const buttonOrigins = await Promise.all(input.buttonOrigins.map(async (value) => (await validateCallbackUrl(value)).origin));
     const apiKey = `pp_${input.environment === 'PRODUCTION' ? 'live' : 'test'}_${(0, helpers_1.randomToken)(32)}`;
+    const publishableKey = `pp_pub_${input.environment === 'PRODUCTION' ? 'live' : 'sandbox'}_${(0, helpers_1.randomToken)(24)}`;
     const webhookSigningSecret = `whsec_${(0, helpers_1.randomToken)(32)}`;
     const ref = config_1.db.collection('platformIntegrations').doc();
     await ref.set({
@@ -69,12 +85,14 @@ exports.provisionConnectIntegration = (0, https_1.onCall)({ enforceAppCheck: tru
         apiKeyHash: (0, helpers_1.hash)(apiKey),
         webhookSigningSecret,
         callbackOrigins: Array.from(new Set(callbackOrigins)),
+        allowedOrigins: Array.from(new Set(buttonOrigins)),
+        publishableKeyHash: (0, helpers_1.hash)(publishableKey),
         status: 'ACTIVE',
         createdBy: request.auth.uid,
         createdAt: firestore_1.FieldValue.serverTimestamp(),
         updatedAt: firestore_1.FieldValue.serverTimestamp(),
     });
-    return { integrationId: ref.id, apiKey, webhookSigningSecret };
+    return { integrationId: ref.id, apiKey, webhookSigningSecret, publishableKey, allowedOrigins: Array.from(new Set(buttonOrigins)) };
 });
 exports.handleMarketplaceOrder = (0, https_1.onRequest)({ cors: false, timeoutSeconds: 30 }, async (req, res) => {
     if (req.method !== 'POST') {
@@ -100,69 +118,32 @@ exports.handleMarketplaceOrder = (0, https_1.onRequest)({ cors: false, timeoutSe
             return;
         }
         const input = validation_1.connectOrderSchema.parse(req.body);
-        if (String(integration.platform).toLowerCase() !== input.platform.toLowerCase()) {
-            res.status(403).json({ error: 'platform_mismatch' });
-            return;
-        }
         await validateCallbackUrl(input.callbackUrl, integration.callbackOrigins);
-        const idempotencyHash = (0, node_crypto_1.createHash)('sha256').update(`${integrationDoc.id}\n${input.idempotencyKey}`).digest('hex');
-        const requestPayloadHash = (0, node_crypto_1.createHash)('sha256').update(JSON.stringify(input)).digest('hex');
-        const sessionRef = config_1.db.collection('connectSessions').doc(idempotencyHash);
-        // Derive a stable handoff token so idempotent API retries can receive the
-        // same URL without ever storing the plaintext token or URL in Firestore.
-        const sessionToken = (0, node_crypto_1.createHmac)('sha256', String(integration.webhookSigningSecret))
-            .update(`connect-session-token-v1\n${idempotencyHash}`)
-            .digest('base64url');
-        const verificationUrl = `${config_1.connectLinkBaseUrl.value().replace(/\/$/, '')}/connect/capture?session=${encodeURIComponent(sessionRef.id)}&token=${encodeURIComponent(sessionToken)}`;
-        const expiresAt = (0, helpers_1.expiresIn)(7 * 86400);
-        const sessionResult = await config_1.db.runTransaction(async (tx) => {
-            const existing = await tx.get(sessionRef);
-            if (existing.exists)
-                return { created: false, data: existing.data() };
-            const sessionData = {
-                id: sessionRef.id,
-                integrationId: integrationDoc.id,
-                platform: input.platform,
-                externalOrderId: input.orderId,
-                externalSellerId: input.sellerId,
-                trackingNumber: input.trackingNumber ?? null,
-                carrier: input.carrier ?? null,
-                itemTitle: input.itemTitle,
-                itemDescription: input.itemDescription,
-                declaredWeightGrams: input.declaredWeightGrams ?? null,
-                priceMinor: input.priceMinor,
-                currency: input.currency,
-                callbackUrl: input.callbackUrl,
-                tokenHash: (0, helpers_1.hash)(sessionToken),
-                requestPayloadHash,
-                status: 'PENDING_REDEMPTION',
-                transactionId: null,
-                claimedBy: null,
-                createdAt: firestore_1.FieldValue.serverTimestamp(),
-                expiresAt,
-            };
-            tx.create(sessionRef, sessionData);
-            return { created: true, data: sessionData };
+        const result = await commerceContextService.ingestConnectOrder({
+            integrationId: integrationDoc.id,
+            platform: String(integration.platform),
+            webhookSigningSecret: String(integration.webhookSigningSecret),
+        }, input, req.get('x-request-id') ?? (0, node_crypto_1.randomUUID)());
+        const verificationUrl = `${config_1.connectLinkBaseUrl.value().replace(/\/$/, '')}/connect/capture?session=${encodeURIComponent(result.sessionId)}&token=${encodeURIComponent(result.sessionToken)}`;
+        res.status(result.replayed ? 200 : 201).json({
+            success: true,
+            sessionId: result.sessionId,
+            verificationUrl,
+            expiresAt: result.expiresAt.toISOString(),
+            ...(result.replayed ? { idempotentReplay: true } : {}),
         });
-        if (!sessionResult.created) {
-            if (sessionResult.data.requestPayloadHash !== requestPayloadHash) {
-                res.status(409).json({ error: 'idempotency_conflict', message: 'This idempotency key was already used with a different order payload.' });
-                return;
-            }
-            res.status(200).json({
-                success: true,
-                sessionId: sessionRef.id,
-                verificationUrl,
-                expiresAt: sessionResult.data.expiresAt.toDate().toISOString(),
-                idempotentReplay: true,
-            });
-            return;
-        }
-        res.status(201).json({ success: true, sessionId: sessionRef.id, verificationUrl, expiresAt: expiresAt.toDate().toISOString() });
     }
     catch (error) {
         if (error instanceof validation_1.ValidationError) {
             res.status(400).json({ error: 'invalid_payload', details: error.issues });
+            return;
+        }
+        if (error instanceof errors_1.ApplicationError) {
+            const status = error.category === 'FORBIDDEN' ? 403 : error.category === 'CONFLICT' ? 409 : 400;
+            const compatibilityCode = error.code === 'IDEMPOTENCY_KEY_REUSED' ? 'idempotency_conflict'
+                : error.code === 'PLATFORM_MISMATCH' ? 'platform_mismatch'
+                    : error.code.toLowerCase();
+            res.status(status).json({ error: compatibilityCode, message: error.message });
             return;
         }
         if (error instanceof https_1.HttpsError) {
@@ -185,57 +166,34 @@ exports.handleMarketplaceOrder = (0, https_1.onRequest)({ cors: false, timeoutSe
 exports.redeemConnectSession = (0, https_1.onCall)({ enforceAppCheck: true }, async (request) => {
     const uid = (0, helpers_1.requireUid)(request);
     const input = validation_1.redeemConnectSchema.parse(request.data);
-    const sessionRef = config_1.db.collection('connectSessions').doc(input.sessionId);
-    const result = await config_1.db.runTransaction(async (tx) => {
-        const snap = await tx.get(sessionRef);
-        if (!snap.exists)
-            throw new https_1.HttpsError('not-found', 'PackProof Connect session not found.');
-        const session = snap.data();
-        if (session.expiresAt.toMillis() < Date.now())
-            throw new https_1.HttpsError('deadline-exceeded', 'PackProof Connect session expired.');
-        if (session.claimedBy && session.claimedBy !== uid)
-            throw new https_1.HttpsError('already-exists', 'This PackProof Connect session was claimed by another account.');
-        if (session.claimedBy === uid && session.transactionId)
-            return { transactionId: String(session.transactionId), connectSessionId: input.sessionId };
-        if (!safeKeyEquals((0, helpers_1.hash)(input.token), String(session.tokenHash)))
-            throw new https_1.HttpsError('permission-denied', 'Invalid PackProof Connect handoff token.');
-        const transactionRef = config_1.db.collection('transactions').doc();
-        tx.set(transactionRef, {
-            sellerId: uid,
-            buyerId: null,
-            participantIds: [uid],
-            status: 'TERMS_LOCKED',
-            title: session.itemTitle,
-            category: 'Platform order',
-            description: session.itemDescription ?? '',
-            priceMinor: session.priceMinor ?? 0,
-            currency: session.currency ?? 'USD',
-            identifiers: [{ label: 'External order ID', value: session.externalOrderId }],
-            conditionNotes: '',
-            terms: { saleType: 'SHIPPED', shippingResponsibility: 'SELLER', returns: 'PLATFORM_POLICY', returnWindowDays: 0, customTerms: `Order imported from ${session.platform}.` },
-            confirmedBy: [uid],
-            handoffConfirmedBy: [],
-            completedBy: [],
-            lockedAt: firestore_1.FieldValue.serverTimestamp(),
-            createdAt: firestore_1.FieldValue.serverTimestamp(),
-            updatedAt: firestore_1.FieldValue.serverTimestamp(),
-            source: {
-                type: 'PACKPROOF_CONNECT',
-                platform: session.platform,
-                integrationId: session.integrationId,
-                connectSessionId: input.sessionId,
-                externalOrderId: session.externalOrderId,
-                externalSellerId: session.externalSellerId,
-                callbackUrl: session.callbackUrl,
-                trackingNumber: session.trackingNumber ?? null,
-                carrier: session.carrier ?? null,
-                declaredWeightGrams: session.declaredWeightGrams ?? null,
-            },
+    try {
+        return await connectHandoffService.redeem({
+            actorId: uid,
+            sessionId: input.sessionId,
+            token: input.token,
+            requestId: request.rawRequest.get('x-request-id') ?? (0, node_crypto_1.randomUUID)(),
         });
-        tx.update(sessionRef, { claimedBy: uid, transactionId: transactionRef.id, status: 'READY_FOR_CAPTURE', claimedAt: firestore_1.FieldValue.serverTimestamp(), tokenHash: firestore_1.FieldValue.delete() });
-        return { transactionId: transactionRef.id, connectSessionId: input.sessionId };
-    });
-    return result;
+    }
+    catch (error) {
+        return (0, callable_errors_1.throwCallableError)(error);
+    }
+});
+exports.redeemPublicCommerceHandoff = (0, https_1.onCall)({ enforceAppCheck: true }, async (request) => {
+    const uid = (0, helpers_1.requireUid)(request);
+    const profile = await (0, helpers_1.assertAccountActive)(uid);
+    const input = validation_1.redeemPublicCommerceHandoffSchema.parse(request.data);
+    try {
+        return await publicCommerceHandoffService.redeem({
+            actorId: uid,
+            plan: String(profile.plan ?? 'FREE'),
+            handoffId: input.handoffId,
+            token: input.token,
+            requestId: request.rawRequest.get('x-request-id') ?? (0, node_crypto_1.randomUUID)(),
+        });
+    }
+    catch (error) {
+        return (0, callable_errors_1.throwCallableError)(error);
+    }
 });
 async function deliverCallback(deliveryRef, delivery) {
     const integrationSnap = await config_1.db.collection('platformIntegrations').doc(String(delivery.integrationId)).get();
@@ -243,7 +201,16 @@ async function deliverCallback(deliveryRef, delivery) {
         throw new Error('Connect integration no longer exists.');
     const signingSecret = String(integrationSnap.data()?.webhookSigningSecret ?? '');
     await validateCallbackUrl(String(delivery.callbackUrl), integrationSnap.data()?.callbackOrigins);
-    const body = JSON.stringify(delivery.payload);
+    const payload = { ...delivery.payload, timestamp: new Date().toISOString() };
+    let dossierUrlExpiresAt = null;
+    if (typeof delivery.dossierStoragePath === 'string') {
+        const expiresAtMs = Date.now() + 15 * 60_000;
+        const [dossierUrl] = await config_1.storage.bucket().file(delivery.dossierStoragePath).getSignedUrl({ action: 'read', expires: expiresAtMs });
+        payload.dossierUrl = dossierUrl;
+        dossierUrlExpiresAt = new Date(expiresAtMs).toISOString();
+        payload.dossierUrlExpiresAt = dossierUrlExpiresAt;
+    }
+    const body = JSON.stringify(payload);
     const timestamp = Math.floor(Date.now() / 1000).toString();
     const signature = (0, node_crypto_1.createHmac)('sha256', signingSecret).update(`${timestamp}.${body}`).digest('hex');
     const response = await fetch(String(delivery.callbackUrl), {
@@ -260,7 +227,14 @@ async function deliverCallback(deliveryRef, delivery) {
     });
     if (!response.ok)
         throw new Error(`Callback returned HTTP ${response.status}.`);
-    await deliveryRef.set({ status: 'DELIVERED', deliveredAt: firestore_1.FieldValue.serverTimestamp(), responseStatus: response.status, updatedAt: firestore_1.FieldValue.serverTimestamp() }, { merge: true });
+    await deliveryRef.set({
+        status: 'DELIVERED',
+        deliveredAt: firestore_1.FieldValue.serverTimestamp(),
+        responseStatus: response.status,
+        deliveredPayloadSha256: (0, node_crypto_1.createHash)('sha256').update(body).digest('hex'),
+        dossierUrlExpiresAt,
+        updatedAt: firestore_1.FieldValue.serverTimestamp(),
+    }, { merge: true });
 }
 exports.onConnectEvidenceVerified = (0, firestore_2.onDocumentCreated)('transactions/{transactionId}/evidence/{evidenceId}', async (event) => {
     const evidence = event.data?.data();
@@ -277,33 +251,48 @@ exports.onConnectEvidenceVerified = (0, firestore_2.onDocumentCreated)('transact
     if ((await deliveryRef.get()).exists)
         return;
     const packet = await (0, evidence_1.generateEvidencePacket)(transactionId, 'PACKPROOF_CONNECT_SYSTEM');
-    const [dossierUrl] = await config_1.storage.bucket().file(packet.storagePath).getSignedUrl({ action: 'read', expires: Date.now() + 7 * 86400_000 });
     const trackingRequired = Boolean(transaction.source.trackingNumber);
     const trackingSatisfied = trackingRequired
         ? evidence.carrierTrackingMatchStatus === 'MATCHED'
         : evidence.carrierTrackingMatchStatus !== 'MISMATCH';
-    const verificationStatus = evidence.serverVerified === true
-        && evidence.attestationStatus === 'JIT_VERIFIED'
+    const digitalEvidenceReady = evidence.serverFinalized === true
+        && ['ONLINE_APP_CHECK_AND_KEY_POSSESSION', 'JIT_VERIFIED'].includes(String(evidence.attestationStatus))
         && evidence.clientHashMatched === true
         && evidence.clientSizeMatched === true
-        && trackingSatisfied
-        ? 'VERIFIED_FULFILLMENT'
-        : 'VERIFIED_WITH_LIMITATIONS';
+        && evidence.contentTypeMatched === true
+        && evidence.assurance?.byteIntegrity?.status !== 'MISMATCH'
+        && trackingSatisfied;
+    const evidenceStatus = digitalEvidenceReady ? 'DIGITAL_EVIDENCE_READY' : 'DIGITAL_EVIDENCE_WITH_LIMITATIONS';
+    const statusReasonCodes = [
+        ...(evidence.serverFinalized === true ? [] : ['SERVER_FINALIZATION_NOT_RECORDED']),
+        ...(['ONLINE_APP_CHECK_AND_KEY_POSSESSION', 'JIT_VERIFIED'].includes(String(evidence.attestationStatus)) ? [] : ['STRONGEST_APP_DEVICE_CONTEXT_NOT_AVAILABLE']),
+        ...(evidence.clientHashMatched === true ? [] : ['CLIENT_SERVER_HASH_MATCH_NOT_ESTABLISHED']),
+        ...(evidence.clientSizeMatched === true ? [] : ['CLIENT_SERVER_SIZE_MATCH_NOT_ESTABLISHED']),
+        ...(evidence.contentTypeMatched === true ? [] : ['DECLARED_MEDIA_TYPE_MATCH_NOT_ESTABLISHED']),
+        ...(trackingSatisfied ? [] : ['CARRIER_CONTEXT_REQUIREMENT_NOT_SATISFIED']),
+        'PHYSICAL_CORRESPONDENCE_NOT_AVAILABLE',
+        'BUSINESS_LEGAL_REVIEW_REQUIRED',
+    ];
     const payload = {
-        event: 'packproof.verification.completed',
+        event: 'packproof.evidence.finalized',
         orderId: transaction.source.externalOrderId,
         trackingNumber: transaction.shipping?.trackingNumber ?? transaction.source.trackingNumber ?? null,
-        verificationStatus,
+        evidenceStatus,
+        statusReasonCodes,
+        fileSha256: evidence.sha256,
         sha256Hash: evidence.sha256,
         manifestSha256: evidence.manifestSha256,
         evidenceBundleSha256: evidence.evidenceBundleSha256,
-        manifestSignature: evidence.manifestSignature,
+        manifestAuthentication: evidence.manifestAuthentication ?? {
+            type: 'LEGACY_SERVICE_MAC',
+            macBase64url: evidence.manifestSignature ?? null,
+            verificationScope: 'PACKPROOF_SERVICE_ONLY',
+        },
+        assurance: evidence.assurance ?? null,
         attestationStatus: evidence.attestationStatus,
         carrierTrackingMatchStatus: evidence.carrierTrackingMatchStatus ?? 'NOT_SCANNED',
         declaredWeightGrams: transaction.source.declaredWeightGrams ?? null,
-        dossierUrl,
         dossierSha256: packet.sha256,
-        timestamp: new Date().toISOString(),
     };
     await deliveryRef.create({
         integrationId: transaction.source.integrationId,
@@ -311,6 +300,7 @@ exports.onConnectEvidenceVerified = (0, firestore_2.onDocumentCreated)('transact
         evidenceId: event.params.evidenceId,
         callbackUrl: transaction.source.callbackUrl,
         payload,
+        dossierStoragePath: packet.storagePath,
         status: 'PENDING',
         attempts: 1,
         // A process crash after this create is recovered by the scheduled worker.

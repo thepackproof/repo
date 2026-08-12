@@ -1,15 +1,15 @@
 openapi: 3.1.0
 info:
   title: PackProof Connect API
-  version: 0.2.0
-  description: Creates a locked PackProof capture handoff for an external commerce order.
+  version: 0.3.0
+  description: Creates a locked PackProof evidence-capture handoff for an external commerce order. Callback fields report digital evidence and limitations; they are not physical-authenticity or legal verdicts.
 servers:
   - url: https://YOUR_PACKPROOF_DOMAIN.example
 paths:
   /api/connect/orders:
     post:
-      operationId: createPackProofVerification
-      summary: Create or replay an idempotent verification session
+      operationId: createPackProofEvidenceSession
+      summary: Create or replay an idempotent evidence-capture session
       security:
         - bearerAuth: []
       requestBody:
@@ -74,21 +74,44 @@ components:
         idempotentReplay: { type: boolean }
     VerificationCallback:
       type: object
-      required: [event, orderId, verificationStatus, sha256Hash, dossierUrl, timestamp]
+      additionalProperties: false
+      required: [event, orderId, evidenceStatus, statusReasonCodes, fileSha256, manifestSha256, evidenceBundleSha256, manifestAuthentication, assurance, dossierUrl, dossierUrlExpiresAt, dossierSha256, timestamp]
       properties:
-        event: { const: packproof.verification.completed }
+        event: { const: packproof.evidence.finalized }
         orderId: { type: string }
         trackingNumber: { type: [string, 'null'] }
-        verificationStatus:
+        evidenceStatus:
           type: string
-          enum: [VERIFIED_FULFILLMENT, VERIFIED_WITH_LIMITATIONS]
-        sha256Hash: { type: string, pattern: '^[a-f0-9]{64}$' }
+          enum: [DIGITAL_EVIDENCE_READY, DIGITAL_EVIDENCE_WITH_LIMITATIONS]
+        statusReasonCodes:
+          type: array
+          items: { type: string }
+        fileSha256: { type: string, pattern: '^[a-f0-9]{64}$' }
+        sha256Hash:
+          type: string
+          pattern: '^[a-f0-9]{64}$'
+          deprecated: true
+          description: Compatibility alias for fileSha256.
         manifestSha256: { type: string, pattern: '^[a-f0-9]{64}$' }
         evidenceBundleSha256: { type: string, pattern: '^[a-f0-9]{64}$' }
-        manifestSignature: { type: string }
+        manifestAuthentication:
+          type: object
+          additionalProperties: false
+          required: [type, algorithm, keyId, macBase64url, verificationScope]
+          properties:
+            type: { const: SERVICE_MAC }
+            algorithm: { const: HMAC-SHA256 }
+            keyId: { type: string }
+            macBase64url: { type: string }
+            verificationScope: { const: PACKPROOF_SERVICE_ONLY }
+        assurance:
+          type: object
+          description: Independent acquisition-quality, app/device-context, byte-integrity, physical-correspondence, carrier-context, and business/legal-relevance dimensions.
+          additionalProperties: true
         attestationStatus: { type: string }
         carrierTrackingMatchStatus: { type: string }
         declaredWeightGrams: { type: [integer, 'null'] }
         dossierUrl: { type: string, format: uri }
+        dossierUrlExpiresAt: { type: string, format: date-time }
         dossierSha256: { type: string, pattern: '^[a-f0-9]{64}$' }
         timestamp: { type: string, format: date-time }

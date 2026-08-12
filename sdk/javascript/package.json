@@ -1,6 +1,6 @@
 {
   "name": "@packproof/connect",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "type": "module",
   "main": "./index.js",
   "types": "./index.d.ts",
@@ -8,9 +8,15 @@
     ".": {
       "types": "./index.d.ts",
       "import": "./index.js"
+    },
+    "./browser": {
+      "types": "./browser.d.ts",
+      "import": "./browser.js"
     }
   },
-  "engines": { "node": ">=18" },
+  "engines": {
+    "node": ">=18"
+  },
   "license": "UNLICENSED",
   "private": true
 }

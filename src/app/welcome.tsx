@@ -3,7 +3,8 @@ import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
 import type { Href } from 'expo-router';
-import { SymbolView } from 'expo-symbols';
+import { AppIcon, type AppIconName } from '@/components/app-icon';
+import { BrandIcon, BrandLockup } from '@/components/brand-lockup';
 import { Button } from '@/components/ui';
 import { colors } from '@/constants/brand';
 import { featureFlags } from '@/constants/features';
@@ -13,7 +14,13 @@ import { useAuth } from '@/providers/auth-provider';
 export default function WelcomeScreen() {
   const { user, signInGoogle, signInFacebook, signInTikTok } = useAuth();
   const { invite, redirect } = useLocalSearchParams<{ invite?: string; redirect?: string }>();
-  const safeRedirect = typeof redirect === 'string' && (redirect.startsWith('/connect/capture?') || redirect.startsWith('/invite?')) ? redirect : null;
+  const safeRedirect = typeof redirect === 'string' && (
+    redirect.startsWith('/connect/capture?')
+    || redirect.startsWith('/handoff/review?')
+    || redirect.startsWith('/claim/participant?')
+    || redirect.startsWith('/evidence-session/redeem?')
+    || redirect.startsWith('/invite?')
+  ) ? redirect : null;
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
   if (user) return <Redirect href={safeRedirect ? safeRedirect as Href : invite ? { pathname: '/invite', params: { code: invite } } : '/(tabs)'} />;
@@ -31,19 +38,19 @@ export default function WelcomeScreen() {
   return <SafeAreaView style={styles.safe}>
     <ScrollView contentContainerStyle={styles.container}>
       <View style={styles.hero}>
-        <View style={styles.logo}><Text style={styles.logoText}>P</Text><View style={styles.check}><SymbolView name="checkmark" size={13} tintColor={colors.background} /></View></View>
-        <Text style={styles.brand}>PACKPROOF</Text>
+        <BrandIcon style={styles.logo} />
+        <BrandLockup />
         <Text style={styles.title}>Proof travels with the package.</Text>
         <Text style={styles.body}>Create a private, timestamped record of the item, the agreement, packing, shipment and unboxing—before a disagreement begins.</Text>
       </View>
 
       <View style={styles.features}>
-        {[
+        {([
           ['lock.shield.fill', 'Locked terms', 'Both parties confirm one version before fulfillment.'],
           ['video.fill', 'Continuous capture', 'Guided packing and unboxing evidence stays connected to the transaction.'],
           ['doc.text.fill', 'Exportable packet', 'Server timestamps, file hashes and the complete audit timeline in one report.'],
-        ].map(([icon, title, body]) => <View key={title} style={styles.feature}>
-          <View style={styles.featureIcon}><SymbolView name={icon as 'lock.shield.fill'} size={20} tintColor={colors.teal} /></View>
+        ] satisfies [AppIconName, string, string][]).map(([icon, title, body]) => <View key={title} style={styles.feature}>
+          <View style={styles.featureIcon}><AppIcon name={icon} size={20} tintColor={colors.teal} /></View>
           <View style={{ flex: 1 }}><Text style={styles.featureTitle}>{title}</Text><Text style={styles.featureBody}>{body}</Text></View>
         </View>)}
       </View>
@@ -62,15 +69,12 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
   container: { paddingHorizontal: 24, paddingTop: 28, paddingBottom: 36, gap: 28 },
   hero: { alignItems: 'center', gap: 10 },
-  logo: { width: 76, height: 86, borderWidth: 2, borderColor: colors.teal, borderTopLeftRadius: 20, borderTopRightRadius: 20, borderBottomLeftRadius: 38, borderBottomRightRadius: 38, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(33,212,180,0.08)', marginBottom: 4 },
-  logoText: { color: colors.teal, fontSize: 34, fontWeight: '900' },
-  check: { position: 'absolute', right: -7, bottom: 8, backgroundColor: colors.teal, width: 25, height: 25, borderRadius: 13, alignItems: 'center', justifyContent: 'center', borderWidth: 3, borderColor: colors.background },
-  brand: { color: colors.teal, fontWeight: '900', fontSize: 12, letterSpacing: 3 },
+  logo: { width: 92, height: 92, marginBottom: -12 },
   title: { color: colors.ink, fontSize: 32, lineHeight: 37, letterSpacing: -0.9, fontWeight: '900', textAlign: 'center', maxWidth: 400 },
   body: { color: colors.muted, textAlign: 'center', lineHeight: 22, fontSize: 15, maxWidth: 430 },
   features: { gap: 10 },
   feature: { flexDirection: 'row', gap: 13, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: 18, padding: 15 },
-  featureIcon: { width: 42, height: 42, borderRadius: 14, backgroundColor: 'rgba(33,212,180,0.08)', alignItems: 'center', justifyContent: 'center' },
+  featureIcon: { width: 42, height: 42, borderRadius: 14, backgroundColor: 'rgba(70,124,99,0.10)', alignItems: 'center', justifyContent: 'center' },
   featureTitle: { color: colors.ink, fontSize: 14, fontWeight: '800', marginBottom: 3 },
   featureBody: { color: colors.muted, fontSize: 12, lineHeight: 17 },
   buttons: { gap: 10 },

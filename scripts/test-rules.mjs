@@ -19,6 +19,12 @@ try {
     await setDoc(doc(db, 'pendingUploads', 'upload002'), { uploaderId: 'alice', transactionId: 'tx-security-001', storagePath: 'evidence/tx-security-001/alice/upload002', contentType: 'application/pdf', expiresAt: Timestamp.fromMillis(Date.now() + 60_000) });
     await setDoc(doc(db, 'pendingUploads', 'upload003'), { uploaderId: 'alice', transactionId: 'tx-security-001', storagePath: 'evidence/tx-security-001/alice/upload003', contentType: 'image/jpeg', expiresAt: Timestamp.fromMillis(Date.now() - 60_000) });
     await setDoc(doc(db, 'publicProfiles', 'alice'), { uid: 'alice', displayName: 'Alice' });
+    await setDoc(doc(db, 'commerceContexts', 'ctx-security-001'), { integrationId: 'integration-1', status: 'ORDER_BOUND' });
+    await setDoc(doc(db, 'passportDrafts', 'draft-security-001'), { commerceContextId: 'ctx-security-001', status: 'READY_FOR_REVIEW' });
+    await setDoc(doc(db, 'publicCommerceHandoffs', 'hnd-security-001'), { commerceContextId: 'ctx-security-001', status: 'PENDING_CLAIM' });
+    await setDoc(doc(db, 'participantClaims', 'claim-security-001'), { transactionId: 'txn-security-001', status: 'ISSUED' });
+    await setDoc(doc(db, 'evidenceSessions', 'es-security-001'), { transactionId: 'txn-security-001', status: 'READY' });
+    await setDoc(doc(db, 'domainOutbox', 'evt-security-001'), { type: 'TRANSACTION_CREATED', deliveryState: 'PENDING' });
   });
 
   const alice = testEnv.authenticatedContext('alice');
@@ -34,6 +40,18 @@ try {
   await assertFails(getDoc(doc(eve.firestore(), 'transactions', 'tx-security-001', 'evidence', 'upload001')));
   await assertSucceeds(getDoc(doc(alice.firestore(), 'publicProfiles', 'alice')));
   await assertFails(getDoc(doc(guest.firestore(), 'publicProfiles', 'alice')));
+  await assertFails(getDoc(doc(alice.firestore(), 'commerceContexts', 'ctx-security-001')));
+  await assertFails(setDoc(doc(alice.firestore(), 'commerceContexts', 'ctx-security-001'), { status: 'REVOKED' }, { merge: true }));
+  await assertFails(getDoc(doc(alice.firestore(), 'passportDrafts', 'draft-security-001')));
+  await assertFails(setDoc(doc(alice.firestore(), 'passportDrafts', 'draft-security-001'), { status: 'BOUND' }, { merge: true }));
+  await assertFails(getDoc(doc(alice.firestore(), 'publicCommerceHandoffs', 'hnd-security-001')));
+  await assertFails(setDoc(doc(alice.firestore(), 'publicCommerceHandoffs', 'hnd-security-001'), { status: 'CLAIMED' }, { merge: true }));
+  await assertFails(getDoc(doc(alice.firestore(), 'participantClaims', 'claim-security-001')));
+  await assertFails(setDoc(doc(alice.firestore(), 'participantClaims', 'claim-security-001'), { status: 'CLAIMED' }, { merge: true }));
+  await assertFails(getDoc(doc(alice.firestore(), 'evidenceSessions', 'es-security-001')));
+  await assertFails(setDoc(doc(alice.firestore(), 'evidenceSessions', 'es-security-001'), { status: 'CAPTURING' }, { merge: true }));
+  await assertFails(getDoc(doc(alice.firestore(), 'domainOutbox', 'evt-security-001')));
+  await assertFails(setDoc(doc(alice.firestore(), 'domainOutbox', 'evt-security-001'), { deliveryState: 'DELIVERED' }, { merge: true }));
 
   const payload = new Uint8Array([1, 2, 3, 4]);
   const uploadRef = ref(alice.storage(), 'evidence/tx-security-001/alice/upload001');

@@ -1,0 +1,486 @@
+{
+  "schemaVersion": 1,
+  "registerVersion": "1.0.0",
+  "effectiveDate": "2026-08-07",
+  "source": {
+    "title": "PackProof Technical Whitepaper",
+    "version": "1.0",
+    "date": "2026-08-07",
+    "implementationSnapshot": "0.2.1",
+    "reviewBoundary": "Static, path- and date-bound source review; no repository commit identifier was present.",
+    "status": "Technical synthesis and validation blueprint, not certification, production audit, penetration test, legal opinion, carrier attestation, or performance evidence."
+  },
+  "enforcement": {
+    "unknownClaimPolicy": "REQUIRE_MANUAL_REVIEW",
+    "implementedClaimPolicy": "REQUIRE_CURRENT_RUNTIME_VERIFICATION",
+    "productionPhysicalCorrespondence": "NOT_AVAILABLE",
+    "allowedPhysicalCorrespondenceStatesUntilValidation": [
+      "NOT_AVAILABLE",
+      "RESEARCH_ONLY"
+    ],
+    "forbiddenProductionPhysicalCorrespondenceStatesUntilValidation": [
+      "MATCH",
+      "NON_MATCH"
+    ],
+    "claimChangeRequires": [
+      "claims register update",
+      "evidence package",
+      "release review approval"
+    ]
+  },
+  "classDefinitions": {
+    "E": "Established general proposition supported by external research or an authoritative source; not automatically PackProof performance.",
+    "I": "Observed in the reviewed source snapshot; still requires verification against the exact release and runtime environment.",
+    "D": "Proposed architecture or control not established as implemented.",
+    "V": "Validation target awaiting a frozen, representative, independently controlled test.",
+    "P": "Prohibited absolute, transferred, certified, or outcome-guarantee claim unsupported by evidence."
+  },
+  "claims": [
+    {
+      "id": "paper_print_variation_general_feasibility",
+      "currentClass": ["E"],
+      "releaseState": "BOUNDED_GENERAL_PROPOSITION",
+      "sourceHeadings": [
+        "3.1 What prior research supports",
+        "Appendix D. Claim register"
+      ],
+      "approvedWording": "Published work supports the general feasibility premise that some naturally occurring paper and print variation can support identification under the evaluated protocols.",
+      "prohibitedWording": [
+        "Published research proves PackProof works",
+        "All paper or packaging is uniquely identifiable"
+      ],
+      "requiredEvidenceToAdvance": [
+        "PackProof-specific replication on the target population",
+        "frozen independent blind validation"
+      ]
+    },
+    {
+      "id": "digital_evidence_path",
+      "currentClass": ["I"],
+      "qualifier": "static-source-review-only",
+      "releaseState": "REQUIRES_CURRENT_RUNTIME_VERIFICATION",
+      "sourceHeadings": [
+        "Document status and review boundary",
+        "6.2 Reviewed 0.2.1 evidence path",
+        "15.1 Preserve the current strengths"
+      ],
+      "approvedWording": "Static inspection of the reviewed 0.2.1 snapshot found a substantial digital evidence design; the exact release still requires device, backend, configuration, and end-to-end verification.",
+      "prohibitedWording": [
+        "The reviewed source proves production deployment",
+        "The digital evidence path is certified",
+        "The build report proves production readiness"
+      ],
+      "requiredEvidenceToAdvance": [
+        "exact source revision and build provenance",
+        "real-device runtime tests",
+        "backend configuration and rules tests",
+        "end-to-end evidence verification"
+      ]
+    },
+    {
+      "id": "composite_boundary_bridge_resistance",
+      "currentClass": ["V"],
+      "releaseState": "RESEARCH_ONLY",
+      "sourceHeadings": [
+        "3.2 The proposed composite fingerprint",
+        "3.6 Falsifiable hypotheses",
+        "Appendix D. Claim register"
+      ],
+      "approvedWording": "The composite label-package boundary is a proposed hypothesis that may raise attack cost; it is not validated.",
+      "prohibitedWording": [
+        "The boundary bridge prevents cloning",
+        "The boundary bridge is unclonable",
+        "The boundary bridge is transplant-proof"
+      ],
+      "requiredEvidenceToAdvance": [
+        "held-out label-only versus composite comparison",
+        "independent transplant and reconstruction attacks",
+        "pre-registered performance criteria"
+      ]
+    },
+    {
+      "id": "packproof_physical_matcher",
+      "currentClass": ["P", "V"],
+      "releaseState": "UNAVAILABLE_RESEARCH_ONLY",
+      "sourceHeadings": [
+        "Document status and review boundary",
+        "15.2 Required work before physical-match claims",
+        "16. Limitations and open research questions",
+        "Appendix D. Claim register"
+      ],
+      "approvedWording": "No production PackProof physical matcher or PackProof-specific performance result is established by the reviewed materials. Any experimental implementation is research-only until independently validated.",
+      "prohibitedWording": [
+        "PackProof physical matcher works",
+        "PackProof verifies physical authenticity",
+        "PackProof proves the same package",
+        "PackProof detects counterfeits",
+        "PackProof match",
+        "PackProof non-match"
+      ],
+      "requiredEvidenceToAdvance": [
+        "implemented and frozen acquisition, eligibility, registration, feature, score, and decision pipeline",
+        "PackProof-specific development and independently controlled blind corpora",
+        "pre-registered metrics, thresholds, subgroup, environmental, and attack analyses",
+        "independent replication",
+        "all primary release criteria passed with confidence",
+        "no unresolved critical security finding"
+      ]
+    },
+    {
+      "id": "cross_device_physical_support",
+      "currentClass": ["V"],
+      "releaseState": "UNVALIDATED",
+      "sourceHeadings": [
+        "5.6 Cross-device operation",
+        "Appendix D. Claim register"
+      ],
+      "approvedWording": "Physical comparison support is limited to an explicitly validated device, camera-path, OS, capture-profile, and substrate matrix.",
+      "prohibitedWording": [
+        "Works on every phone",
+        "Universal cross-device support",
+        "Device-independent matching"
+      ],
+      "requiredEvidenceToAdvance": [
+        "held-out device models and families",
+        "same-device and cross-device trials",
+        "camera API and OS update drift assessment"
+      ]
+    },
+    {
+      "id": "damage_resilience",
+      "currentClass": ["V"],
+      "releaseState": "UNVALIDATED",
+      "sourceHeadings": [
+        "5.5 Damage tolerance",
+        "10.5 Environmental and durability study",
+        "Appendix D. Claim register"
+      ],
+      "approvedWording": "The proposed design can return inconclusive when only partial evidence survives; its damage limits are unknown until severity-stratified validation is complete.",
+      "prohibitedWording": [
+        "Self-healing matching",
+        "Damage-proof",
+        "Works despite any shipping damage"
+      ],
+      "requiredEvidenceToAdvance": [
+        "severity-stratified same-source trials",
+        "environmental and combined-exposure studies",
+        "selective-presentation and damaged-impostor attacks"
+      ]
+    },
+    {
+      "id": "zero_error_or_one_in_million",
+      "currentClass": ["P"],
+      "releaseState": "PROHIBITED",
+      "sourceHeadings": [
+        "9.4 Confidence bounds and the rule of three",
+        "Appendix D. Claim register"
+      ],
+      "approvedWording": "Report observed errors, independent-unit counts, sampling design, and confidence bounds for the exact validated scope.",
+      "prohibitedWording": [
+        "Zero error",
+        "Error-free",
+        "Strictly guaranteed",
+        "One-in-a-million accuracy",
+        "100% accurate"
+      ],
+      "requiredEvidenceToAdvance": [
+        "scope-specific independent trials",
+        "cluster-aware confidence analysis",
+        "separate ordinary-impostor and attack populations"
+      ]
+    },
+    {
+      "id": "online_app_device_context",
+      "currentClass": ["I"],
+      "qualifier": "does-not-prove-scene",
+      "releaseState": "REQUIRES_CURRENT_RUNTIME_VERIFICATION",
+      "sourceHeadings": [
+        "6.7 Device and application attestation",
+        "Appendix D. Claim register"
+      ],
+      "approvedWording": "Verified provider and server signals may raise assurance about app, device, account, key, and request context; they do not authenticate the package or camera scene.",
+      "prohibitedWording": [
+        "Attestation proves the scene",
+        "Play Integrity proves a live honest capture",
+        "Attested means authentic package"
+      ],
+      "requiredEvidenceToAdvance": [
+        "provider token and verdict verification",
+        "nonce, expiry, replay, account, app, and request-binding tests",
+        "provider outage and degraded-state behavior"
+      ]
+    },
+    {
+      "id": "hardware_backed_device_key",
+      "currentClass": ["I"],
+      "qualifier": "limited",
+      "releaseState": "SIGNAL_ONLY",
+      "sourceHeadings": [
+        "6.7 Device and application attestation",
+        "Appendix D. Claim register"
+      ],
+      "approvedWording": "The reviewed design can prove possession of a persistent Keystore private key. Hardware-backed protection is not remotely established without full Android Key Attestation verification.",
+      "prohibitedWording": [
+        "Hardware-backed key verified",
+        "Hardware security proven",
+        "The client hardwareBacked flag is attestation"
+      ],
+      "requiredEvidenceToAdvance": [
+        "server-side certificate-chain validation",
+        "trusted-root and revocation checks",
+        "challenge and security-level verification"
+      ]
+    },
+    {
+      "id": "offline_encrypted_queue",
+      "currentClass": ["I"],
+      "qualifier": "android-design-observed",
+      "releaseState": "REQUIRES_CURRENT_RUNTIME_VERIFICATION",
+      "sourceHeadings": [
+        "6.4 Authenticated encryption for offline queues",
+        "7.1 Assurance preserved offline",
+        "7.4 Offline validation tests",
+        "Appendix D. Claim register"
+      ],
+      "approvedWording": "Static inspection found an Android Keystore AES-256-GCM offline queue design; confidentiality, integrity, recoverability, and failure behavior require current real-device testing.",
+      "prohibitedWording": [
+        "Offline evidence is perfectly secure",
+        "Offline capture is equivalent to live-attested capture",
+        "Queued evidence is always recoverable"
+      ],
+      "requiredEvidenceToAdvance": [
+        "real-device encryption and tag-failure tests",
+        "process death, reboot, update, reinstall, backup, key-loss, storage, and sync fault tests",
+        "plaintext-remnant assessment"
+      ]
+    },
+    {
+      "id": "tamper_evident_server_record",
+      "currentClass": ["I"],
+      "qualifier": "limited",
+      "releaseState": "CREATE_RESTRICTED_WITH_PRIVILEGED_RESIDUAL_RISK",
+      "sourceHeadings": [
+        "6.9 Immutability and privileged actors",
+        "Appendix D. Claim register"
+      ],
+      "approvedWording": "Client evidence is create-restricted and records can be tamper-evident within the stated administrative, logging, retention, and key controls; privileged paths remain.",
+      "prohibitedWording": [
+        "Immutable",
+        "Unalterable",
+        "Impossible for anyone to modify",
+        "Complete write-once chain of custody"
+      ],
+      "requiredEvidenceToAdvance": [
+        "current rules and privileged-path tests",
+        "separately administered audit export",
+        "retention or versioning controls",
+        "administrative restore and mutation drills"
+      ]
+    },
+    {
+      "id": "publicly_verifiable_dossier",
+      "currentClass": ["D"],
+      "releaseState": "NOT_IMPLEMENTED_BY_HMAC",
+      "sourceHeadings": [
+        "6.6 HMAC versus digital signatures",
+        "15.3 Cryptographic and evidence hardening",
+        "Appendix D. Claim register"
+      ],
+      "approvedWording": "Current HMAC-authenticated manifests are verifiable by authorized PackProof infrastructure holding the shared secret; public verification is a proposed future capability.",
+      "prohibitedWording": [
+        "Publicly verifiable signature",
+        "Anyone can independently verify the HMAC",
+        "Current dossiers use a public digital signature"
+      ],
+      "requiredEvidenceToAdvance": [
+        "KMS or HSM asymmetric signature",
+        "published key, certificate, and status metadata",
+        "public verifier and cross-language test vectors",
+        "rotation, revocation, and long-term verification policy"
+      ]
+    },
+    {
+      "id": "instant_liveness_or_human_presence",
+      "currentClass": ["P", "V"],
+      "releaseState": "PROHIBITED_UNLESS_SEPARATELY_DEFINED_AND_VALIDATED",
+      "sourceHeadings": [
+        "2.2 Approved and prohibited formulations",
+        "4.2 Guided region protocol",
+        "4.5 Telemetry interpretation",
+        "8.5 Replay, relay, and synthetic media"
+      ],
+      "approvedWording": "Challenge-directed capture, timing, telemetry, and attestation are bounded signals intended to raise replay cost; attack performance is unvalidated.",
+      "prohibitedWording": [
+        "Instant liveness",
+        "Liveness detected",
+        "Human present",
+        "Replay impossible"
+      ],
+      "requiredEvidenceToAdvance": [
+        "explicit liveness definition",
+        "presentation-attack instrument taxonomy",
+        "attack-presentation classification error rates",
+        "independent adaptive attack study"
+      ]
+    },
+    {
+      "id": "universal_device_or_substrate_support",
+      "currentClass": ["P"],
+      "releaseState": "PROHIBITED",
+      "sourceHeadings": [
+        "2.2 Approved and prohibited formulations",
+        "5.1 Region eligibility and substrate scope",
+        "5.6 Cross-device operation"
+      ],
+      "approvedWording": "Support is limited to explicitly validated device, camera-path, capture-profile, and substrate classes.",
+      "prohibitedWording": [
+        "Works on every phone",
+        "Universal devices",
+        "Universal substrates",
+        "Works on all packaging"
+      ],
+      "requiredEvidenceToAdvance": [
+        "validated support matrix",
+        "held-out device and material evidence",
+        "documented revalidation after relevant platform changes"
+      ]
+    },
+    {
+      "id": "iso_or_standards_compliance",
+      "currentClass": ["P"],
+      "releaseState": "MAPPING_ONLY",
+      "sourceHeadings": [
+        "11.1 How to read the mapping",
+        "11.2 Forensic collection and interpretation",
+        "11.3 Cybersecurity and cryptography",
+        "Appendix D. Claim register"
+      ],
+      "approvedWording": "The architecture is mapped to identified standards and guidance as readiness targets; conformity, certification, accreditation, and endorsement have not been established.",
+      "prohibitedWording": [
+        "ISO compliant",
+        "ISO certified",
+        "ISO 17025 certified product",
+        "FIPS compliant because an algorithm is used",
+        "Standards approved"
+      ],
+      "requiredEvidenceToAdvance": [
+        "current normative text and defined scope",
+        "control-by-control evidence",
+        "assessment by a competent body",
+        "exact validated cryptographic module and operating boundary where required"
+      ]
+    },
+    {
+      "id": "legal_admissibility_or_binding_effect",
+      "currentClass": ["P"],
+      "releaseState": "PROHIBITED",
+      "sourceHeadings": [
+        "13.1 Authentication is not admissibility",
+        "13.2 Expert-method reliability",
+        "Appendix D. Claim register"
+      ],
+      "approvedWording": "A properly founded PackProof dossier may support authentication; admissibility, legal effect, and evidentiary weight are case-, jurisdiction-, purpose-, and procedure-specific.",
+      "prohibitedWording": [
+        "Legally binding",
+        "Legally admissible",
+        "Court proof",
+        "Self-authenticating in every case"
+      ],
+      "requiredEvidenceToAdvance": [
+        "case-specific foundation",
+        "qualified legal and expert review",
+        "applicable notice and procedural compliance",
+        "decision by the relevant court or tribunal"
+      ]
+    },
+    {
+      "id": "chargeback_or_marketplace_outcome",
+      "currentClass": ["P"],
+      "releaseState": "PROHIBITED",
+      "sourceHeadings": [
+        "12.3 Payment and marketplace disputes",
+        "Appendix D. Claim register"
+      ],
+      "approvedWording": "PackProof may help organize reason-code-specific evidence for submission; the issuer, network, marketplace, or platform remains the decision-maker.",
+      "prohibitedWording": [
+        "Chargeback proof",
+        "Guaranteed chargeback win",
+        "Guaranteed dispute success",
+        "Greater than 95% win rate"
+      ],
+      "requiredEvidenceToAdvance": [
+        "representative independently auditable historical outcome study",
+        "stratification by reason code, network, issuer, region, merchant type, selection, and policy version",
+        "continued disclaimer that future outcomes are not guaranteed"
+      ]
+    },
+    {
+      "id": "no_hardware_or_cost",
+      "currentClass": ["E"],
+      "qualifier": "limited",
+      "releaseState": "BOUNDED",
+      "sourceHeadings": [
+        "2.2 Approved and prohibited formulations",
+        "12.4 Service levels and cost claims",
+        "Appendix D. Claim register"
+      ],
+      "approvedWording": "A smartphone-first workflow may avoid dedicated authentication hardware for supported users; software, cloud, operations, devices, training, integrations, validation, audit, legal, and incident-response costs remain.",
+      "prohibitedWording": [
+        "Zero CAPEX",
+        "No cost",
+        "No hardware required for every deployment",
+        "Two-sprint integration guaranteed"
+      ],
+      "requiredEvidenceToAdvance": [
+        "scope-specific compatibility study",
+        "measured integration and total-cost evidence"
+      ]
+    },
+    {
+      "id": "identity_contents_scene_or_custody_truth",
+      "currentClass": ["P"],
+      "releaseState": "OUT_OF_SCOPE",
+      "sourceHeadings": [
+        "1.3 Explicit non-goals",
+        "8.4 Physical cloning and transplantation",
+        "13.4 Chain-of-custody limits",
+        "13.6 Human interpretation"
+      ],
+      "approvedWording": "PackProof records and preserves the evidence and sourced events it actually observes. Corroborating identifiers, procedures, carrier data, and human review are required for broader conclusions.",
+      "prohibitedWording": [
+        "Authenticates the person",
+        "Authenticates the product brand",
+        "Proves the serial number",
+        "Proves the package contents",
+        "Proves an honest continuous scene",
+        "Proves complete physical chain of custody",
+        "A match proves genuine contents",
+        "A non-match proves fraud"
+      ],
+      "requiredEvidenceToAdvance": [
+        "separately defined corroborating system and claim",
+        "independent validation appropriate to that new claim",
+        "case-specific human or provider evidence"
+      ]
+    },
+    {
+      "id": "trusted_offline_capture_time",
+      "currentClass": ["P"],
+      "releaseState": "UNAVAILABLE",
+      "sourceHeadings": [
+        "6.8 Time semantics",
+        "7.2 Assurance unavailable or weaker offline"
+      ],
+      "approvedWording": "Offline evidence carries device wall-clock and relative-time observations plus later server receipt/finalization provenance; it does not generally establish a trusted absolute capture time.",
+      "prohibitedWording": [
+        "Trusted offline capture time",
+        "Later synchronization proves the original capture time",
+        "Offline capture is retroactively attested"
+      ],
+      "requiredEvidenceToAdvance": [
+        "separately specified trusted hardware or external time service",
+        "independent verification of its threat model and operating limits"
+      ]
+    }
+  ]
+}

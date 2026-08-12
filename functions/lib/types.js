@@ -28,6 +28,8 @@ exports.evidenceTypes = [
     'RETURN_PACKING_VIDEO',
     'RETURN_SHIPPING_LABEL',
     'RETURN_UNBOXING_VIDEO',
+    'PHYSICAL_REFERENCE_FRAME',
+    'PHYSICAL_VERIFICATION_FRAME',
 ];
 exports.returnPassportStatuses = [
     'REQUESTED',

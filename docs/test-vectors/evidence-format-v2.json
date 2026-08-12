@@ -1,0 +1,26 @@
+{
+  "profile": "PACKPROOF_EVIDENCE_FORMAT_V2",
+  "canonicalization": [
+    {
+      "name": "object-key-order",
+      "input": { "b": 2, "a": 1 },
+      "expected": "{\"a\":1,\"b\":2}"
+    },
+    {
+      "name": "nested-primitives",
+      "input": { "z": [true, null, "line\\nbreak"], "n": -0.000001 },
+      "expected": "{\"n\":-0.000001,\"z\":[true,null,\"line\\\\nbreak\"]}"
+    }
+  ],
+  "bundle": {
+    "fileSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "manifestSha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "expected": "2460dea6e1f8736c1a3db26d4052ab57692c00e434048314c01074f80755fe88"
+  },
+  "uploadId": {
+    "transactionId": "tx_test_123456",
+    "uploaderId": "user_abcdef",
+    "clientEvidenceId": "qe_1234567890_abc",
+    "expected": "bd5e2eaca115d690fe36f9563ab1e55c3f23d37ad5f931e1960bf2a99ada8e13"
+  }
+}

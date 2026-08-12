@@ -36,7 +36,7 @@ Important: PackProof is a documentation tool. It does not authenticate users or 
 2. New PackProof — item, value and identifiers.
 3. Mutual terms — exact record confirmed by buyer and seller.
 4. Guided packing — uninterrupted capture checklist.
-5. Verified evidence — timestamps and SHA-256 fingerprints.
+5. Finalized evidence — separately labeled client/server times, SHA-256 fingerprints, and assurance limitations.
 6. Audit timeline — shipment, receipt and completion.
 7. Evidence packet — organized export for personal records.
 8. Account — linked sign-in methods, plan, export and deletion.

@@ -27,7 +27,7 @@ const environments = ['development', 'preview', 'production'];
 const environmentArgs = environments.flatMap((environment) => ['--environment', environment]);
 const run = (args, label) => {
   process.stdout.write(`Syncing ${label}…\n`);
-  const result = spawnSync(npx, ['--yes', 'eas-cli@21.4.0', ...args], { stdio: 'inherit', shell: false, env: { ...process.env, ...values, GOOGLE_SERVICES_JSON: resolve('google-services.json'), EXPO_NO_TELEMETRY: '1' } });
+  const result = spawnSync(npx, ['--yes', 'eas-cli@21.4.0', ...args], { stdio: 'inherit', shell: process.platform === 'win32', env: { ...process.env, ...values, GOOGLE_SERVICES_JSON: resolve('google-services.json'), EXPO_NO_TELEMETRY: '1' } });
   if (result.error || result.status !== 0) fail(`Could not sync ${label}. Confirm that \`npx eas-cli@21.4.0 login\` and \`npx eas-cli@21.4.0 init\` completed, then retry.`);
 };
 

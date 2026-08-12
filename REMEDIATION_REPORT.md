@@ -1,6 +1,8 @@
 # PackProof 0.2.1 remediation report
 
-This release is the externally demonstrable correction of the 0.2.0 source handoff.
+> **Historical record — superseded for release decisions.** This report documents a 0.2.0-to-0.2.1 source correction. “Externally demonstrable” was not established by the later real-device startup result, and this file is not evidence for 0.3.0 deployment or runtime acceptance.
+
+This snapshot was intended as the externally demonstrable correction of the 0.2.0 source handoff.
 
 ## Build and dependency corrections
 
@@ -14,7 +16,7 @@ This release is the externally demonstrable correction of the 0.2.0 source hando
 
 - Enforced create-only evidence uploads with an explicit `resource == null` Storage rule.
 - Prevented online App Check failures from silently becoming offline/unattested captures.
-- Deleted both evidence objects and their signed manifests during account purge.
+- Deleted both evidence objects and their then-described HMAC-authenticated manifests during account purge.
 - Invalidated and deleted generated dossier PDFs for every transaction affected by account deletion.
 - Expanded account JSON export to include Return Passport and packet metadata.
 - Added certificate-validated Android App Links generation and ensured Firebase Hosting publishes `/.well-known`.

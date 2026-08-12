@@ -20,7 +20,7 @@ export const statusLabel: Record<TransactionStatus, string> = {
   AWAITING_BUYER: 'Awaiting buyer',
   TERMS_REVIEW: 'Reviewing terms',
   TERMS_LOCKED: 'Terms locked',
-  PACKED: 'Packed & verified',
+  PACKED: 'Packing evidence finalized',
   SHIPPED: 'Shipped',
   BUYER_REVIEW: 'Buyer review',
   COMPLETED: 'Complete',

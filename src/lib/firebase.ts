@@ -13,7 +13,7 @@ import { getStorage } from '@react-native-firebase/storage';
 export const firebaseApp = getApp();
 export const auth = getAuth(firebaseApp);
 export const db = getFirestore(firebaseApp);
-export const functions = getFunctions(firebaseApp, process.env.EXPO_PUBLIC_FIREBASE_FUNCTIONS_REGION ?? 'us-central1');
+export const functions = getFunctions(firebaseApp, process.env.EXPO_PUBLIC_FIREBASE_FUNCTIONS_REGION ?? 'us-east1');
 export const fileStorage = getStorage(firebaseApp);
 
 let appCheckPromise: Promise<AppCheck> | null = null;

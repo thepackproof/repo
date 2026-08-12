@@ -1,6 +1,8 @@
-# PackProof 0.2.1 external demonstration runbook
+# PackProof 0.3.0 digital-evidence demonstration runbook
 
-This runbook produces a real PackProof environment: a signed native Android app using live Firebase Authentication, Firestore, Storage, Cloud Functions, App Check, Hosting, evidence processing, PDF dossier generation, account export, and the actual two-party transaction state machine. Nothing in this path mocks uploads, hashes, timestamps, invitations, callbacks, or account operations.
+This runbook targets a real PackProof environment: a signed native Android app using live Firebase Authentication, Firestore, Storage, Cloud Functions, App Check, Hosting, evidence processing, PDF dossier generation, account export, and the two-party transaction state machine. Nothing in the acceptance path should mock uploads, hashes, server receipt/finalization times, invitations, callbacks, or account operations.
+
+This is a digital-evidence demonstration. Physical correspondence is `NOT_AVAILABLE`, acquisition quality is `NOT_EVALUATED`, and no step authenticates an item, proves custody, or guarantees a legal, marketplace, carrier, payment, insurance, or dispute outcome.
 
 The recommended partner-facing distribution is a Google Play internal-testing build. A sideloaded EAS preview APK is useful for fast team sessions, but Google Play Billing requires a Play install and Play Integrity has a stronger, simpler trust path through Play.
 
@@ -72,7 +74,7 @@ This generates `public/.well-known/assetlinks.json` for the configured package. 
 
 ## 4. Configure backend secrets
 
-The forensic manifest secret is mandatory:
+The evidence-manifest HMAC secret is mandatory:
 
 ```powershell
 npx.cmd --yes firebase-tools@15.25.1 functions:secrets:set MANIFEST_SIGNING_SECRET
@@ -94,6 +96,8 @@ npx.cmd --yes firebase-tools@15.25.1 functions:secrets:set REVENUECAT_WEBHOOK_SE
 
 Do not put any of these secret values in `.env`, `google-services.json`, source control, screenshots, or a shared demonstration document.
 
+Set the non-secret manifest key identifier in ignored `functions/.env`, for example `MANIFEST_SIGNING_KEY_ID=manifest-hmac-v1`. Treat key rotation and historical-key retention as an operational release control; the identifier is not secret material.
+
 ## 5. Deploy the live backend and website
 
 Run all local gates first:
@@ -103,6 +107,9 @@ npm.cmd run doctor
 npm.cmd run typecheck
 npm.cmd --prefix functions run build
 npm.cmd run lint
+npm.cmd run test:evidence-format
+npm.cmd run test:evidence-verifier
+npm.cmd run test:claims
 npm.cmd run test:rules
 ```
 
@@ -161,15 +168,15 @@ Use two phones and two Google accounts. Keep both screens visible during a partn
 1. Seller signs in, creates a PackProof, saves the item, price, identifiers, condition, shipping/return terms, and demonstrates editing the proposed terms.
 2. Seller creates and shares the one-use buyer invite. Buyer opens it and joins. Reopening the consumed invite with a third account must fail.
 3. Both participants confirm the same terms. Confirm that the record changes to `TERMS_LOCKED` only after both approvals.
-4. Seller records a continuous packing video, shows the label barcode, and uploads it. Wait for the server-verified evidence record and attestation label.
+4. Seller records a continuous packing video, shows the label barcode, and queues it. Wait for the server-finalized evidence record, then inspect byte integrity, app/device context, acquisition-quality, physical-correspondence, carrier-context, and business/legal-relevance states separately.
 5. Seller records the carrier and tracking number. Show the packing-label match result.
 6. Buyer records a continuous unboxing video or explicitly marks the shipment received without video.
 7. Both mark the transaction complete. Generate and open the real server-built PDF evidence dossier.
-8. Start a verified return, authorize it from the other account, record return repacking/shipping/unboxing, and complete the Return Passport.
+8. Start a Return Passport, authorize it from the other account, record return repacking/shipping/unboxing, and complete it. Confirm that the flow documents digital evidence but does not claim a physical item match.
 9. From Account, export the JSON account record. It includes profile, transaction, event, evidence metadata, return, and generated-packet metadata; evidence media remains available through its protected transaction views.
 10. On a separate unlocked PackProof, demonstrate seller cancellation and show that the cancellation remains in the audit timeline.
 
-Also test airplane mode during capture. Offline capture should be explicitly labeled `OFFLINE CAPTURE`, encrypted in app-private storage, and synchronized after connectivity returns. An online App Check/configuration failure must surface as an error rather than being disguised as offline capture.
+Also test airplane mode during capture. Offline capture must remain explicitly `OFFLINE_UNATTESTED`, encrypted in app-private storage, and synchronized without later upgrading its capture-time assurance. A bounded provider-unavailable fallback must record `ATTESTATION_PROVIDER_UNAVAILABLE`; authorization, account, context, or validation failures must still block rather than masquerade as offline operation.
 
 ## 9. Demonstrate PackProof Connect to a vendor
 
@@ -195,14 +202,14 @@ Authorization: Bearer pp_test_...
 Content-Type: application/json
 ```
 
-Use `docs/openapi/packproof-connect.yaml` for the payload and `sdk/javascript` to verify the signed completion callback. The returned verification URL opens the actual native capture workflow through Android App Links, with the hosted fallback available when the app is not installed.
+Use `docs/openapi/packproof-connect.yaml` for the payload and `sdk/javascript` to verify the exact-body HMAC on the `packproof.evidence.finalized` callback. The legacy response field `verificationUrl` opens the actual native evidence-capture workflow through Android App Links, with the hosted fallback available when the app is not installed.
 
 ## 10. Five-minute pre-meeting check
 
 1. Open the Hosting URL and the Android App Link on both phones.
 2. Confirm Google sign-in works on both accounts.
 3. Create and cancel one disposable draft.
-4. Upload one small condition photo and wait for server verification.
+4. Upload one small condition photo and wait for server finalization; inspect all assurance dimensions.
 5. Generate one dossier and open it.
 6. Confirm Firebase App Check metrics show valid traffic and Cloud Functions has no new errors.
 7. Put both phones on chargers, enable Do Not Disturb, and keep one unused transaction ready at the first story step.

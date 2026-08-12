@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.purgeDeletedAccounts = exports.exportAccountData = exports.cancelAccountDeletion = exports.requestAccountDeletion = void 0;
+exports.purgeDeletedAccounts = exports.purgeExpiredExports = exports.exportAccountData = exports.cancelAccountDeletion = exports.requestAccountDeletion = void 0;
 const firestore_1 = require("firebase-admin/firestore");
 const https_1 = require("firebase-functions/v2/https");
 const scheduler_1 = require("firebase-functions/v2/scheduler");
@@ -56,6 +56,16 @@ exports.exportAccountData = (0, https_1.onCall)({ enforceAppCheck: true, timeout
     await config_1.storage.bucket().file(path).save(bytes, { contentType: 'application/json', resumable: false, metadata: { cacheControl: 'private, no-store' } });
     await config_1.db.collection('users').doc(uid).collection('exports').doc(exportId).set({ path, createdAt: firestore_1.FieldValue.serverTimestamp(), expiresAt: firestore_1.Timestamp.fromMillis(Date.now() + 24 * 3600_000) });
     return { exportId, storagePath: path, expiresAt: new Date(Date.now() + 24 * 3600_000).toISOString() };
+});
+exports.purgeExpiredExports = (0, scheduler_1.onSchedule)('every 60 minutes', async () => {
+    const expired = await config_1.db.collectionGroup('exports').where('expiresAt', '<=', firestore_1.Timestamp.now()).limit(100).get();
+    for (const item of expired.docs) {
+        const path = item.data().path;
+        if (typeof path === 'string' && /^exports\/[^/]+\/[^/]+\.json$/.test(path)) {
+            await config_1.storage.bucket().file(path).delete({ ignoreNotFound: true });
+        }
+        await item.ref.delete();
+    }
 });
 exports.purgeDeletedAccounts = (0, scheduler_1.onSchedule)({ schedule: 'every day 03:15', timeoutSeconds: 540, memory: '1GiB' }, async () => {
     const due = await config_1.db.collection('users').where('deletionScheduledAt', '<=', firestore_1.Timestamp.now()).limit(100).get();

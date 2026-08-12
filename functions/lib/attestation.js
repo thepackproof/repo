@@ -24,7 +24,16 @@ exports.beginCaptureSession = (0, https_1.onCall)({ enforceAppCheck: true, consu
     if (input.connectSessionId && data.source?.connectSessionId !== input.connectSessionId) {
         throw new https_1.HttpsError('permission-denied', 'PackProof Connect session mismatch.');
     }
+    if (input.requestedEvidenceCount > 1) {
+        if (input.requestedEvidenceCount !== 15 || input.captureProfileId !== 'PP-PHYSICAL-MATTE-V1' || !input.captureGroupId) {
+            throw new https_1.HttpsError('invalid-argument', 'Batch capture requires the frozen 15-frame physical profile and a capture group identifier.');
+        }
+    }
+    else if (input.captureProfileId || input.captureGroupId) {
+        throw new https_1.HttpsError('invalid-argument', 'Capture profile and group identifiers are reserved for an approved batch profile.');
+    }
     const ref = config_1.db.collection('captureSessions').doc();
+    const sessionMode = input.requestedEvidenceCount > 1 ? 'BATCH' : 'SINGLE';
     const nonce = (0, helpers_1.randomToken)(32);
     const issuedAt = new Date();
     const captureWindowEndsAt = new Date(Date.now() + 10 * 60_000);
@@ -38,6 +47,12 @@ exports.beginCaptureSession = (0, https_1.onCall)({ enforceAppCheck: true, consu
         appId: request.app.appId,
         tokenReplayDetected: Boolean(request.app.alreadyConsumed),
         runtimeArtifactHash: input.runtimeArtifactHash ?? null,
+        captureProfileId: input.captureProfileId ?? null,
+        captureGroupId: input.captureGroupId ?? null,
+        sessionMode,
+        maxEvidenceCount: input.requestedEvidenceCount,
+        requestFingerprints: [],
+        uploadBindings: {},
         issuedAt: firestore_1.FieldValue.serverTimestamp(),
         captureWindowEndsAt,
         redemptionExpiresAt: (0, helpers_1.expiresIn)(30 * 86400),
@@ -51,6 +66,10 @@ exports.beginCaptureSession = (0, https_1.onCall)({ enforceAppCheck: true, consu
         issuedAt: issuedAt.toISOString(),
         captureWindowEndsAt: captureWindowEndsAt.toISOString(),
         tokenReplayDetected: false,
+        reasonCodes: [],
+        sessionMode,
+        maxEvidenceCount: input.requestedEvidenceCount,
+        captureGroupId: input.captureGroupId ?? null,
     };
 });
 //# sourceMappingURL=attestation.js.map

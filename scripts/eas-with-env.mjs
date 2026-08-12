@@ -12,7 +12,7 @@ try { values = parseEnv(await readFile('.env', 'utf8')); }
 catch { process.stderr.write('Run `npm run configure` before using EAS.\n'); process.exit(1); }
 const npx = process.platform === 'win32' ? 'npx.cmd' : 'npx';
 const result = spawnSync(npx, ['--yes', 'eas-cli@21.4.0', ...process.argv.slice(2)], {
-  stdio: 'inherit', shell: false,
+  stdio: 'inherit', shell: process.platform === 'win32',
   env: { ...process.env, ...values, GOOGLE_SERVICES_JSON: resolve('google-services.json'), EXPO_NO_TELEMETRY: '1' },
 });
 if (result.error) process.stderr.write(`${result.error.message}\n`);

@@ -1,4 +1,3 @@
-import { AccessToken, LoginManager } from 'react-native-fbsdk-next';
 import { GoogleSignin } from '@react-native-google-signin/google-signin';
 import {
   FacebookAuthProvider,
@@ -15,6 +14,7 @@ import {
 import * as WebBrowser from 'expo-web-browser';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type PropsWithChildren } from 'react';
 import { callFunction, ensureProfile } from '@/lib/api';
+import { featureFlags } from '@/constants/features';
 import { auth, initializeSecurity } from '@/lib/firebase';
 import type { UserProfile } from '@/types/models';
 
@@ -47,6 +47,13 @@ async function googleCredential() {
 }
 
 async function facebookCredential() {
+  if (!featureFlags.facebookAuth) {
+    throw new Error('Facebook sign-in is not enabled in this PackProof build.');
+  }
+  // This import must remain behind the feature flag. Evaluating the native
+  // Facebook module in a build without its config plugin initializes an
+  // unconfigured FB SDK and prevents Expo Router from registering any route.
+  const { AccessToken, LoginManager } = await import('react-native-fbsdk-next');
   const login = await LoginManager.logInWithPermissions(['public_profile', 'email']);
   if (login.isCancelled) throw new Error('Facebook sign-in was cancelled.');
   const token = await AccessToken.getCurrentAccessToken();
@@ -114,7 +121,12 @@ export function AuthProvider({ children }: PropsWithChildren) {
   const signOut = useCallback(async () => {
     try { await callFunction('unregisterPushToken', {}); } catch { /* Sign-out must still work if offline. */ }
     try { await GoogleSignin.signOut(); } catch { /* provider may not be active */ }
-    try { LoginManager.logOut(); } catch { /* provider may not be active */ }
+    if (featureFlags.facebookAuth) {
+      try {
+        const { LoginManager } = await import('react-native-fbsdk-next');
+        LoginManager.logOut();
+      } catch { /* provider may not be active */ }
+    }
     await firebaseSignOut(auth);
   }, []);
 

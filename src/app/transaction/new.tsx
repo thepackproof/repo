@@ -16,6 +16,7 @@ export default function NewTransaction() {
   const [category, setCategory] = useState('Collectible');
   const [description, setDescription] = useState('');
   const [price, setPrice] = useState('');
+  const [currency, setCurrency] = useState('USD');
   const [identifiers, setIdentifiers] = useState('');
   const [conditionNotes, setConditionNotes] = useState('');
   const [saleType, setSaleType] = useState<'SHIPPED' | 'LOCAL_HANDOFF'>('SHIPPED');
@@ -25,6 +26,7 @@ export default function NewTransaction() {
   const [customTerms, setCustomTerms] = useState('');
   const [busy, setBusy] = useState(false);
   const [loadingExisting, setLoadingExisting] = useState(Boolean(transactionId));
+  const [pageDeclaredSource, setPageDeclaredSource] = useState<string | null>(null);
   const valid = useMemo(() => title.trim().length > 2 && category.trim().length > 1 && Number.isFinite(Number(price)) && Number(price) >= 0, [category, price, title]);
 
   useEffect(() => {
@@ -41,6 +43,7 @@ export default function NewTransaction() {
       setCategory(item.category);
       setDescription(item.description);
       setPrice((item.priceMinor / 100).toFixed(2));
+      setCurrency(item.currency);
       setIdentifiers(item.identifiers.map(({ label, value }) => `${label}: ${value}`).join('\n'));
       setConditionNotes(item.conditionNotes);
       setSaleType(item.terms.saleType);
@@ -48,6 +51,7 @@ export default function NewTransaction() {
       setReturns(item.terms.returns);
       setReturnWindow(String(item.terms.returnWindowDays));
       setCustomTerms(item.terms.customTerms);
+      setPageDeclaredSource(item.source?.type === 'PACKPROOF_BUTTON' ? item.source.origin : null);
       setLoadingExisting(false);
     }, (error) => { setLoadingExisting(false); Alert.alert('Could not load PackProof', readableError(error)); });
   }, [router, transactionId]);
@@ -63,7 +67,7 @@ export default function NewTransaction() {
       const result = await callFunction<Record<string, unknown>, { transactionId: string }>('saveTransactionDraft', {
         ...(transactionId ? { transactionId } : {}),
         title: title.trim(), category: category.trim(), description: description.trim(),
-        priceMinor: Math.round(Number(price) * 100), currency: 'USD', identifiers: parsedIdentifiers,
+        priceMinor: Math.round(Number(price) * 100), currency, identifiers: parsedIdentifiers,
         conditionNotes: conditionNotes.trim(),
         terms: { saleType, shippingResponsibility: saleType === 'LOCAL_HANDOFF' ? 'NOT_APPLICABLE' : shippingResponsibility, returns, returnWindowDays: Math.max(0, Math.min(365, Number.parseInt(returnWindow || '0', 10) || 0)), customTerms: customTerms.trim() },
       });
@@ -80,12 +84,16 @@ export default function NewTransaction() {
     <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.container}>
       <Button label="Close" variant="ghost" onPress={() => router.back()} style={styles.close} />
       <ScreenTitle eyebrow={transactionId ? 'Edit transaction' : 'New transaction'} title="Describe the exact deal" subtitle="This becomes the version your buyer reviews. You can edit it until both parties confirm and lock the terms." />
+      {pageDeclaredSource ? <Card style={styles.section}>
+        <Text style={styles.sectionTitle}>Imported listing draft</Text>
+        <Text style={styles.importNotice}>These fields came from structured data declared by {pageDeclaredSource}. Review and edit every detail before inviting another participant. The import does not establish an order, payment, condition, authenticity, or evidence result.</Text>
+      </Card> : null}
       <Card style={styles.section}>
         <Text style={styles.sectionTitle}>Item</Text>
         <Field label="Item name" value={title} onChangeText={setTitle} placeholder="e.g. CGC 9.8 Amazing Spider-Man #300" autoCapitalize="sentences" />
         <Field label="Category" value={category} onChangeText={setCategory} placeholder="Collectible, watch, electronics…" />
         <Field label="Description" value={description} onChangeText={setDescription} placeholder="Edition, provenance, included accessories and anything else defining the item." multiline />
-        <Field label="Agreed price (USD)" value={price} onChangeText={setPrice} placeholder="1250.00" keyboardType="decimal-pad" />
+        <Field label={`Agreed price (${currency})`} value={price} onChangeText={setPrice} placeholder="1250.00" keyboardType="decimal-pad" />
       </Card>
       <Card style={styles.section}>
         <Text style={styles.sectionTitle}>Identity & condition</Text>
@@ -108,4 +116,4 @@ export default function NewTransaction() {
   </KeyboardAvoidingView></SafeAreaView>;
 }
 
-const styles = StyleSheet.create({ safe: { flex: 1, backgroundColor: colors.background }, container: { padding: 20, paddingBottom: 44, gap: 14 }, close: { alignSelf: 'flex-start', minHeight: 40 }, section: { gap: 16 }, sectionTitle: { color: colors.ink, fontSize: 18, fontWeight: '900' }, label: { color: colors.ink, fontSize: 13, fontWeight: '700' }, choices: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 }, disclaimer: { backgroundColor: 'rgba(104,169,255,0.05)' }, disclaimerText: { color: colors.muted, fontSize: 11, lineHeight: 17 } });
+const styles = StyleSheet.create({ safe: { flex: 1, backgroundColor: colors.background }, container: { padding: 20, paddingBottom: 44, gap: 14 }, close: { alignSelf: 'flex-start', minHeight: 40 }, section: { gap: 16 }, sectionTitle: { color: colors.ink, fontSize: 18, fontWeight: '900' }, importNotice: { color: colors.muted, fontSize: 12, lineHeight: 19 }, label: { color: colors.ink, fontSize: 13, fontWeight: '700' }, choices: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 }, disclaimer: { backgroundColor: 'rgba(45,106,138,0.05)' }, disclaimerText: { color: colors.muted, fontSize: 11, lineHeight: 17 } });

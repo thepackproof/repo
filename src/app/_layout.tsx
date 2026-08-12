@@ -14,7 +14,7 @@ export default function RootLayout() {
       <AuthProvider>
         <PurchasesProvider>
           <OfflineEvidenceProvider>
-          <StatusBar style="light" />
+          <StatusBar style="dark" />
           <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.background }, animation: 'slide_from_right' }}>
             <Stack.Screen name="index" />
             <Stack.Screen name="welcome" options={{ animation: 'fade' }} />
@@ -24,6 +24,9 @@ export default function RootLayout() {
             <Stack.Screen name="transaction/invite/[id]" options={{ presentation: 'modal' }} />
             <Stack.Screen name="capture/[id]" options={{ presentation: 'fullScreenModal' }} />
             <Stack.Screen name="connect/capture" options={{ presentation: 'fullScreenModal' }} />
+            <Stack.Screen name="handoff/review" options={{ presentation: 'fullScreenModal' }} />
+            <Stack.Screen name="claim/participant" options={{ presentation: 'fullScreenModal' }} />
+            <Stack.Screen name="evidence-session/redeem" options={{ presentation: 'fullScreenModal' }} />
             <Stack.Screen name="invite" />
             <Stack.Screen name="paywall" options={{ presentation: 'modal' }} />
           </Stack>

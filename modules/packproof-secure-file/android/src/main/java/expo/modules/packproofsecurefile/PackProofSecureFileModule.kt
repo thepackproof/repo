@@ -1,5 +1,7 @@
 package expo.modules.packproofsecurefile
 
+import android.graphics.BitmapFactory
+import android.graphics.Color
 import android.net.Uri
 import android.os.Build
 import android.security.keystore.KeyGenParameterSpec
@@ -34,7 +36,7 @@ class PackProofSecureFileModule : Module() {
   private val encryptionKeyAlias = "packproof_offline_evidence_v1"
   private val signingKeyAlias = "packproof_capture_signing_v1"
   private val magic = byteArrayOf(0x50, 0x50, 0x51, 0x31) // PPQ1
-  private val formatVersion = 1
+  private val formatVersion = 2
   private val bufferSize = 1024 * 1024
 
   override fun definition() = ModuleDefinition {
@@ -54,15 +56,15 @@ class PackProofSecureFileModule : Module() {
         cipher.init(Cipher.ENCRYPT_MODE, getOrCreateEncryptionKey())
         val iv = cipher.iv
         require(iv.size in 12..32) { "Android Keystore returned an invalid AES-GCM IV." }
+        val header = magic + byteArrayOf(formatVersion.toByte(), iv.size.toByte())
+        cipher.updateAAD(header)
         val digest = MessageDigest.getInstance("SHA-256")
         var total = 0L
 
         BufferedInputStream(FileInputStream(source), bufferSize).use { input ->
           FileOutputStream(temporary).use { fileOutput ->
             BufferedOutputStream(fileOutput, bufferSize).use { output ->
-              output.write(magic)
-              output.write(formatVersion)
-              output.write(iv.size)
+              output.write(header)
               output.write(iv)
               val buffer = ByteArray(bufferSize)
               while (true) {
@@ -85,7 +87,9 @@ class PackProofSecureFileModule : Module() {
           "encryptedPath" to Uri.fromFile(destination).toString(),
           "plaintextSha256" to digest.digest().toHex(),
           "plaintextSizeBytes" to total,
-          "encryption" to "ANDROID_KEYSTORE_AES_256_GCM"
+          "encryption" to "ANDROID_KEYSTORE_AES_256_GCM",
+          "containerVersion" to formatVersion,
+          "authenticatedHeader" to true
         )
       } catch (error: Throwable) {
         temporary.delete()
@@ -111,7 +115,7 @@ class PackProofSecureFileModule : Module() {
           }
           val version = fileInput.read()
           val ivLength = fileInput.read()
-          if (version != formatVersion || ivLength !in 12..32) {
+          if (version !in 1..formatVersion || ivLength !in 12..32) {
             throw IllegalArgumentException("Unsupported PackProof encrypted file version.")
           }
           val iv = ByteArray(ivLength)
@@ -119,6 +123,9 @@ class PackProofSecureFileModule : Module() {
 
           val cipher = Cipher.getInstance("AES/GCM/NoPadding")
           cipher.init(Cipher.DECRYPT_MODE, getOrCreateEncryptionKey(), GCMParameterSpec(128, iv))
+          if (version >= 2) {
+            cipher.updateAAD(magic + byteArrayOf(version.toByte(), ivLength.toByte()))
+          }
           BufferedInputStream(fileInput, bufferSize).use { input ->
             FileOutputStream(temporary).use { fileOutput ->
               BufferedOutputStream(fileOutput, bufferSize).use { output ->
@@ -159,6 +166,93 @@ class PackProofSecureFileModule : Module() {
         }
       }
       digest.digest().toHex()
+    }
+
+    AsyncFunction("analyzeImageQuality") { sourceUri: String ->
+      val source = resolveFile(sourceUri).canonicalFile
+      require(source.isFile) { "The PackProof image-quality source is not a readable file." }
+
+      val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+      BitmapFactory.decodeFile(source.path, bounds)
+      require(bounds.outWidth > 0 && bounds.outHeight > 0) { "The image could not be decoded for quality analysis." }
+
+      var sampleSize = 1
+      while (bounds.outWidth / sampleSize > 512 || bounds.outHeight / sampleSize > 512) sampleSize *= 2
+      val options = BitmapFactory.Options().apply { inSampleSize = sampleSize }
+      val bitmap = BitmapFactory.decodeFile(source.path, options)
+        ?: throw IllegalArgumentException("The image could not be decoded for quality analysis.")
+
+      try {
+        val width = bitmap.width
+        val height = bitmap.height
+        require(width > 2 && height > 2) { "The image sample is too small for quality analysis." }
+        val pixels = IntArray(width * height)
+        bitmap.getPixels(pixels, 0, width, 0, 0, width, height)
+        val luminance = DoubleArray(pixels.size)
+        val histogram = IntArray(256)
+        var sum = 0.0
+        var sumSquares = 0.0
+        var darkClipped = 0
+        var brightClipped = 0
+
+        for (index in pixels.indices) {
+          val pixel = pixels[index]
+          val y = 0.2126 * Color.red(pixel) + 0.7152 * Color.green(pixel) + 0.0722 * Color.blue(pixel)
+          luminance[index] = y
+          sum += y
+          sumSquares += y * y
+          val bucket = y.toInt().coerceIn(0, 255)
+          histogram[bucket] += 1
+          if (bucket <= 5) darkClipped += 1
+          if (bucket >= 250) brightClipped += 1
+        }
+
+        val count = luminance.size.toDouble()
+        val mean = sum / count
+        val variance = (sumSquares / count - mean * mean).coerceAtLeast(0.0)
+        var laplacianSum = 0.0
+        var laplacianSquares = 0.0
+        var laplacianCount = 0
+        for (row in 1 until height - 1) {
+          for (column in 1 until width - 1) {
+            val center = row * width + column
+            val laplacian = 4.0 * luminance[center] - luminance[center - 1] - luminance[center + 1] - luminance[center - width] - luminance[center + width]
+            laplacianSum += laplacian
+            laplacianSquares += laplacian * laplacian
+            laplacianCount += 1
+          }
+        }
+        val laplacianMean = laplacianSum / laplacianCount.toDouble()
+        val laplacianVariance = (laplacianSquares / laplacianCount.toDouble() - laplacianMean * laplacianMean).coerceAtLeast(0.0)
+
+        fun percentile(q: Double): Int {
+          val target = (pixels.size * q).toInt().coerceIn(0, pixels.size - 1)
+          var cumulative = 0
+          for (index in histogram.indices) {
+            cumulative += histogram[index]
+            if (cumulative > target) return index
+          }
+          return 255
+        }
+
+        mapOf(
+          "algorithm" to "PP_IMAGE_QUALITY_SIGNAL_V1",
+          "sourceWidthPx" to bounds.outWidth,
+          "sourceHeightPx" to bounds.outHeight,
+          "sampleWidthPx" to width,
+          "sampleHeightPx" to height,
+          "meanLuminance" to mean,
+          "luminanceStdDev" to kotlin.math.sqrt(variance),
+          "p05Luminance" to percentile(0.05),
+          "p95Luminance" to percentile(0.95),
+          "shadowClippingFraction" to darkClipped / count,
+          "highlightClippingFraction" to brightClipped / count,
+          "laplacianVariance" to laplacianVariance,
+          "interpretation" to "MEASUREMENT_SIGNAL_ONLY_THRESHOLDS_NOT_VALIDATED"
+        )
+      } finally {
+        bitmap.recycle()
+      }
     }
 
     AsyncFunction("deleteFile") { sourceUri: String ->

@@ -1,7 +1,11 @@
-import { createHash, createHmac, createPublicKey, verify as verifySignature } from 'node:crypto';
+import { createHmac, createPublicKey, randomUUID, verify as verifySignature } from 'node:crypto';
 import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
-import { adminAuth, db, manifestSigningSecret, publicAppUrl } from './config';
+import { ConsumerTransactionApplicationService } from './application/v1/consumer-transaction-service';
+import { adminAuth, db, manifestSigningSecret, publicAppUrl, storage } from './config';
+import { canonicalizeJson, deterministicUploadId, sha256Hex } from './evidence-format';
+import { throwCallableError } from './infrastructure/firebase/v1/callable-errors';
+import { FirestoreConsumerTransactionRepository } from './infrastructure/firebase/v1/consumer-transaction-repository';
 import {
   appendEvent,
   assertAccountActive,
@@ -19,6 +23,30 @@ import { inviteCodeSchema, reportSchema, shippingSchema, transactionDraftSchema,
 
 const callOptions = { enforceAppCheck: true } as const;
 const uploadCallOptions = { enforceAppCheck: true, secrets: [manifestSigningSecret] };
+const consumerTransactionService = new ConsumerTransactionApplicationService(new FirestoreConsumerTransactionRepository(db));
+
+type UploadGrant = {
+  uploadId: string;
+  storagePath: string;
+  status: 'READY' | 'PROCESSING' | 'FINALIZED';
+};
+
+type PhysicalProfileInput = {
+  profileId: 'PP-PHYSICAL-MATTE-V1';
+  intendedUse: 'REFERENCE' | 'VERIFICATION';
+  captureGroupId: string;
+  frameIndex: number;
+};
+
+async function withStorageStatus(grant: Omit<UploadGrant, 'status'> & { status: 'READY' | 'FINALIZED' }, expiresAt: Timestamp) {
+  if (grant.status === 'FINALIZED') return { ...grant, expiresAt: expiresAt.toDate().toISOString() };
+  const [exists] = await storage.bucket().file(grant.storagePath).exists();
+  return {
+    ...grant,
+    status: exists ? 'PROCESSING' as const : 'READY' as const,
+    expiresAt: expiresAt.toDate().toISOString(),
+  };
+}
 
 
 type DeviceKeyProofInput = {
@@ -42,6 +70,20 @@ function normalizeTracking(value: unknown): string | null {
   if (typeof value !== 'string') return null;
   const normalized = value.toUpperCase().replace(/[^A-Z0-9]/g, '');
   return normalized.length >= 3 ? normalized : null;
+}
+
+function evidenceReadyForWorkflow(value: FirebaseFirestore.DocumentData | undefined): boolean {
+  if (!value) return false;
+  if (value.serverFinalized === true) {
+    return value.clientHashMatched !== false
+      && value.clientSizeMatched !== false
+      && value.contentTypeMatched !== false
+      && value.assurance?.byteIntegrity?.status !== 'MISMATCH';
+  }
+  // Historical v0.2.x records used serverVerified. Preserve those records as a
+  // labeled compatibility path, while still rejecting the mismatch state that
+  // the older schema could record.
+  return value.serverVerified === true && value.clientHashMatched !== false;
 }
 
 function privacySubnet(ip: string | undefined): string {
@@ -81,52 +123,16 @@ export const saveTransactionDraft = onCall(callOptions, async (request) => {
   const uid = requireUid(request);
   const profile = await assertAccountActive(uid);
   const input = transactionDraftSchema.parse(request.data);
-
-  if (!input.transactionId && profile.plan !== 'PRO') {
-    const active = await db.collection('transactions').where('sellerId', '==', uid).where('status', 'in', [
-      'DRAFT', 'AWAITING_BUYER', 'TERMS_REVIEW', 'TERMS_LOCKED', 'PACKED', 'SHIPPED', 'BUYER_REVIEW', 'DISPUTED',
-    ]).limit(1).get();
-    if (!active.empty) throw new HttpsError('resource-exhausted', 'The free plan supports one active PackProof. Upgrade to create another.');
+  try {
+    return await consumerTransactionService.saveDraft({
+      actorId: uid,
+      plan: String(profile.plan ?? 'FREE'),
+      input,
+      requestId: request.rawRequest.get('x-request-id') ?? randomUUID(),
+    });
+  } catch (error) {
+    return throwCallableError(error);
   }
-
-  const ref = input.transactionId ? db.collection('transactions').doc(input.transactionId) : db.collection('transactions').doc();
-  const existing = await ref.get();
-  if (input.transactionId && !existing.exists) throw new HttpsError('not-found', 'PackProof draft not found.');
-  if (existing.exists) {
-    const current = existing.data();
-    if (current?.sellerId !== uid) throw new HttpsError('permission-denied', 'Only the seller can edit this draft.');
-    if (!['DRAFT', 'AWAITING_BUYER', 'TERMS_REVIEW'].includes(current?.status)) {
-      throw new HttpsError('failed-precondition', 'Locked terms cannot be edited.');
-    }
-  }
-
-  const now = FieldValue.serverTimestamp();
-  const currentData = existing.data() ?? {};
-  const buyerId = (currentData.buyerId as string | null | undefined) ?? null;
-  const status = buyerId ? 'TERMS_REVIEW' : ((currentData.status as string | undefined) ?? 'DRAFT');
-  await ref.set({
-    sellerId: uid,
-    buyerId,
-    participantIds: buyerId ? [uid, buyerId] : [uid],
-    status,
-    title: input.title,
-    category: input.category,
-    description: input.description,
-    priceMinor: input.priceMinor,
-    currency: input.currency,
-    identifiers: input.identifiers,
-    conditionNotes: input.conditionNotes,
-    terms: input.terms,
-    confirmedBy: [],
-    handoffConfirmedBy: currentData.handoffConfirmedBy ?? [],
-    completedBy: currentData.completedBy ?? [],
-    lockedAt: null,
-    updatedAt: now,
-    ...(existing.exists ? {} : { createdAt: now }),
-  }, { merge: true });
-
-  await appendEvent(ref.id, uid, existing.exists ? 'DRAFT_UPDATED' : 'TRANSACTION_CREATED', existing.exists ? 'Seller updated the proposed terms.' : 'Seller created the PackProof.');
-  return { transactionId: ref.id };
 });
 
 export const cancelTransaction = onCall(callOptions, async (request) => {
@@ -254,11 +260,12 @@ export const requestEvidenceUpload = onCall(uploadCallOptions, async (request) =
   const uid = requireUid(request);
   await assertAccountActive(uid);
   const input = uploadRequestSchema.parse(request.data);
-  const requestFingerprint = createHash('sha256').update(JSON.stringify({
+  const requestFingerprint = sha256Hex(canonicalizeJson({
     transactionId: input.transactionId,
     evidenceType: input.evidenceType,
     contentType: input.contentType,
     originalName: input.originalName,
+    clientEvidenceId: input.clientEvidenceId ?? null,
     clientCreatedAt: input.clientCreatedAt ?? null,
     clientSha256: input.clientSha256 ?? null,
     clientSizeBytes: input.clientSizeBytes ?? null,
@@ -266,15 +273,15 @@ export const requestEvidenceUpload = onCall(uploadCallOptions, async (request) =
     returnPassportId: input.returnPassportId ?? null,
     connectSessionId: input.connectSessionId ?? null,
     manifest: input.manifest ?? null,
-  })).digest('hex');
+  }));
   const { data } = await getTransaction(input.transactionId);
   assertParticipant(data, uid);
   if (['COMPLETED', 'CANCELLED', 'ARCHIVED'].includes(data.status) && !input.returnPassportId) {
     throw new HttpsError('failed-precondition', 'This transaction no longer accepts outbound evidence.');
   }
 
-  const sellerOnly: string[] = ['ITEM_PHOTO', 'CONDITION_PHOTO', 'IDENTIFIER_PHOTO', 'COA_PHOTO', 'PACKING_VIDEO', 'SHIPPING_LABEL'];
-  const buyerOnly: string[] = ['UNBOXING_VIDEO', 'DELIVERY_PHOTO'];
+  const sellerOnly: string[] = ['ITEM_PHOTO', 'CONDITION_PHOTO', 'IDENTIFIER_PHOTO', 'COA_PHOTO', 'PACKING_VIDEO', 'SHIPPING_LABEL', 'PHYSICAL_REFERENCE_FRAME'];
+  const buyerOnly: string[] = ['UNBOXING_VIDEO', 'DELIVERY_PHOTO', 'PHYSICAL_VERIFICATION_FRAME'];
   if (sellerOnly.includes(input.evidenceType) && data.sellerId !== uid) throw new HttpsError('permission-denied', 'Only the seller may upload that evidence type.');
   if (buyerOnly.includes(input.evidenceType) && data.buyerId !== uid) throw new HttpsError('permission-denied', 'Only the buyer may upload that evidence type.');
   if (['PACKING_VIDEO', 'SHIPPING_LABEL', 'UNBOXING_VIDEO'].includes(input.evidenceType) && !['TERMS_LOCKED', 'PACKED', 'SHIPPED', 'BUYER_REVIEW', 'DISPUTED'].includes(data.status)) {
@@ -311,7 +318,25 @@ export const requestEvidenceUpload = onCall(uploadCallOptions, async (request) =
     throw new HttpsError('permission-denied', 'PackProof Connect session mismatch.');
   }
 
+  const isPhysicalFrame = input.evidenceType === 'PHYSICAL_REFERENCE_FRAME' || input.evidenceType === 'PHYSICAL_VERIFICATION_FRAME';
+  const physicalProfile = input.manifest && 'physicalCaptureProfile' in input.manifest
+    ? input.manifest.physicalCaptureProfile as PhysicalProfileInput | null
+    : null;
+  if (isPhysicalFrame && !physicalProfile) {
+    throw new HttpsError('failed-precondition', 'Physical correspondence frames require the frozen physical capture profile in a v2 manifest.');
+  }
+  if (!isPhysicalFrame && physicalProfile) {
+    throw new HttpsError('failed-precondition', 'The physical capture profile may be used only for physical correspondence frame evidence.');
+  }
+  if (input.evidenceType === 'PHYSICAL_REFERENCE_FRAME' && physicalProfile?.intendedUse !== 'REFERENCE') {
+    throw new HttpsError('failed-precondition', 'Reference evidence must use a REFERENCE physical capture profile.');
+  }
+  if (input.evidenceType === 'PHYSICAL_VERIFICATION_FRAME' && physicalProfile?.intendedUse !== 'VERIFICATION') {
+    throw new HttpsError('failed-precondition', 'Verification evidence must use a VERIFICATION physical capture profile.');
+  }
+
   let captureSessionRef: FirebaseFirestore.DocumentReference | null = null;
+  let boundEvidenceSessionRef: FirebaseFirestore.DocumentReference | null = null;
   let attestationSnapshot: Record<string, unknown> | null = null;
   if (input.captureSessionId) {
     captureSessionRef = db.collection('captureSessions').doc(input.captureSessionId);
@@ -320,14 +345,28 @@ export const requestEvidenceUpload = onCall(uploadCallOptions, async (request) =
     const redemptionExpiresAt = captureSession?.redemptionExpiresAt as Timestamp | undefined;
     const expired = !captureSessionSnap.exists || !redemptionExpiresAt || redemptionExpiresAt.toMillis() < Date.now();
     if (expired) throw new HttpsError('failed-precondition', 'Capture attestation session expired.');
-    if (captureSession?.usedAt && captureSession?.requestFingerprint !== requestFingerprint) {
+    const sessionMode = captureSession?.sessionMode === 'BATCH' ? 'BATCH' : 'SINGLE';
+    if (sessionMode === 'SINGLE' && captureSession?.usedAt && captureSession?.requestFingerprint !== requestFingerprint) {
       throw new HttpsError('failed-precondition', 'This attested capture is already bound to different evidence.');
     }
     if (captureSession?.uid !== uid || captureSession?.transactionId !== input.transactionId) throw new HttpsError('permission-denied', 'Capture attestation session mismatch.');
+    if (typeof captureSession?.evidenceSessionId === 'string' && captureSession.evidenceSessionId) {
+      boundEvidenceSessionRef = db.collection('evidenceSessions').doc(captureSession.evidenceSessionId);
+      const evidenceSession = await boundEvidenceSessionRef.get();
+      const evidenceSessionData = evidenceSession.data();
+      if (!evidenceSession.exists || evidenceSessionData?.status !== 'CAPTURING'
+        || evidenceSessionData?.actorId !== uid || evidenceSessionData?.transactionId !== input.transactionId) {
+        throw new HttpsError('failed-precondition', 'The actor-bound evidence session is no longer active.');
+      }
+    }
     if ((captureSession?.returnPassportId ?? null) !== (input.returnPassportId ?? null)) throw new HttpsError('permission-denied', 'Return attestation context mismatch.');
     if ((captureSession?.connectSessionId ?? null) !== (input.connectSessionId ?? null)) throw new HttpsError('permission-denied', 'Connect attestation context mismatch.');
     if (input.manifest?.attestation.captureSessionId !== input.captureSessionId || input.manifest.attestation.nonce !== captureSession?.nonce) {
       throw new HttpsError('failed-precondition', 'The signed capture nonce does not match the attested session.');
+    }
+    const allowedEvidenceTypes = captureSession?.allowedEvidenceTypes;
+    if (Array.isArray(allowedEvidenceTypes) && !allowedEvidenceTypes.includes(input.evidenceType)) {
+      throw new HttpsError('permission-denied', 'This evidence type is outside the actor-bound evidence session authorization.');
     }
     const issuedAt = captureSession?.issuedAt as Timestamp | undefined;
     const captureWindowEndsAt = captureSession?.captureWindowEndsAt as Timestamp | undefined;
@@ -345,6 +384,22 @@ export const requestEvidenceUpload = onCall(uploadCallOptions, async (request) =
     if (captureSession?.runtimeArtifactHash && input.manifest.runtimeIntegrity.runtimeArtifactHash !== captureSession.runtimeArtifactHash) {
       throw new HttpsError('failed-precondition', 'Runtime integrity fingerprint changed after attestation.');
     }
+    if (sessionMode === 'BATCH') {
+      if (input.manifest.attestation.sessionMode !== 'BATCH'
+        || input.manifest.attestation.maxEvidenceCount !== captureSession?.maxEvidenceCount
+        || input.manifest.attestation.captureGroupId !== captureSession?.captureGroupId) {
+        throw new HttpsError('failed-precondition', 'Batch attestation context changed after the session was issued.');
+      }
+      if (!physicalProfile || captureSession?.captureProfileId !== physicalProfile.profileId
+        || captureSession?.captureGroupId !== physicalProfile.captureGroupId) {
+        throw new HttpsError('failed-precondition', 'Physical capture profile or group changed after batch attestation.');
+      }
+      if (!isPhysicalFrame) {
+        throw new HttpsError('failed-precondition', 'This batch capture session is reserved for physical correspondence frames.');
+      }
+    } else if (isPhysicalFrame) {
+      throw new HttpsError('failed-precondition', 'Physical correspondence frames require a batch capture session.');
+    }
     const deviceKeyProof = input.manifest.attestation.deviceKeyProof as DeviceKeyProofInput | null;
     const deviceKeySignatureValid = deviceKeyProof ? verifyDeviceKeyProof(deviceKeyProof, String(captureSession.nonce)) : null;
     if (deviceKeyProof && !deviceKeySignatureValid) {
@@ -353,6 +408,7 @@ export const requestEvidenceUpload = onCall(uploadCallOptions, async (request) =
     attestationSnapshot = {
       mode: 'JIT_APP_CHECK',
       captureSessionId: input.captureSessionId,
+      evidenceSessionId: captureSession?.evidenceSessionId ?? null,
       nonce: captureSession.nonce,
       appId: captureSession.appId,
       issuedAt: captureSession.issuedAt ?? null,
@@ -360,6 +416,10 @@ export const requestEvidenceUpload = onCall(uploadCallOptions, async (request) =
       tokenReplayDetected: Boolean(captureSession.tokenReplayDetected),
       deviceKeyProof: input.manifest.attestation.deviceKeyProof,
       deviceKeySignatureValid,
+      sessionMode,
+      maxEvidenceCount: captureSession?.maxEvidenceCount ?? 1,
+      captureProfileId: captureSession?.captureProfileId ?? null,
+      captureGroupId: captureSession?.captureGroupId ?? null,
     };
   } else if (input.manifest?.attestation.mode === 'JIT_APP_CHECK') {
     throw new HttpsError('failed-precondition', 'JIT-attested manifests require a valid capture session.');
@@ -390,6 +450,7 @@ export const requestEvidenceUpload = onCall(uploadCallOptions, async (request) =
   const pendingBase = {
     transactionId: input.transactionId,
     uploaderId: uid,
+    clientEvidenceId: input.clientEvidenceId ?? null,
     evidenceType: input.evidenceType,
     contentType: input.contentType,
     originalName: input.originalName.slice(0, 180),
@@ -410,6 +471,7 @@ export const requestEvidenceUpload = onCall(uploadCallOptions, async (request) =
     const grant = await db.runTransaction(async (tx) => {
       const fresh = await tx.get(captureSessionRef!);
       const session = fresh.data();
+      const boundEvidenceSession = boundEvidenceSessionRef ? await tx.get(boundEvidenceSessionRef) : null;
       const freshRedemptionExpiresAt = session?.redemptionExpiresAt as Timestamp | undefined;
       if (!fresh.exists || !freshRedemptionExpiresAt || freshRedemptionExpiresAt.toMillis() < Date.now()) {
         throw new HttpsError('failed-precondition', 'Capture attestation session expired.');
@@ -417,9 +479,104 @@ export const requestEvidenceUpload = onCall(uploadCallOptions, async (request) =
       if (session?.uid !== uid || session?.transactionId !== input.transactionId) {
         throw new HttpsError('permission-denied', 'Capture attestation session mismatch.');
       }
+      if (boundEvidenceSession) {
+        const evidenceSession = boundEvidenceSession.data();
+        if (!boundEvidenceSession.exists || evidenceSession?.status !== 'CAPTURING'
+          || evidenceSession?.actorId !== uid || evidenceSession?.transactionId !== input.transactionId) {
+          throw new HttpsError('failed-precondition', 'The actor-bound evidence session is no longer active.');
+        }
+      }
       if ((session?.returnPassportId ?? null) !== (input.returnPassportId ?? null)
         || (session?.connectSessionId ?? null) !== (input.connectSessionId ?? null)) {
         throw new HttpsError('permission-denied', 'Capture attestation context mismatch.');
+      }
+
+      const freshSessionMode = session?.sessionMode === 'BATCH' ? 'BATCH' : 'SINGLE';
+      if (freshSessionMode === 'BATCH') {
+        if (!physicalProfile
+          || session?.captureProfileId !== physicalProfile.profileId
+          || session?.captureGroupId !== physicalProfile.captureGroupId
+          || input.manifest?.attestation.sessionMode !== 'BATCH'
+          || input.manifest.attestation.maxEvidenceCount !== session?.maxEvidenceCount
+          || input.manifest.attestation.captureGroupId !== session?.captureGroupId) {
+          throw new HttpsError('failed-precondition', 'Batch capture context changed before the evidence grant was bound.');
+        }
+        const fingerprints = Array.isArray(session?.requestFingerprints)
+          ? session.requestFingerprints.filter((value: unknown): value is string => typeof value === 'string')
+          : [];
+        const bindings = session?.uploadBindings && typeof session.uploadBindings === 'object'
+          ? session.uploadBindings as Record<string, string>
+          : {};
+        const frameBindings = session?.frameBindings && typeof session.frameBindings === 'object'
+          ? session.frameBindings as Record<string, string>
+          : {};
+        const existingUploadId = bindings[requestFingerprint];
+        if (existingUploadId) {
+          const storagePath = `evidence/${input.transactionId}/${uid}/${existingUploadId}`;
+          const evidenceRef = db.collection('transactions').doc(input.transactionId).collection('evidence').doc(existingUploadId);
+          const pendingRef = db.collection('pendingUploads').doc(existingUploadId);
+          const [evidenceSnap, pendingSnap] = await Promise.all([tx.get(evidenceRef), tx.get(pendingRef)]);
+          if (evidenceSnap.exists) {
+            if (evidenceSnap.data()?.requestFingerprint !== requestFingerprint) {
+              throw new HttpsError('failed-precondition', 'The finalized batch frame identifier is bound to different evidence.');
+            }
+            return { uploadId: existingUploadId, storagePath, status: 'FINALIZED' as const };
+          }
+          if (pendingSnap.exists && pendingSnap.data()?.requestFingerprint !== requestFingerprint) {
+            throw new HttpsError('failed-precondition', 'The reserved evidence grant does not match this batch frame.');
+          }
+          if (pendingSnap.exists) {
+            tx.update(pendingRef, { reissuedAt: FieldValue.serverTimestamp(), expiresAt: grantExpiresAt });
+          } else {
+            tx.create(pendingRef, {
+              ...pendingBase,
+              uploadId: existingUploadId,
+              storagePath,
+              createdAt: FieldValue.serverTimestamp(),
+              expiresAt: grantExpiresAt,
+            });
+          }
+          return { uploadId: existingUploadId, storagePath, status: 'READY' as const };
+        }
+
+        const maxEvidenceCount = Math.min(Math.max(Number(session?.maxEvidenceCount ?? 1), 1), 24);
+        if (fingerprints.length >= maxEvidenceCount) {
+          throw new HttpsError('resource-exhausted', 'This attested capture batch has reached its evidence limit.');
+        }
+        const frameIndex = physicalProfile?.frameIndex;
+        const frameKey = physicalProfile ? `${physicalProfile.intendedUse}:${frameIndex}` : null;
+        if (!frameKey || frameIndex === undefined || frameBindings[frameKey]) {
+          throw new HttpsError('failed-precondition', 'This physical capture frame position is missing or already bound.');
+        }
+        const uploadId = input.clientEvidenceId
+          ? deterministicUploadId({ transactionId: input.transactionId, uploaderId: uid, clientEvidenceId: input.clientEvidenceId })
+          : db.collection('pendingUploads').doc().id;
+        const pendingRef = db.collection('pendingUploads').doc(uploadId);
+        const evidenceRef = db.collection('transactions').doc(input.transactionId).collection('evidence').doc(uploadId);
+        const storagePath = `evidence/${input.transactionId}/${uid}/${uploadId}`;
+        const [evidenceSnap, pendingSnap] = await Promise.all([tx.get(evidenceRef), tx.get(pendingRef)]);
+        if (evidenceSnap.exists || pendingSnap.exists) {
+          const existingFingerprint = evidenceSnap.exists ? evidenceSnap.data()?.requestFingerprint : pendingSnap.data()?.requestFingerprint;
+          if (existingFingerprint !== requestFingerprint) {
+            throw new HttpsError('failed-precondition', 'The deterministic evidence identifier is already bound to different evidence.');
+          }
+          throw new HttpsError('failed-precondition', 'Batch binding state is incomplete for an existing evidence identifier.');
+        }
+        tx.create(pendingRef, {
+          ...pendingBase,
+          uploadId,
+          storagePath,
+          createdAt: FieldValue.serverTimestamp(),
+          expiresAt: grantExpiresAt,
+        });
+        tx.update(captureSessionRef!, {
+          usedAt: session?.usedAt ?? FieldValue.serverTimestamp(),
+          requestFingerprints: [...fingerprints, requestFingerprint],
+          uploadBindings: { ...bindings, [requestFingerprint]: uploadId },
+          frameBindings: { ...frameBindings, [frameKey]: uploadId },
+          lastBoundAt: FieldValue.serverTimestamp(),
+        });
+        return { uploadId, storagePath, status: 'READY' as const };
       }
 
       if (session?.usedAt) {
@@ -431,22 +588,34 @@ export const requestEvidenceUpload = onCall(uploadCallOptions, async (request) =
         const evidenceRef = db.collection('transactions').doc(input.transactionId).collection('evidence').doc(uploadId);
         const pendingRef = db.collection('pendingUploads').doc(uploadId);
         const [evidenceSnap, pendingSnap] = await Promise.all([tx.get(evidenceRef), tx.get(pendingRef)]);
-        if (evidenceSnap.exists) return { uploadId, storagePath, status: 'FINALIZED' as const };
+        if (evidenceSnap.exists) {
+          if (evidenceSnap.data()?.requestFingerprint !== requestFingerprint) {
+            throw new HttpsError('failed-precondition', 'The finalized evidence identifier is bound to different evidence.');
+          }
+          return { uploadId, storagePath, status: 'FINALIZED' as const };
+        }
         if (pendingSnap.exists && pendingSnap.data()?.requestFingerprint !== requestFingerprint) {
           throw new HttpsError('failed-precondition', 'The reserved evidence grant does not match this capture.');
         }
-        tx.set(pendingRef, {
-          ...pendingBase,
-          uploadId,
-          storagePath,
-          createdAt: pendingSnap.data()?.createdAt ?? FieldValue.serverTimestamp(),
-          reissuedAt: FieldValue.serverTimestamp(),
-          expiresAt: grantExpiresAt,
-        }, { merge: true });
+        if (pendingSnap.exists) {
+          // Preserve the first grant's request, attestation and ingress context.
+          // A retry may extend authorization but cannot rewrite manifest inputs.
+          tx.update(pendingRef, { reissuedAt: FieldValue.serverTimestamp(), expiresAt: grantExpiresAt });
+        } else {
+          tx.create(pendingRef, {
+            ...pendingBase,
+            uploadId,
+            storagePath,
+            createdAt: FieldValue.serverTimestamp(),
+            expiresAt: grantExpiresAt,
+          });
+        }
         return { uploadId, storagePath, status: 'READY' as const };
       }
 
-      const uploadId = db.collection('pendingUploads').doc().id;
+      const uploadId = input.clientEvidenceId
+        ? deterministicUploadId({ transactionId: input.transactionId, uploaderId: uid, clientEvidenceId: input.clientEvidenceId })
+        : db.collection('pendingUploads').doc().id;
       const pendingRef = db.collection('pendingUploads').doc(uploadId);
       const storagePath = `evidence/${input.transactionId}/${uid}/${uploadId}`;
       tx.create(pendingRef, {
@@ -463,20 +632,40 @@ export const requestEvidenceUpload = onCall(uploadCallOptions, async (request) =
       });
       return { uploadId, storagePath, status: 'READY' as const };
     });
-    return { ...grant, expiresAt: grantExpiresAt.toDate().toISOString() };
+    return withStorageStatus(grant, grantExpiresAt);
   }
 
-  const uploadId = db.collection('pendingUploads').doc().id;
+  const uploadId = input.clientEvidenceId
+    ? deterministicUploadId({ transactionId: input.transactionId, uploaderId: uid, clientEvidenceId: input.clientEvidenceId })
+    : db.collection('pendingUploads').doc().id;
   const pendingRef = db.collection('pendingUploads').doc(uploadId);
   const storagePath = `evidence/${input.transactionId}/${uid}/${uploadId}`;
-  await pendingRef.set({
-    ...pendingBase,
-    uploadId,
-    storagePath,
-    createdAt: FieldValue.serverTimestamp(),
-    expiresAt: grantExpiresAt,
+  const evidenceRef = db.collection('transactions').doc(input.transactionId).collection('evidence').doc(uploadId);
+  const grant = await db.runTransaction(async (tx) => {
+    const [evidenceSnap, pendingSnap] = await Promise.all([tx.get(evidenceRef), tx.get(pendingRef)]);
+    if (evidenceSnap.exists) {
+      if (evidenceSnap.data()?.requestFingerprint !== requestFingerprint) {
+        throw new HttpsError('failed-precondition', 'The finalized evidence identifier is bound to different evidence.');
+      }
+      return { uploadId, storagePath, status: 'FINALIZED' as const };
+    }
+    if (pendingSnap.exists && pendingSnap.data()?.requestFingerprint !== requestFingerprint) {
+      throw new HttpsError('failed-precondition', 'The reserved evidence identifier is bound to different evidence.');
+    }
+    if (pendingSnap.exists) {
+      tx.update(pendingRef, { reissuedAt: FieldValue.serverTimestamp(), expiresAt: grantExpiresAt });
+    } else {
+      tx.create(pendingRef, {
+        ...pendingBase,
+        uploadId,
+        storagePath,
+        createdAt: FieldValue.serverTimestamp(),
+        expiresAt: grantExpiresAt,
+      });
+    }
+    return { uploadId, storagePath, status: 'READY' as const };
   });
-  return { uploadId, storagePath, status: 'READY' as const, expiresAt: grantExpiresAt.toDate().toISOString() };
+  return withStorageStatus(grant, grantExpiresAt);
 
 });
 
@@ -485,12 +674,13 @@ export const submitShipping = onCall(callOptions, async (request) => {
   const input = shippingSchema.parse(request.data);
   const { ref, data } = await getTransaction(input.transactionId);
   assertSeller(data, uid);
-  const packingVideo = await ref.collection('evidence').where('type', '==', 'PACKING_VIDEO').limit(1).get();
-  if (packingVideo.empty) throw new HttpsError('failed-precondition', 'A verified packing video is required before shipment can be recorded.');
+  const packingVideos = await ref.collection('evidence').where('type', '==', 'PACKING_VIDEO').get();
+  const packingVideo = packingVideos.docs.find((item) => evidenceReadyForWorkflow(item.data()));
+  if (!packingVideo) throw new HttpsError('failed-precondition', 'A server-finalized packing video with no recorded byte-integrity mismatch is required before shipment can be recorded.');
   if (!['PACKED', 'TERMS_LOCKED'].includes(data.status)) throw new HttpsError('failed-precondition', 'Shipping cannot be recorded in this state.');
 
-  const packingEvidenceRef = packingVideo.docs[0].ref;
-  const packingEvidence = packingVideo.docs[0].data();
+  const packingEvidenceRef = packingVideo.ref;
+  const packingEvidence = packingVideo.data();
   const scannedTrackingNumber = normalizeTracking(packingEvidence.scannedTrackingNumber);
   const submittedTrackingNumber = normalizeTracking(input.trackingNumber);
   const labelEvidenceMatchStatus = !scannedTrackingNumber
@@ -505,6 +695,7 @@ export const submitShipping = onCall(callOptions, async (request) => {
     const freshData = freshTransaction.data()!;
     assertSeller(freshData as Parameters<typeof assertSeller>[0], uid);
     if (!['PACKED', 'TERMS_LOCKED'].includes(String(freshData.status))) throw new HttpsError('failed-precondition', 'Shipping cannot be recorded in this state.');
+    if (!evidenceReadyForWorkflow(freshEvidence.data())) throw new HttpsError('failed-precondition', 'The packing evidence no longer satisfies byte-integrity workflow requirements.');
 
     tx.update(ref, {
       status: 'SHIPPED',

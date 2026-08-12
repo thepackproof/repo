@@ -58,6 +58,17 @@ export const exportAccountData = onCall({ enforceAppCheck: true, timeoutSeconds:
   return { exportId, storagePath: path, expiresAt: new Date(Date.now() + 24 * 3600_000).toISOString() };
 });
 
+export const purgeExpiredExports = onSchedule('every 60 minutes', async () => {
+  const expired = await db.collectionGroup('exports').where('expiresAt', '<=', Timestamp.now()).limit(100).get();
+  for (const item of expired.docs) {
+    const path = item.data().path;
+    if (typeof path === 'string' && /^exports\/[^/]+\/[^/]+\.json$/.test(path)) {
+      await storage.bucket().file(path).delete({ ignoreNotFound: true });
+    }
+    await item.ref.delete();
+  }
+});
+
 export const purgeDeletedAccounts = onSchedule({ schedule: 'every day 03:15', timeoutSeconds: 540, memory: '1GiB' }, async () => {
   const due = await db.collection('users').where('deletionScheduledAt', '<=', Timestamp.now()).limit(100).get();
   for (const userDoc of due.docs) {

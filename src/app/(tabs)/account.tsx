@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Alert, Linking, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { SymbolView } from 'expo-symbols';
+import { AppIcon, type AppIconName } from '@/components/app-icon';
 import { Button, Card, ScreenTitle } from '@/components/ui';
 import { colors } from '@/constants/brand';
 import { featureFlags } from '@/constants/features';
@@ -11,9 +11,9 @@ import { readableError } from '@/lib/format';
 import { useAuth } from '@/providers/auth-provider';
 import { usePurchases } from '@/providers/purchases-provider';
 
-function ProviderRow({ name, icon, linked, onPress, busy }: { name: string; icon: 'globe' | 'person.2.fill' | 'music.note'; linked: boolean; onPress: () => void; busy: boolean }) {
+function ProviderRow({ name, icon, linked, onPress, busy }: { name: string; icon: AppIconName; linked: boolean; onPress: () => void; busy: boolean }) {
   return <View style={styles.provider}>
-    <View style={styles.providerIcon}><SymbolView name={icon} size={19} tintColor={linked ? colors.teal : colors.muted} /></View>
+    <View style={styles.providerIcon}><AppIcon name={icon} size={19} tintColor={linked ? colors.teal : colors.muted} /></View>
     <Text style={styles.providerName}>{name}</Text>
     {linked ? <View style={styles.linked}><Text style={styles.linkedText}>LINKED</Text></View> : <Button label="Link" variant="ghost" busy={busy} onPress={onPress} style={{ minHeight: 38, paddingHorizontal: 13 }} />}
   </View>;
@@ -78,19 +78,19 @@ export default function AccountScreen() {
 
     <Text style={styles.sectionLabel}>DANGER ZONE</Text>
     <Button label="Delete my account and data" icon="trash.fill" variant="danger" busy={busy === 'delete'} onPress={deleteAccount} />
-    <Text style={styles.version}>PackProof 0.2.1 · Security-sensitive changes are recorded in server audit logs.</Text>
+    <Text style={styles.version}>PackProof 0.3.0 · Digital evidence only; physical correspondence is not available.</Text>
   </ScrollView></SafeAreaView>;
 }
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background }, container: { padding: 20, paddingBottom: 40 },
   identity: { flexDirection: 'row', alignItems: 'center', gap: 13, marginBottom: 24 },
-  avatar: { width: 50, height: 50, borderRadius: 18, backgroundColor: 'rgba(33,212,180,0.1)', alignItems: 'center', justifyContent: 'center' },
+  avatar: { width: 50, height: 50, borderRadius: 18, backgroundColor: 'rgba(70,124,99,0.1)', alignItems: 'center', justifyContent: 'center' },
   avatarText: { color: colors.teal, fontSize: 21, fontWeight: '900' }, name: { color: colors.ink, fontSize: 17, fontWeight: '900' }, email: { color: colors.muted, fontSize: 12, marginTop: 3 },
-  plan: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: 'rgba(33,212,180,0.1)' }, planText: { color: colors.teal, fontSize: 10, fontWeight: '900' },
+  plan: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: 'rgba(70,124,99,0.1)' }, planText: { color: colors.teal, fontSize: 10, fontWeight: '900' },
   sectionLabel: { color: colors.muted, fontSize: 10, fontWeight: '900', letterSpacing: 1.4, marginBottom: 9, marginTop: 8 },
   providers: { paddingVertical: 5, marginBottom: 22 }, provider: { minHeight: 58, flexDirection: 'row', alignItems: 'center', gap: 11 }, providerIcon: { width: 36, height: 36, borderRadius: 12, backgroundColor: colors.surfaceRaised, alignItems: 'center', justifyContent: 'center' }, providerName: { flex: 1, color: colors.ink, fontWeight: '800' },
-  linked: { paddingHorizontal: 9, paddingVertical: 5, borderRadius: 999, backgroundColor: 'rgba(33,212,180,0.08)' }, linkedText: { color: colors.teal, fontSize: 9, fontWeight: '900' },
+  linked: { paddingHorizontal: 9, paddingVertical: 5, borderRadius: 999, backgroundColor: 'rgba(70,124,99,0.08)' }, linkedText: { color: colors.teal, fontSize: 9, fontWeight: '900' },
   actions: { gap: 9, marginBottom: 24 }, version: { color: colors.muted, fontSize: 10, lineHeight: 15, textAlign: 'center', marginTop: 18 },
-  deletionNotice: { gap: 10, marginBottom: 22, backgroundColor: 'rgba(255,190,85,0.06)' }, deletionTitle: { color: colors.amber, fontSize: 15, fontWeight: '900' }, deletionText: { color: colors.muted, fontSize: 11, lineHeight: 17 },
+  deletionNotice: { gap: 10, marginBottom: 22, backgroundColor: 'rgba(138,91,0,0.06)' }, deletionTitle: { color: colors.amber, fontSize: 15, fontWeight: '900' }, deletionText: { color: colors.muted, fontSize: 11, lineHeight: 17 },
 });

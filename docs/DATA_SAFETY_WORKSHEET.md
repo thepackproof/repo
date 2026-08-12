@@ -18,7 +18,7 @@ Use this as a drafting worksheet only. Play Console answers must reflect the exa
 | Device or other IDs | Yes | Firebase App Check, Expo notifications | Security, fraud prevention, notifications | Partly | Tokens revoked/deleted |
 | Diagnostics / device metadata | Yes | Firebase processors | Integrity, reliability, fraud prevention | For camera evidence | Yes with evidence/deletion policy |
 
-Camera-originated forensic metadata can include app/build identifiers, device model and OS, connection type, accelerometer/gyroscope aggregate statistics, camera-read shipping barcode, App Check/Play Integrity receipt data and a privacy-preserving HMAC derived from the ingress subnet. Raw motion samples and raw ingress IP addresses are not retained in the evidence manifest.
+Camera-originated evidence metadata can include app/build identifiers, device model and OS, connection type, accelerometer/gyroscope aggregate statistics, camera-read shipping barcode, App Check/Play Integrity receipt data and a privacy-preserving HMAC derived from the ingress subnet. Raw motion samples and raw ingress IP addresses are not retained in the evidence manifest.
 
 PackProof should answer that data is encrypted in transit and that users can request deletion. Do not claim independently audited security unless that audit is commissioned and maintained.
 

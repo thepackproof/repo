@@ -28,7 +28,10 @@ service cloud.firestore {
     }
 
     match /transactions/{transactionId} {
-      allow read: if isParticipant(transactionId);
+      // Collection queries must be provable from each candidate document.
+      // The same-document get() helper is appropriate for nested collections,
+      // but cannot safely authorize a top-level list query.
+      allow read: if signedIn() && request.auth.uid in resource.data.participantIds;
       allow write: if false;
 
       match /evidence/{evidenceId} {
@@ -69,6 +72,12 @@ service cloud.firestore {
     }
     match /captureSessions/{sessionId} { allow read, write: if false; }
     match /connectSessions/{sessionId} { allow read, write: if false; }
+    match /commerceContexts/{commerceContextId} { allow read, write: if false; }
+    match /passportDrafts/{passportDraftId} { allow read, write: if false; }
+    match /publicCommerceHandoffs/{handoffId} { allow read, write: if false; }
+    match /participantClaims/{claimId} { allow read, write: if false; }
+    match /evidenceSessions/{evidenceSessionId} { allow read, write: if false; }
+    match /domainOutbox/{eventId} { allow read, write: if false; }
     match /platformIntegrations/{integrationId} { allow read, write: if false; }
     match /webhookDeliveries/{deliveryId} { allow read, write: if false; }
     match /providerLinks/{providerId} {

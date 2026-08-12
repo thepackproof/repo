@@ -21,8 +21,16 @@ export const beginCaptureSession = onCall({ enforceAppCheck: true, consumeAppChe
   if (input.connectSessionId && data.source?.connectSessionId !== input.connectSessionId) {
     throw new HttpsError('permission-denied', 'PackProof Connect session mismatch.');
   }
+  if (input.requestedEvidenceCount > 1) {
+    if (input.requestedEvidenceCount !== 15 || input.captureProfileId !== 'PP-PHYSICAL-MATTE-V1' || !input.captureGroupId) {
+      throw new HttpsError('invalid-argument', 'Batch capture requires the frozen 15-frame physical profile and a capture group identifier.');
+    }
+  } else if (input.captureProfileId || input.captureGroupId) {
+    throw new HttpsError('invalid-argument', 'Capture profile and group identifiers are reserved for an approved batch profile.');
+  }
 
   const ref = db.collection('captureSessions').doc();
+  const sessionMode = input.requestedEvidenceCount > 1 ? 'BATCH' : 'SINGLE';
   const nonce = randomToken(32);
   const issuedAt = new Date();
   const captureWindowEndsAt = new Date(Date.now() + 10 * 60_000);
@@ -36,6 +44,12 @@ export const beginCaptureSession = onCall({ enforceAppCheck: true, consumeAppChe
     appId: request.app.appId,
     tokenReplayDetected: Boolean(request.app.alreadyConsumed),
     runtimeArtifactHash: input.runtimeArtifactHash ?? null,
+    captureProfileId: input.captureProfileId ?? null,
+    captureGroupId: input.captureGroupId ?? null,
+    sessionMode,
+    maxEvidenceCount: input.requestedEvidenceCount,
+    requestFingerprints: [],
+    uploadBindings: {},
     issuedAt: FieldValue.serverTimestamp(),
     captureWindowEndsAt,
     redemptionExpiresAt: expiresIn(30 * 86400),
@@ -49,5 +63,9 @@ export const beginCaptureSession = onCall({ enforceAppCheck: true, consumeAppChe
     issuedAt: issuedAt.toISOString(),
     captureWindowEndsAt: captureWindowEndsAt.toISOString(),
     tokenReplayDetected: false,
+    reasonCodes: [],
+    sessionMode,
+    maxEvidenceCount: input.requestedEvidenceCount,
+    captureGroupId: input.captureGroupId ?? null,
   };
 });
