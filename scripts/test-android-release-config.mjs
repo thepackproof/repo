@@ -1,6 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
+import { readFileSync } from 'node:fs';
 
 const expoCli = join(process.cwd(), 'node_modules', 'expo', 'bin', 'cli');
 const result = spawnSync(process.execPath, [expoCli, 'config', '--type', 'public', '--json'], {
@@ -38,4 +39,13 @@ for (const permission of forbiddenReleasePermissions) {
   assert.ok(blocked.has(permission), `Initial Android release must block ${permission}`);
 }
 
-console.log(`Android release configuration passed (${forbiddenReleasePermissions.length} billing/advertising permissions blocked).`);
+const assetLinks = JSON.parse(readFileSync(join(process.cwd(), 'public', '.well-known', 'assetlinks.json'), 'utf8'));
+assert.equal(assetLinks.length, 1);
+assert.deepEqual(assetLinks[0].relation, ['delegate_permission/common.handle_all_urls']);
+assert.equal(assetLinks[0].target?.namespace, 'android_app');
+assert.equal(assetLinks[0].target?.package_name, 'com.packproof.app');
+assert.deepEqual(assetLinks[0].target?.sha256_cert_fingerprints, [
+  'BE:47:12:52:5F:B4:0E:8C:3C:06:F5:8C:E8:73:49:B6:3A:6B:F1:DB:3B:B7:EA:CD:5D:10:97:2E:B9:AD:71:36',
+]);
+
+console.log(`Android release configuration passed (${forbiddenReleasePermissions.length} billing/advertising permissions blocked; release App Link certificate pinned).`);
