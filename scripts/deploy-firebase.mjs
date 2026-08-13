@@ -18,7 +18,6 @@ function fail(message) {
   process.exit(1);
 }
 
-const isWindows = process.platform === 'win32';
 const npmCommand = isWindows ? 'cmd.exe' : 'npm';
 
 function run(command, args, options = {}) {

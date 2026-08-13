@@ -37,8 +37,11 @@ for (const s of secrets) {
     continue;
   }
   console.log(`Preparing to set secret ${s.name} from env ${s.env}.`);
-  const cmd = 'npx';
-  const args = ['--yes', 'firebase-tools@15.25.1', 'functions:secrets:set', s.name, '--project', project];
+  const isWindows = process.platform === 'win32';
+  const cmd = isWindows ? (process.env.COMSPEC || 'cmd.exe') : 'npm';
+  const args = isWindows
+    ? ['/c', 'npm', 'exec', '--yes', 'firebase-tools@15.25.1', '--', 'functions:secrets:set', s.name, '--project', project]
+    : ['exec', '--yes', 'firebase-tools@15.25.1', '--', 'functions:secrets:set', s.name, '--project', project];
   console.log(`Command: ${cmd} ${args.join(' ')}`);
   if (!apply) {
     console.log('Dry-run mode: not executing. Pass --apply to run the command.');
