@@ -47,7 +47,9 @@ jobs:
           npm --prefix functions run build
 
       - name: Android release configuration gate
-        run: npm run test:android-release-config
+        run: |
+          npm run test:android-release-config
+          npm run test:queue-attention
 
       - name: Generate OpenAPI SDK
         run: npm run generate:openapi-sdk

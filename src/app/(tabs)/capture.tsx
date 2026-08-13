@@ -7,16 +7,17 @@ import { colors } from '@/constants/brand';
 import { useTransactions } from '@/hooks/use-transactions';
 import { useAuth } from '@/providers/auth-provider';
 import { useOfflineEvidence } from '@/providers/offline-evidence-provider';
+import { queueAttentionMessage } from '@/lib/queue-attention';
 
 export default function CaptureHub() {
   const router = useRouter();
   const { user } = useAuth();
   const { items } = useTransactions(user?.uid);
-  const { queuedCount, attentionCount, syncNow } = useOfflineEvidence();
+  const { queuedCount, attentionCount, attentionReason, syncNow, retryAttention } = useOfflineEvidence();
   const eligible = items.filter((item) => ['TERMS_LOCKED', 'PACKED', 'SHIPPED', 'BUYER_REVIEW', 'DISPUTED'].includes(item.status));
   return <SafeAreaView style={styles.safe} edges={['top']}><ScrollView contentContainerStyle={styles.container}>
     <ScreenTitle eyebrow="Guided evidence" title="Capture" subtitle="Record directly inside the transaction so the server can add its receipt/finalization time and independently compute a SHA-256 fingerprint. Client capture time remains separately labeled." />
-    {queuedCount || attentionCount ? <View style={styles.queue}><View style={{ flex: 1 }}><Text style={styles.queueTitle}>{attentionCount ? `${attentionCount} encrypted queue item${attentionCount === 1 ? '' : 's'} require attention` : `${queuedCount} encrypted capture${queuedCount === 1 ? '' : 's'} waiting to sync`}</Text><Text style={styles.queueText}>{attentionCount ? 'The ciphertext was retained, but automatic retry stopped for a non-retryable or unreadable local queue condition. Do not clear app data or uninstall; record this condition for support review.' : 'PackProof retries automatically when connectivity returns and keeps ciphertext until server finalization.'}</Text></View>{queuedCount ? <Button label="Sync now" variant="secondary" onPress={syncNow} /> : null}</View> : null}
+    {queuedCount || attentionCount ? <View style={styles.queue}><View style={{ flex: 1 }}><Text style={styles.queueTitle}>{attentionCount ? `${attentionCount} encrypted queue item${attentionCount === 1 ? '' : 's'} require attention` : `${queuedCount} encrypted capture${queuedCount === 1 ? '' : 's'} waiting to sync`}</Text><Text style={styles.queueText}>{attentionCount && attentionReason ? queueAttentionMessage(attentionReason) : 'PackProof retries automatically when connectivity returns and keeps ciphertext until server finalization.'}</Text></View>{attentionCount ? <Button label="Retry retained" variant="secondary" onPress={retryAttention} /> : queuedCount ? <Button label="Sync now" variant="secondary" onPress={syncNow} /> : null}</View> : null}
     <View style={styles.tip}><AppIcon name="exclamationmark.shield.fill" size={23} tintColor={colors.amber} /><Text style={styles.tipText}>Packing and unboxing videos must be continuous. Do not pause, trim or edit the recording before upload.</Text></View>
     <View style={styles.list}>
       {eligible.map((item) => {
