@@ -78,7 +78,7 @@ export default function AccountScreen() {
 
     <Text style={styles.sectionLabel}>DANGER ZONE</Text>
     <Button label="Delete my account and data" icon="trash.fill" variant="danger" busy={busy === 'delete'} onPress={deleteAccount} />
-    <Text style={styles.version}>PackProof 0.3.0 · Digital evidence only; physical correspondence is not available.</Text>
+    <Text style={styles.version}>PackProof 0.8.5.0 · Digital evidence only; physical correspondence is not available.</Text>
   </ScrollView></SafeAreaView>;
 }
 

@@ -2,7 +2,7 @@
 
 > Current execution authority: follow [`../../agent.md`](../../agent.md) for launch sequencing, readiness status, demonstration gates, Play acceptance, and production rollout. This directory provides architecture and historical evidence; it does not override the current execution plan.
 
-This directory records the controlled migration of the current PackProof 0.3.0 working tree into a unified, API-first commerce evidence platform.
+This directory records the controlled migration of the current PackProof 0.8.5.0 working tree into a unified, API-first commerce evidence platform.
 
 ## Section 1 artifacts
 

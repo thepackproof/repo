@@ -35,7 +35,7 @@ Callback destinations must use HTTPS, contain no embedded credentials, match an 
 
 `DIGITAL_EVIDENCE_READY` requires server finalization, the strongest implemented online app/device context, exact client/server file-hash and byte-length matches, a declared/detected media-type match and—when the Connect order supplied tracking context—a matching observed barcode. Otherwise the callback is `DIGITAL_EVIDENCE_WITH_LIMITATIONS`.
 
-Both states remain bounded to the digital evidence path. `statusReasonCodes` and the six `assurance` dimensions remain authoritative for policy decisions. In version 0.3.0, physical correspondence is always `NOT_AVAILABLE` and business/legal relevance is always `REVIEW_REQUIRED`.
+Both states remain bounded to the digital evidence path. `statusReasonCodes` and the six `assurance` dimensions remain authoritative for policy decisions. In version 0.8.5.0, physical correspondence is always `NOT_AVAILABLE` and business/legal relevance is always `REVIEW_REQUIRED`.
 
 ## Provisioning
 

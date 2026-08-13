@@ -3,7 +3,7 @@
   "private": true,
   "license": "UNLICENSED",
   "main": "expo-router/entry",
-  "version": "0.3.0",
+  "version": "0.8.5",
   "engines": {
     "node": "22"
   },

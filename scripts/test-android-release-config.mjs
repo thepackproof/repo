@@ -22,8 +22,8 @@ if (result.status !== 0) {
 
 const config = JSON.parse(result.stdout);
 assert.equal(config.android?.package, 'com.packproof.app');
-assert.equal(config.android?.versionCode, 4);
-assert.equal(config.version, '0.3.0');
+assert.equal(config.android?.versionCode, 5);
+assert.equal(config.version, '0.8.5.0');
 assert.equal(config.android?.allowBackup, false);
 
 const forbiddenReleasePermissions = [

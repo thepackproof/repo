@@ -914,7 +914,7 @@ The first authorized execution tranche is limited to:
 5. Replace public legal placeholders with approved content.
 6. Run the complete clean-install CI and emulator baseline.
 7. Triage root/mobile high advisories by shipped runtime reachability.
-8. Freeze and tag `v0.3.0-rc.1` only after the gate passes.
+8. Freeze and tag `v0.8.5.0-rc.1` only after the gate passes.
 9. Deploy only the named sandbox.
 10. Produce a traceable preview APK and connect two designated test devices.
 

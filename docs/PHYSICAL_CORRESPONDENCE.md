@@ -1,6 +1,6 @@
 # Physical correspondence — validation-gated architecture
 
-PackProof 0.3.0 introduces the acquisition and evidence architecture required to research the whitepaper's proposed stochastic physical correspondence layer. It does **not** claim that the physical matcher has been scientifically validated, and the production API intentionally returns no similarity score or match decision until a frozen matcher and threshold policy pass the specified validation program.
+PackProof 0.8.5.0 includes the acquisition and evidence architecture required to research the whitepaper's proposed stochastic physical correspondence layer. It does **not** claim that the physical matcher has been scientifically validated, and the production API intentionally returns no similarity score or match decision until a frozen matcher and threshold policy pass the specified validation program.
 
 ## Capture profile `PP-PHYSICAL-MATTE-V1`
 
