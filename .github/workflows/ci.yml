@@ -46,6 +46,9 @@ jobs:
           npm run lint
           npm --prefix functions run build
 
+      - name: Android release configuration gate
+        run: npm run test:android-release-config
+
       - name: Generate OpenAPI SDK
         run: npm run generate:openapi-sdk
 

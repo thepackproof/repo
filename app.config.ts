@@ -86,6 +86,14 @@ const config: ExpoConfig = {
       'android.permission.READ_MEDIA_AUDIO',
       'android.permission.READ_CONTACTS',
       'android.permission.WRITE_CONTACTS',
+      // Billing and advertising remain out of the initial Android release.
+      // Transitive SDK manifests must not silently reintroduce these grants.
+      'com.android.vending.BILLING',
+      'com.google.android.gms.permission.AD_ID',
+      'android.permission.ACCESS_ADSERVICES_ATTRIBUTION',
+      'android.permission.ACCESS_ADSERVICES_AD_ID',
+      'android.permission.ACCESS_ADSERVICES_CUSTOM_AUDIENCE',
+      'android.permission.ACCESS_ADSERVICES_TOPICS',
     ],
   },
   web: {
