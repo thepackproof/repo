@@ -48,4 +48,15 @@ assert.deepEqual(assetLinks[0].target?.sha256_cert_fingerprints, [
   'BE:47:12:52:5F:B4:0E:8C:3C:06:F5:8C:E8:73:49:B6:3A:6B:F1:DB:3B:B7:EA:CD:5D:10:97:2E:B9:AD:71:36',
 ]);
 
-console.log(`Android release configuration passed (${forbiddenReleasePermissions.length} billing/advertising permissions blocked; release App Link certificate pinned).`);
+const firebaseConfig = JSON.parse(readFileSync(join(process.cwd(), 'firebase.json'), 'utf8'));
+const assetLinksHeaders = firebaseConfig.hosting?.headers?.find(
+  ({ source }) => source === '/.well-known/assetlinks.json',
+)?.headers;
+assert.deepEqual(assetLinksHeaders, [
+  {
+    key: 'Cache-Control',
+    value: 'public, max-age=300, must-revalidate',
+  },
+]);
+
+console.log(`Android release configuration passed (${forbiddenReleasePermissions.length} billing/advertising permissions blocked; release App Link certificate and cache policy pinned).`);
