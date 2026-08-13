@@ -76,6 +76,8 @@ The initial Android launch baseline includes:
 - buyer invitation or participant claim;
 - mutual terms confirmation;
 - packing and unboxing capture;
+- continuous packing capture that records the observable item, placement into the package, closure, label application, PP ink-boundary creation, tape sealing, and associated high-resolution SISV reference images;
+- Stochastic Ink Spread Verification reference and verification acquisition with neutral correspondence, variance, or inconclusive reporting once the applicable implementation and validation gates pass;
 - Android Keystore-backed offline evidence retention;
 - live upload and observable server finalization;
 - server SHA-256 and service-authenticated manifest generation;
@@ -98,7 +100,7 @@ The following functions remain in the product roadmap but must be hidden and exc
 - PackProof Pro and RevenueCat billing;
 - general merchant webhook delivery;
 - commerce-platform-specific adapters; and
-- physical feature matching.
+- production activation of an SISV correspondence decision before the implementation-specific matcher, supported-device/material policy, thresholds, and validation gates pass. SISV implementation and research-mode measurement are critical-path Gate 5 work, not post-launch scope.
 
 Do not delete future-scope work merely to pass a gate. Preserve it behind an explicit configuration boundary and test that the disabled path cannot break startup or core behavior.
 
@@ -202,7 +204,7 @@ The required order is:
 3. Gate 2 - Release-quality source baseline
 4. Gate 3 - Live sandbox deployment
 5. Gate 4 - Exact signed Android candidate
-6. Gate 5 - Two-party live core flow
+6. Gate 5 - SISV-first two-party live core flow
 7. Gate 6 - Security and operations acceptance
 8. Gate 7 - Repeatable stakeholder demonstration
 9. Gate 8 - Play internal and closed testing
@@ -540,11 +542,39 @@ Do not clear application data or uninstall from a device that may hold unfinaliz
 - The secure queue fails across restart.
 - Native startup, camera, or evidence encryption fails.
 
-# Gate 5 - Prove the two-party live core flow
+# Gate 5 - Prove the SISV-first two-party live core flow
 
-**Objective:** Demonstrate the entire PackProof value path with observable server evidence and expected failures.
+**Objective:** Implement the SISV physical-evidence bridge first, then demonstrate the entire neutral PackProof evidence path with observable server evidence and expected failures.
 
 **Estimated effort:** 2 to 5 working days, excluding defect repair.
+
+## Gate 5A - SISV implementation and feasibility vertical slice
+
+SISV is the first Gate 5 engineering priority. The continuous video is the event-binding evidence layer; full-resolution original stills are the physical-measurement layer. PackProof records observations and measurable correspondence or variance. It does not assign fraud, fault, liability, or claim disposition.
+
+### Required work
+
+1. Bind the seller's continuous packing video to the physical-reference capture group that follows the recorded item placement, flap closure, label application, PP signature, and tape sealing sequence.
+2. Retain the frozen 15-frame acquisition profile across the identifier, two spatially separate ink edges, label/cardboard boundary, and adjacent cardboard, with post-tape reference images suitable for later like-for-like acquisition.
+3. Reacquire the same region plan for recipient verification and preserve every original through the existing encrypted queue, server hashing, manifest, and evidence-finalization path.
+4. Implement a versioned server-side research matcher over server-finalized originals. The minimum pipeline is eligibility and quality assessment, geometric registration, fixed-scale local-patch extraction, region-level similarity measurement, multi-frame aggregation, and explicit failure reasons.
+5. Persist an auditable research result containing the reference and verification group IDs, evidence IDs and hashes, matcher artifact/version, quality-policy version, per-region measurements, aggregate score, decision-policy version, and limitations. Client-supplied measurements must not be treated as authoritative matcher output.
+6. Expose neutral research outcomes for `CORRESPONDS`, `VARIANCE_DETECTED`, or `INCONCLUSIVE` without emitting fraud, tamper cause, fault, liability, authenticity, or claim-disposition conclusions.
+7. Run the smallest useful device study before broadening: repeated captures of the same package, independently prepared different packages, a redrawn PP mark, a photographed/printed reproduction, and an acquisition-quality failure.
+8. Keep production activation disabled until the supported materials/devices, extractor artifact, quality gates, aggregation, thresholds, and attack populations are frozen and the independent blind validation gate passes.
+
+### Required implementation evidence
+
+- Source and contract tests for group binding, region completeness, fail-closed quality handling, deterministic versioned scoring, immutable reference selection, and neutral result projection.
+- Exact-APK proof on the designated physical Android device for one complete reference and verification pair.
+- A score report showing same-package and different-package observations without presenting the development set as a production error-rate claim.
+- Preserved originals, hashes, manifests, group identifiers, matcher version, and negative reproduction-attempt evidence.
+
+### Gate 5A pass boundary
+
+Gate 5A implementation passes when the exact Android APK produces a traceable end-to-end research comparison from server-finalized reference and verification originals, the result is reproducible from its recorded matcher inputs, and the negative cases fail closed. This proves an implemented research vertical slice; it does not by itself authorize a production physical-correspondence performance claim.
+
+## Gate 5B - Two-party live core proof
 
 ## Golden-path run
 
