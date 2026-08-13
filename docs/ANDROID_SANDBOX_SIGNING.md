@@ -32,6 +32,8 @@ The preferred local sequence is the interactive wrapper below. It prompts withou
 .\scripts\build-sandbox-apk.ps1
 ```
 
+The wrapper defaults to the current replacement sandbox key filename and alias under the operator's `.packproof\credentials` directory. Override `-KeystorePath`, `-KeyAlias`, or `-OutputPath` explicitly when rotating the sandbox identity again; the passwords remain interactive and are never supplied as command-line arguments.
+
 For CI or a credential-manager-backed process, populate the five environment variables without printing their values, then run:
 
 ```powershell

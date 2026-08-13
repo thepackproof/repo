@@ -1,14 +1,19 @@
 [CmdletBinding()]
 param(
-  [string]$KeystorePath = 'C:\Users\neric\.packproof\credentials\packproof-sandbox-device-test.jks',
-  [string]$OutputPath = 'C:\src\PackProof\artifacts\release-readiness-2026-08-13\app-release-arm64-post-hardening.apk'
+  [string]$KeystorePath = (Join-Path $env:USERPROFILE '.packproof\credentials\packproof-sandbox-device-test-20260813.jks'),
+  [string]$KeyAlias = 'packproof-sandbox-20260813',
+  [string]$OutputPath
 )
 
 $ErrorActionPreference = 'Stop'
 $repositoryRoot = Split-Path -Parent $PSScriptRoot
+$workspaceRoot = Split-Path -Parent $repositoryRoot
+if ([string]::IsNullOrWhiteSpace($OutputPath)) {
+  $OutputPath = Join-Path $workspaceRoot 'artifacts\release-readiness-2026-08-13\app-release-arm64-gate5.apk'
+}
 $resolvedKeystore = (Resolve-Path -LiteralPath $KeystorePath -ErrorAction Stop).Path
 $outputDirectory = Split-Path -Parent $OutputPath
-$alias = Read-Host 'Sandbox key alias'
+$alias = $KeyAlias
 $storePasswordSecure = Read-Host 'Sandbox keystore password' -AsSecureString
 $keyPasswordSecure = Read-Host 'Sandbox key password' -AsSecureString
 $storePasswordBstr = [IntPtr]::Zero

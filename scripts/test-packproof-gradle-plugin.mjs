@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
+import { readFileSync } from 'node:fs';
 
 const require = createRequire(import.meta.url);
 const { patchAppBuildGradle } = require('../plugins/with-packproof-gradle-properties.js');
@@ -44,5 +45,10 @@ assert.throws(
   /generated debug signing block/,
   'plugin must fail when the expected Expo template changes',
 );
+
+const sandboxBuildScript = readFileSync(new URL('./build-sandbox-apk.ps1', import.meta.url), 'utf8');
+assert.match(sandboxBuildScript, /packproof-sandbox-device-test-20260813\.jks/);
+assert.match(sandboxBuildScript, /packproof-sandbox-20260813/);
+assert.doesNotMatch(sandboxBuildScript, /packproof-sandbox-device-test\.jks/);
 
 process.stdout.write('PackProof Gradle signing plugin tests passed.\n');
