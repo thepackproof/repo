@@ -1,5 +1,6 @@
 {
   "name": "packproof-functions",
+  "version": "0.3.0",
   "private": true,
   "main": "lib/index.js",
   "engines": {

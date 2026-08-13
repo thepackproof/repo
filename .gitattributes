@@ -1,0 +1,39 @@
+* text=auto
+
+*.cjs text eol=lf
+*.css text eol=lf
+*.gradle text eol=lf
+*.html text eol=lf
+*.java text eol=lf
+*.js text eol=lf
+*.json text eol=lf
+*.kt text eol=lf
+*.kts text eol=lf
+*.md text eol=lf
+*.mjs text eol=lf
+*.properties text eol=lf
+*.ps1 text eol=lf
+*.rules text eol=lf
+*.sh text eol=lf
+*.ts text eol=lf
+*.tsx text eol=lf
+*.xml text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+*.apk binary
+*.doc binary
+*.docx binary
+*.gif binary
+*.ico binary
+*.jpeg binary
+*.jpg binary
+*.jks binary
+*.keystore binary
+*.pdf binary
+*.png binary
+*.webp binary
+*.zip binary

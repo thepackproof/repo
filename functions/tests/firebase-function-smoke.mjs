@@ -18,7 +18,7 @@ const endpoint = packproofApi?.__endpoint;
 assert.equal(typeof packproofApi, 'function', 'packproofApi must be a Firebase function export.');
 assert.equal(endpoint?.platform, 'gcfv2');
 assert.deepEqual(endpoint?.region, ['us-east1']);
-assert.deepEqual(endpoint?.httpsTrigger, {});
+assert.deepEqual(endpoint?.httpsTrigger, { invoker: ['public'] });
 assert.equal(endpoint?.timeoutSeconds, 60);
 assert.equal(endpoint?.availableMemoryMb, 512);
 assert.ok(endpoint?.secretEnvironmentVariables?.some(({ key }) => key === 'API_CREDENTIAL_PEPPER'));

@@ -1,5 +1,7 @@
 # PackProof architecture governance
 
+> Current execution authority: follow [`../../agent.md`](../../agent.md) for launch sequencing, readiness status, demonstration gates, Play acceptance, and production rollout. This directory provides architecture and historical evidence; it does not override the current execution plan.
+
 This directory records the controlled migration of the current PackProof 0.3.0 working tree into a unified, API-first commerce evidence platform.
 
 ## Section 1 artifacts
@@ -7,7 +9,7 @@ This directory records the controlled migration of the current PackProof 0.3.0 w
 - [Architecture contract](ARCHITECTURE_CONTRACT.md) - mandatory dependency, security, evidence, API, provenance and claim boundaries.
 - [Baseline evidence](BASELINE_2026-08-11.md) - exact local source/emulator results and known open risks for the uncommitted 0.3.0 working tree.
 - [Migration map](MIGRATION_MAP.md) - current modules, current coupling and their target architectural destinations.
-- [Checkpoint plan](CHECKPOINT_PLAN.md) - proposed method for converting the current dirty tree into an honest, reviewable Git baseline.
+- [Checkpoint plan](CHECKPOINT_PLAN.md) - historical disposition of the now-resolved uncommitted-baseline problem.
 - [Architecture decisions](../adr/README.md) - accepted decisions that later sections must preserve.
 
 ## Section 2 artifacts

@@ -38,10 +38,8 @@ Agentic execution boundaries:
 - The AI agent can: modify code, create CI pipelines, run tests in this workspace, generate infra-as-code, and create validation scripts.
 - The AI agent cannot (without user action): provision production secrets in secret manager, push to remote protected repositories, register Play Console App Check keys, or provide external credentials.
 
-Next artifacts the agent will create:
-- `docs/adr/0001-manifest-auth.md`
-- `docs/adr/0002-matcher-claim-discipline.md`
-- `docs/adr/0003-outbox-delivery.md`
-- `docs/adr/0004-idempotency-retention.md`
-- `docs/roadmap-agentic.md`
+Execution authority:
+- The repository's current launch, demonstration, ownership, proof-gate, and rollout instructions are in [`../agent.md`](../agent.md).
+- The ADRs and architecture documents listed here remain technical references, but they do not select the next launch action.
+- Historical readiness statements must be reverified against the exact current source, binary, environment, and device before reuse.
 

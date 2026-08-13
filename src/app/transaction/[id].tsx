@@ -8,6 +8,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { Button, Card, Choice, Field, LoadingScreen, ProgressBar, StatusPill } from '@/components/ui';
 import { colors } from '@/constants/brand';
 import { callFunction, downloadUrl, subscribeEvents, subscribeEvidence, subscribeReturnPassports, subscribeTransaction } from '@/lib/api';
+import { forceFreshCallableCredentials } from '@/lib/firebase';
 import { enqueueEvidence, syncEvidenceQueue } from '@/lib/offline-evidence-queue';
 import { formatDate, formatMoney, readableError, statusProgress } from '@/lib/format';
 import { useAuth } from '@/providers/auth-provider';
@@ -114,6 +115,7 @@ export default function TransactionDetail() {
 
   const capture = (type: EvidenceType, returnPassportId?: string) => router.push({ pathname: '/capture/[id]', params: { id, type, ...(returnPassportId ? { returnPassportId } : {}) } });
   const createPacket = () => run('packet', async () => {
+    await forceFreshCallableCredentials();
     const result = await callFunction<{ transactionId: string }, { storagePath: string }>('createEvidencePacket', { transactionId: id });
     await Linking.openURL(await downloadUrl(result.storagePath));
   });

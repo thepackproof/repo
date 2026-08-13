@@ -26,7 +26,7 @@ Capture fulfillment as it happens:
 - Downloadable evidence packets for your records
 - Private concern reporting and participant blocking
 
-PackProof Pro adds unlimited active transaction passports, full-resolution evidence features, extended retention and on-demand evidence packets. Purchases are processed securely by Google Play and can be restored in the app.
+The initial Android release does not advertise or sell PackProof Pro. Paid-plan code remains disabled behind a runtime feature flag until purchase, restore, renewal, cancellation, expiration, transfer, localized-price, webhook-authorization and Firebase-identity tests pass.
 
 Important: PackProof is a documentation tool. It does not authenticate users or items, determine ownership, provide appraisal, escrow, payment, shipping or insurance services, guarantee recovery, decide disputes, or guarantee that a marketplace, carrier, insurer, payment provider or court will accept a record. Always inspect independently and use an appropriate protected payment and shipping method.
 
@@ -39,7 +39,7 @@ Important: PackProof is a documentation tool. It does not authenticate users or 
 5. Finalized evidence — separately labeled client/server times, SHA-256 fingerprints, and assurance limitations.
 6. Audit timeline — shipment, receipt and completion.
 7. Evidence packet — organized export for personal records.
-8. Account — linked sign-in methods, plan, export and deletion.
+8. Account — Google sign-in, export and deletion.
 
 Do not place simulated five-star ratings, “fraud-proof,” “legally binding,” “court-ready,” “authentic,” “verified seller,” “guaranteed,” escrow or insurance claims in graphics.
 

@@ -49,7 +49,7 @@ These controls are not certification, scientific validation, a penetration test,
 
 Use Node 22 and Java 21. Expo Go is not supported because the application uses native Firebase modules and a custom Android Keystore module.
 
-1. Read the [`architecture governance index`](docs/architecture/README.md), then [`PC_DEMO.md`](PC_DEMO.md) for a Windows launch and [`EXTERNAL_DEMO.md`](EXTERNAL_DEMO.md) for live-service staging.
+1. Read the authoritative [`agent.md`](agent.md) launch and demonstration execution plan, then the [`architecture governance index`](docs/architecture/README.md). Use [`PC_DEMO.md`](PC_DEMO.md) for a Windows launch and [`EXTERNAL_DEMO.md`](EXTERNAL_DEMO.md) for live-service staging only within the gate currently authorized by `agent.md`.
 2. Run `npm ci` and `npm --prefix functions ci`.
 3. Run `npm run configure`, then place the matching Firebase `google-services.json` beside `package.json`.
 4. Configure `MANIFEST_SIGNING_SECRET` in Firebase Secret Manager and set a non-secret `MANIFEST_SIGNING_KEY_ID` in `functions/.env`.
