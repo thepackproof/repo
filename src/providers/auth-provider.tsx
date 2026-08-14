@@ -111,10 +111,10 @@ export function AuthProvider({ children }: PropsWithChildren) {
   const refreshAuthentication = useCallback(async () => {
     const current = auth.currentUser;
     if (!current) throw new Error('Sign in is required.');
-    const providers = current.providerData.map((item) => item.providerId);
-    if (providers.includes('google.com')) await reauthenticateWithCredential(current, await googleCredential());
-    else if (providers.includes('facebook.com')) await reauthenticateWithCredential(current, await facebookCredential());
-    else if (profile?.providers.includes('tiktok.com')) await signInTikTok();
+    const providerIds = new Set(current.providerData.map((item) => item.providerId));
+    if (providerIds.has('google.com')) await reauthenticateWithCredential(current, await googleCredential());
+    else if (providerIds.has('facebook.com')) await reauthenticateWithCredential(current, await facebookCredential());
+    else if (profile?.providers.some((providerId) => providerId === 'tiktok.com')) await signInTikTok();
     else throw new Error('Link Google, Facebook, or TikTok before performing this security-sensitive action.');
   }, [profile?.providers, signInTikTok]);
 

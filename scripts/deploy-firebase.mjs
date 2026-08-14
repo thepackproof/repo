@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { spawnSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 
@@ -11,21 +12,21 @@ const applySecrets = rawArgs.includes('--apply-secrets');
 const dryRun = rawArgs.includes('--dry-run');
 
 const isWindows = process.platform === 'win32';
-const shellCommand = process.env.COMSPEC || 'cmd.exe';
+const npmCliCandidates = isWindows
+  ? [resolve(dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js')]
+  : [
+      resolve(dirname(process.execPath), '..', 'lib', 'node_modules', 'npm', 'bin', 'npm-cli.js'),
+      resolve(dirname(process.execPath), '..', 'lib64', 'node_modules', 'npm', 'bin', 'npm-cli.js'),
+    ];
+const npmCli = npmCliCandidates.find((candidate) => existsSync(candidate));
 
 function fail(message) {
   console.error(`ERROR: ${message}`);
   process.exit(1);
 }
 
-const npmCommand = isWindows ? 'cmd.exe' : 'npm';
-
 function run(command, args, options = {}) {
-  const execCommand = isWindows && command === 'npm' ? shellCommand : command;
-  const spawnArgs = isWindows && command === 'npm'
-    ? ['/c', 'npm', ...args]
-    : args;
-  const result = spawnSync(execCommand, spawnArgs, { stdio: 'inherit', ...options });
+  const result = spawnSync(command, args, { stdio: 'inherit', ...options });
   if (result.error) {
     console.error(`Failed to run ${command}: ${result.error.message}`);
     process.exit(1);
@@ -33,6 +34,11 @@ function run(command, args, options = {}) {
   if (result.status !== 0) {
     process.exit(result.status);
   }
+}
+
+function runNpm(args, options = {}) {
+  if (!npmCli) fail(`Unable to locate npm CLI beside the active Node runtime: ${process.execPath}`);
+  run(process.execPath, [npmCli, ...args], options);
 }
 
 if (!project) {
@@ -45,8 +51,8 @@ console.log(`Dry run: ${dryRun ? 'yes' : 'no'}`);
 console.log('---');
 
 if (!dryRun) {
-  run('npm', ['run', 'build:button-sdk'], { cwd: root });
-  run('npm', ['--prefix', 'functions', 'run', 'build'], { cwd: root });
+  runNpm(['run', 'build:button-sdk'], { cwd: root });
+  runNpm(['--prefix', 'functions', 'run', 'build'], { cwd: root });
 }
 
 if (applySecrets) {
@@ -63,5 +69,5 @@ if (dryRun) {
   process.exit(0);
 }
 
-run('npm', ['exec', '--yes', 'firebase-tools@15.25.1', '--', 'deploy', '--project', project, '--only', 'firestore,storage,functions,hosting'], { cwd: root });
+runNpm(['exec', '--yes', 'firebase-tools@15.25.1', '--', 'deploy', '--project', project, '--only', 'firestore,storage,functions,hosting'], { cwd: root });
 console.log('Firebase deployment complete.');
