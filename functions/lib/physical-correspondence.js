@@ -55,57 +55,59 @@ exports.getPhysicalCorrespondenceStatus = (0, https_1.onCall)({ enforceAppCheck:
     const verification = verifications.find((group) => group.complete) ?? verifications[0] ?? null;
     if (!reference) {
         return {
-            decision: 'NOT_EVALUATED',
+            observationStatus: 'NOT_EVALUATED',
             reason: 'NO_REFERENCE_CAPTURE',
             reference: null,
             verification,
-            matcher: { status: 'VALIDATION_REQUIRED', modelVersion: null, thresholdPolicyVersion: null, score: null },
+            comparison: { status: 'NOT_ENABLED', artifactVersion: null, observationPolicyVersion: null, aggregateMeasurement: null },
             claimClass: 'V',
         };
     }
     if (!reference.complete) {
         return {
-            decision: 'FTA',
+            observationStatus: 'ACQUISITION_INCOMPLETE',
             reason: 'REFERENCE_CAPTURE_INCOMPLETE',
             reference,
             verification,
-            matcher: { status: 'VALIDATION_REQUIRED', modelVersion: null, thresholdPolicyVersion: null, score: null },
+            comparison: { status: 'NOT_ENABLED', artifactVersion: null, observationPolicyVersion: null, aggregateMeasurement: null },
             claimClass: 'V',
         };
     }
     if (!verification) {
         return {
-            decision: 'NOT_EVALUATED',
+            observationStatus: 'NOT_EVALUATED',
             reason: 'NO_VERIFICATION_CAPTURE',
             reference,
             verification: null,
-            matcher: { status: 'VALIDATION_REQUIRED', modelVersion: null, thresholdPolicyVersion: null, score: null },
+            comparison: { status: 'NOT_ENABLED', artifactVersion: null, observationPolicyVersion: null, aggregateMeasurement: null },
             claimClass: 'V',
         };
     }
     if (!verification.complete) {
         return {
-            decision: 'FTA',
+            observationStatus: 'ACQUISITION_INCOMPLETE',
             reason: 'VERIFICATION_CAPTURE_INCOMPLETE',
             reference,
             verification,
-            matcher: { status: 'VALIDATION_REQUIRED', modelVersion: null, thresholdPolicyVersion: null, score: null },
+            comparison: { status: 'NOT_ENABLED', artifactVersion: null, observationPolicyVersion: null, aggregateMeasurement: null },
             claimClass: 'V',
         };
     }
-    // A completed acquisition set is intentionally not converted into a similarity
-    // score until PackProof has a frozen extractor/matcher, pre-registered
-    // thresholds and independent blind validation for this profile/population.
+    // A completed acquisition set is intentionally not converted into a physical
+    // comparison measurement until PackProof has a frozen comparison artifact,
+    // pre-registered observation policy and independent blind validation for this
+    // profile/population. A future observation has no workflow or adjudication
+    // authority and must never infer cause, actor, fraud, fault or disposition.
     return {
-        decision: 'INCONCLUSIVE',
-        reason: 'MATCHER_NOT_YET_VALIDATED',
+        observationStatus: 'RESEARCH_ONLY',
+        reason: 'COMPARISON_NOT_ENABLED',
         reference,
         verification,
-        matcher: {
-            status: 'VALIDATION_REQUIRED',
-            modelVersion: null,
-            thresholdPolicyVersion: null,
-            score: null,
+        comparison: {
+            status: 'NOT_ENABLED',
+            artifactVersion: null,
+            observationPolicyVersion: null,
+            aggregateMeasurement: null,
         },
         claimClass: 'V',
     };

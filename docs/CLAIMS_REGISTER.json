@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "registerVersion": "1.0.0",
-  "effectiveDate": "2026-08-07",
+  "registerVersion": "1.2.0",
+  "effectiveDate": "2026-08-13",
   "source": {
     "title": "PackProof Technical Whitepaper",
     "version": "1.0",
@@ -22,6 +22,30 @@
       "MATCH",
       "NON_MATCH"
     ],
+    "sisvProductRole": "NEUTRAL_OBSERVATION_AND_MEASUREMENT_ONLY",
+    "permittedValidatedSisvObservationStates": [
+      "CONSISTENT_WITH_REFERENCE",
+      "VARIANCE_OBSERVED",
+      "INCONCLUSIVE",
+      "NOT_EVALUATED"
+    ],
+    "prohibitedSisvInterpretationsAlways": [
+      "IDENTITY",
+      "AUTHENTICITY",
+      "TAMPER_CAUSE",
+      "FRAUD",
+      "INTENT",
+      "PARTICIPANT_RISK",
+      "FAULT",
+      "LIABILITY",
+      "CUSTODY",
+      "CLAIM_DISPOSITION",
+      "PAYMENT_DISPOSITION",
+      "REFUND_DISPOSITION",
+      "CHARGEBACK_DISPOSITION",
+      "ACCOUNT_ENFORCEMENT"
+    ],
+    "sisvWorkflowAuthority": "NONE",
     "claimChangeRequires": [
       "claims register update",
       "evidence package",
@@ -108,17 +132,22 @@
         "16. Limitations and open research questions",
         "Appendix D. Claim register"
       ],
-      "approvedWording": "No production PackProof physical matcher or PackProof-specific performance result is established by the reviewed materials. Any experimental implementation is research-only until independently validated.",
+      "approvedWording": "No production PackProof SISV comparison measurement or PackProof-specific performance result is established by the reviewed materials. Any experimental implementation is research-only until independently validated. Even after validation, PackProof may report only bounded observations under a named profile and may not infer cause, intent, actor, authenticity, custody, fraud, fault, liability, risk, or disposition.",
       "prohibitedWording": [
         "PackProof physical matcher works",
         "PackProof verifies physical authenticity",
         "PackProof proves the same package",
         "PackProof detects counterfeits",
         "PackProof match",
-        "PackProof non-match"
+        "PackProof non-match",
+        "SISV proves tampering",
+        "SISV detects fraud",
+        "SISV identifies who is at fault",
+        "SISV proves authenticity",
+        "SISV determines a claim outcome"
       ],
       "requiredEvidenceToAdvance": [
-        "implemented and frozen acquisition, eligibility, registration, feature, score, and decision pipeline",
+        "implemented and frozen acquisition, eligibility, registration, feature, measurement, and neutral observation pipeline",
         "PackProof-specific development and independently controlled blind corpora",
         "pre-registered metrics, thresholds, subgroup, environmental, and attack analyses",
         "independent replication",
@@ -412,6 +441,97 @@
         "representative independently auditable historical outcome study",
         "stratification by reason code, network, issuer, region, merchant type, selection, and policy version",
         "continued disclaimer that future outcomes are not guaranteed"
+      ]
+    },
+    {
+      "id": "visible_protocol_deterrence",
+      "currentClass": ["V"],
+      "releaseState": "HYPOTHESIS_ONLY",
+      "sourceHeadings": [
+        "PackProof evidence-first go-to-market strategy 3.1",
+        "PackProof evidence-first go-to-market strategy 7"
+      ],
+      "approvedWording": "A visible boundary-mark and evidence-notice protocol is designed to make a transaction record more deliberate, visible, and reviewable, and may discourage opportunistic misrepresentation. PackProof has not established a deterrence or fraud-reduction rate.",
+      "prohibitedWording": [
+        "Cryptographic bluff",
+        "Defeats 95% of e-commerce fraud",
+        "90% of scammers will back down",
+        "Stops friendly fraud",
+        "Makes the seller a fraud-proof target"
+      ],
+      "requiredEvidenceToAdvance": [
+        "pre-specified definitions and denominators",
+        "representative independently auditable controlled pilot",
+        "selection and confounding analysis",
+        "reported counts, uncertainty, population, exclusions, time window, and limitations"
+      ]
+    },
+    {
+      "id": "human_reviewable_seam_observations",
+      "currentClass": ["I"],
+      "qualifier": "workflow-requires-current-two-device-runtime-verification",
+      "releaseState": "NEUTRAL_CONTEXT_ONLY",
+      "sourceHeadings": [
+        "PackProof evidence-first go-to-market strategy 3.3",
+        "PackProof evidence-first go-to-market strategy 9"
+      ],
+      "approvedWording": "PackProof can preserve seller reference and buyer arrival views of the marked label-package boundary, tape, seams, and surrounding package for side-by-side human review. A reviewer may describe visible continuity, variance, or an inability to assess; PackProof does not infer cause, intent, actor, authenticity, custody, fraud, fault, or disposition.",
+      "prohibitedWording": [
+        "A broken seam proves the package was opened",
+        "A visible difference catches the seller",
+        "Matching tape proves the same package",
+        "Human eyes prove tampering",
+        "The seam identifies who is at fault"
+      ],
+      "requiredEvidenceToAdvance": [
+        "exact two-device workflow verified on the release candidate",
+        "original and presentation-view provenance preserved",
+        "neutral reviewer vocabulary and limitations displayed",
+        "accessibility, capture-completion, and dossier usability tests"
+      ]
+    },
+    {
+      "id": "carrier_weight_or_dimension_telemetry",
+      "currentClass": ["D"],
+      "releaseState": "NOT_IMPLEMENTED",
+      "sourceHeadings": [
+        "PackProof evidence-first go-to-market strategy 3.4",
+        "PackProof launch scope"
+      ],
+      "approvedWording": "The launch product records user-supplied carrier and tracking fields and may preserve label observations. Contracted carrier weight, dimension, intake, possession, route, and delivery telemetry are future integrations and, if implemented, would remain sourced neutral context rather than a finding about conduct.",
+      "prohibitedWording": [
+        "Carrier weight telemetry is live",
+        "Carrier scales instantly expose fraud",
+        "PackProof proves the parcel weight at handoff",
+        "A weight difference identifies who swapped the contents"
+      ],
+      "requiredEvidenceToAdvance": [
+        "contracted provider integration and source provenance",
+        "defined measurement, correction, time, unit, and uncertainty semantics",
+        "live end-to-end integration tests",
+        "neutral presentation that does not infer actor, cause, fraud, or fault"
+      ]
+    },
+    {
+      "id": "customer_evidence_for_sisv_research",
+      "currentClass": ["P", "D"],
+      "releaseState": "NOT_AUTHORIZED_BY_OPERATIONAL_COLLECTION",
+      "sourceHeadings": [
+        "PackProof evidence-first go-to-market strategy 8",
+        "ADR 0009"
+      ],
+      "approvedWording": "Production evidence is collected to provide the operational service described to participants; it is not automatically a model-training dataset. SISV research requires a separate affirmative opt-in, a defined research purpose, minimization and redaction, operational/research separation, retention and deletion controls, withdrawal behavior, lineage, and audited access.",
+      "prohibitedWording": [
+        "Every transaction automatically trains SISV",
+        "Users passively build PackProof's proprietary dataset",
+        "Operational consent includes model training",
+        "PackProof can reuse evidence for any research purpose"
+      ],
+      "requiredEvidenceToAdvance": [
+        "separate informed opt-in research consent",
+        "privacy, data-protection, biometric and jurisdictional review as applicable",
+        "purpose limitation, minimization, redaction, retention, deletion, withdrawal, and legal-hold policy",
+        "separate research storage, lineage, labeling, versioning, and access audit"
       ]
     },
     {

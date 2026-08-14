@@ -4,6 +4,8 @@ PackProof is an Android application and Firebase backend for documenting high-va
 
 PackProof is a documentation system. It does **not** authenticate an item or person, prove that a physical package is the same object seen earlier, establish uninterrupted custody, provide escrow or insurance, decide fraud, guarantee a dispute outcome, or promise that a carrier, marketplace, payment provider, insurer, court, or other third party will accept a record.
 
+The release strategy is evidence-vault first: shared terms, guided seller packing, a visible `PP` mark across the label/package boundary, tape/seal and high-resolution reference observations, buyer arrival/unboxing observations, resilient preservation, digital-integrity records, and a review-ready dossier. The SISV algorithm is post-launch research and is not required for the initial two-device release candidate. See [`docs/GO_TO_MARKET_EVIDENCE_FIRST_2026-08-13.md`](docs/GO_TO_MARKET_EVIDENCE_FIRST_2026-08-13.md).
+
 ## Scientific and claim boundary
 
 Version 0.8.5.0 implements the digital-evidence path described below. It deliberately reports physical correspondence as `NOT_AVAILABLE` because this repository contains no validated physical feature extractor, matcher, calibrated thresholds, or PackProof-specific blind validation corpus. Acquisition quality is `NOT_EVALUATED` until a versioned, calibrated quality gate exists.

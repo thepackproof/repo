@@ -9,6 +9,8 @@ Source baseline under review: `7acf79489e9b5b6c78f9a6b8ae64d529cd9b0e3b`
 
 This record converts the master implementation guidance into an executable initial-release promise. It does not claim that the source, live service, binary, device flow, or Play release has passed.
 
+Go-to-market positioning is controlled by [`GO_TO_MARKET_EVIDENCE_FIRST_2026-08-13.md`](GO_TO_MARKET_EVIDENCE_FIRST_2026-08-13.md). The launch product is the neutral evidence vault and human-reviewable two-party protocol. SISV algorithmic comparison is post-launch research, not a day-one requirement.
+
 ## Release decisions
 
 | Decision | Initial-release choice | Runtime boundary | Required proof before the choice changes |
@@ -76,9 +78,9 @@ The first demonstration is one high-value two-party private transaction using tw
 1. A merchant Button or API client creates a provenance-bearing handoff without exposing a private merchant credential to the browser.
 2. The seller reviews imported data and creates the transaction.
 3. The buyer claims a one-use invitation and both participants confirm the same terms.
-4. The seller records a continuous `PACKING_VIDEO`, interrupts connectivity, proves encrypted local retention, restores connectivity, and observes server finalization.
+4. The seller records a continuous `PACKING_VIDEO` showing the item-to-package sequence, `PP` mark across the label/package boundary, tape/seal application, and high-resolution reference view; interrupts connectivity; proves encrypted local retention; restores connectivity; and observes server finalization.
 5. The seller records shipment only after finalized integrity-acceptable packing evidence exists.
-6. The buyer records an `UNBOXING_VIDEO` and the transaction reaches the expected review/completion state.
+6. The buyer records the received package, boundary mark, tape and seams, then records an `UNBOXING_VIDEO`; the transaction reaches the expected review/completion state without an automated physical verdict.
 7. The seller and buyer exercise one Return Passport path using `RETURN_PACKING_VIDEO` and `RETURN_UNBOXING_VIDEO`.
 8. An authorized participant generates and privately downloads the dossier/evidence packet and verifies its byte and manifest integrity.
 9. A one-byte mutation is rejected, a replay is rejected or safely replayed according to its contract, and a cross-tenant read is denied.
@@ -93,6 +95,7 @@ The first demonstration is one high-value two-party private transaction using tw
 | Buyer invitation/claim | `IN_SCOPE` | Mobile/backend | One-use, actor-bound handoff | Claim, expiry, replay and wrong-actor negatives | Role binding within the service only |
 | Mutual confirmation | `IN_SCOPE` | Mobile/backend | Server-authoritative state transition | Both actors confirm identical terms | Records confirmations; does not establish truth of the terms |
 | Packing/unboxing capture | `IN_SCOPE` | Mobile/backend | Native capture and server-authorized evidence session | Online, offline, restart and finalization cases | Records submitted media and bounded capture context |
+| Human-reviewable `PP` boundary protocol | `IN_SCOPE` | Mobile/backend | Seller reference and buyer arrival/unboxing originals; no automated physical result | Exact two-device reference/arrival capture and dossier sequence | Preserves visible package observations for authorized human review; does not prove continuity, cause, actor, authenticity, fraud or fault |
 | Offline encrypted queue | `IN_SCOPE` | Mobile | Android Keystore AES-256-GCM module | Physical-device process death, reboot, corruption and recovery | Encrypted local retention subject to key/device failure limits |
 | Server hash and manifest | `IN_SCOPE` | Backend | Server-computed SHA-256 and service-authenticated manifest | Finalizer, mismatch quarantine and verifier tests | Byte integrity and service authentication within stated key controls |
 | Shipment/timeline | `IN_SCOPE` | Mobile/backend | Finalized packing evidence prerequisite | Live state transition and authorization tests | Records service events and user-supplied carrier fields |
@@ -106,9 +109,9 @@ The first demonstration is one high-value two-party private transaction using tw
 | TikTok sign-in | `FEATURE_GATED` | Mobile/backend | Disabled configuration and deletion card | Separate provider gate | No launch claim |
 | PackProof Pro/billing | `FEATURE_GATED` | Mobile/backend | Disabled configuration | Separate billing acceptance | No pricing or entitlement claim |
 | General webhook delivery | `FEATURE_GATED` | API/backend/operations | Excluded from initial public promise | Separate reliability and security gate | No general callback claim |
-| Physical feature matching | `POST_LAUNCH` | Research/security | Production unavailable | Independent frozen validation | `NO_VALIDATED_PHYSICAL_MATCHER_ENABLED` |
-| Carrier weight/laser telemetry | `POST_LAUNCH` | Partnerships/backend | No active integration | Separate provider gate | No telemetry or cross-reference claim |
-| Automatic dispute decision | `POST_LAUNCH` | Product/legal/partners | No decision authority | Separate partner and policy gate | PackProof does not approve or deny disputes |
+| SISV algorithmic comparison | `POST_LAUNCH_RESEARCH` | Research/security | Production unavailable; core launch flow cannot depend on it | Consent-governed dataset, frozen implementation and independent validation | At most bounded neutral observations; never cause, actor, authenticity, fraud, fault, liability or disposition |
+| Carrier weight/laser telemetry | `POST_LAUNCH` | Partnerships/backend | No active integration | Contracted provider, provenance, correction, semantics and live integration gate | Neutral carrier context only; no attribution, fraud conclusion or automatic disposition |
+| Automatic dispute decision | `PERMANENTLY_OUT_OF_SCOPE` | External authorized decision-maker | PackProof has no adjudication authority | Not applicable | PackProof organizes evidence and does not approve, deny, score or recommend dispute outcomes |
 
 ## Required accountable sign-offs
 

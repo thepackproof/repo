@@ -27,6 +27,8 @@ These states are not interchangeable. A polished walkthrough is not production p
 
 ## 2. Claims and trust boundary
 
+PackProof is neutral, evidence-based infrastructure for e-commerce. It records participant submissions, observable capture context, integrity results, bounded comparison measurements, and an auditable history. It does not advocate for a seller, buyer, merchant, carrier, marketplace, payment provider, or claimant, and it does not convert evidence into an accusation, risk label, recommended disposition, or finding of fault.
+
 PackProof may describe itself as a system for creating a shared, private record of transaction terms, capture context, server-computed byte hashes, service-authenticated manifests, timeline events, and presentation dossiers when those functions have passed the applicable gates.
 
 PackProof must not claim, imply, or visually suggest that it:
@@ -35,6 +37,9 @@ PackProof must not claim, imply, or visually suggest that it:
 - proves that a physical package is the same object observed earlier;
 - establishes uninterrupted physical custody;
 - independently determines fraud, ownership, condition, value, or legal responsibility;
+- identifies which participant caused an observed condition, discrepancy, interruption, or variance;
+- labels a participant or transaction as honest, dishonest, suspicious, fraudulent, abusive, or at fault;
+- recommends or automatically determines a refund, return, chargeback, account action, claim outcome, or other commercial/legal disposition;
 - provides escrow, insurance, shipping, appraisal, or payment protection;
 - guarantees recovery, dispute outcomes, carrier acceptance, marketplace acceptance, insurer acceptance, or legal admissibility; or
 - operates a validated physical matcher unless implementation-specific scientific validation has passed and production activation is separately approved.
@@ -76,12 +81,12 @@ The initial Android launch baseline includes:
 - buyer invitation or participant claim;
 - mutual terms confirmation;
 - packing and unboxing capture;
-- continuous packing capture that records the observable item, placement into the package, closure, label application, PP ink-boundary creation, tape sealing, and associated high-resolution SISV reference images;
-- Stochastic Ink Spread Verification reference and verification acquisition with neutral correspondence, variance, or inconclusive reporting once the applicable implementation and validation gates pass;
+- continuous packing capture that records the observable item, placement into the package, closure, label application, a human-reviewable `PP` mark spanning the label/package boundary, tape sealing, and a high-resolution end-of-capture reference image;
+- recipient arrival/unboxing capture that preserves a high-resolution observation of the corresponding package and seal regions for side-by-side human review without an automated physical conclusion;
 - Android Keystore-backed offline evidence retention;
 - live upload and observable server finalization;
 - server SHA-256 and service-authenticated manifest generation;
-- explicit mismatch quarantine or failure;
+- explicit digital byte, size, or media-type mismatch quarantine or failure;
 - transaction timeline and shipment recording;
 - Return Passport workflow;
 - evidence dossier generation and private download;
@@ -100,7 +105,7 @@ The following functions remain in the product roadmap but must be hidden and exc
 - PackProof Pro and RevenueCat billing;
 - general merchant webhook delivery;
 - commerce-platform-specific adapters; and
-- production activation of an SISV correspondence decision before the implementation-specific matcher, supported-device/material policy, thresholds, and validation gates pass. SISV implementation and research-mode measurement are critical-path Gate 5 work, not post-launch scope.
+- production activation of SISV comparison measurements before the implementation-specific comparison engine, supported-device/material policy, thresholds, and validation gates pass. SISV algorithm development is a post-launch research program and is not a day-one release blocker. The launch workflow preserves consent-governed originals that may support later research, but customer evidence may not be used for model development without a separate affirmative research consent and approved retention/governance policy. SISV may never emit or drive fault, fraud, tamper-cause, authenticity, custody, risk, enforcement, payment, refund, claim, or liability conclusions, even after validation.
 
 Do not delete future-scope work merely to pass a gate. Preserve it behind an explicit configuration boundary and test that the disabled path cannot break startup or core behavior.
 
@@ -204,7 +209,7 @@ The required order is:
 3. Gate 2 - Release-quality source baseline
 4. Gate 3 - Live sandbox deployment
 5. Gate 4 - Exact signed Android candidate
-6. Gate 5 - SISV-first two-party live core flow
+6. Gate 5 - Evidence-vault two-party live core flow
 7. Gate 6 - Security and operations acceptance
 8. Gate 7 - Repeatable stakeholder demonstration
 9. Gate 8 - Play internal and closed testing
@@ -542,37 +547,29 @@ Do not clear application data or uninstall from a device that may hold unfinaliz
 - The secure queue fails across restart.
 - Native startup, camera, or evidence encryption fails.
 
-# Gate 5 - Prove the SISV-first two-party live core flow
+# Gate 5 - Prove the evidence-vault two-party live core flow
 
-**Objective:** Implement the SISV physical-evidence bridge first, then demonstrate the entire neutral PackProof evidence path with observable server evidence and expected failures.
+**Objective:** Demonstrate the complete neutral PackProof evidence path with observable server evidence, a human-reviewable package-seal protocol, and expected failures. The day-one value proposition is a structured, tamper-evident digital record that is easier for authorized humans and external processes to review; no SISV algorithmic comparison is required for this gate.
 
 **Estimated effort:** 2 to 5 working days, excluding defect repair.
 
-## Gate 5A - SISV implementation and feasibility vertical slice
+## Gate 5A - Human-reviewable package-seal evidence
 
-SISV is the first Gate 5 engineering priority. The continuous video is the event-binding evidence layer; full-resolution original stills are the physical-measurement layer. PackProof records observations and measurable correspondence or variance. It does not assign fraud, fault, liability, or claim disposition.
+The continuous video is the event-context layer. The seller must visibly place the item in the package, close the package, apply the shipping label, draw the designated `PP` mark across the label/package boundary, apply the prescribed clear tape or seal, and finish with a steady high-resolution view of the marked boundary. The buyer records the corresponding arrival and unboxing observations. PackProof preserves both sets for authorized human review; it does not state whether the package is the same, altered, authentic, or attributable to either participant.
 
 ### Required work
 
-1. Bind the seller's continuous packing video to the physical-reference capture group that follows the recorded item placement, flap closure, label application, PP signature, and tape sealing sequence.
-2. Retain the frozen 15-frame acquisition profile across the identifier, two spatially separate ink edges, label/cardboard boundary, and adjacent cardboard, with post-tape reference images suitable for later like-for-like acquisition.
-3. Reacquire the same region plan for recipient verification and preserve every original through the existing encrypted queue, server hashing, manifest, and evidence-finalization path.
-4. Implement a versioned server-side research matcher over server-finalized originals. The minimum pipeline is eligibility and quality assessment, geometric registration, fixed-scale local-patch extraction, region-level similarity measurement, multi-frame aggregation, and explicit failure reasons.
-5. Persist an auditable research result containing the reference and verification group IDs, evidence IDs and hashes, matcher artifact/version, quality-policy version, per-region measurements, aggregate score, decision-policy version, and limitations. Client-supplied measurements must not be treated as authoritative matcher output.
-6. Expose neutral research outcomes for `CORRESPONDS`, `VARIANCE_DETECTED`, or `INCONCLUSIVE` without emitting fraud, tamper cause, fault, liability, authenticity, or claim-disposition conclusions.
-7. Run the smallest useful device study before broadening: repeated captures of the same package, independently prepared different packages, a redrawn PP mark, a photographed/printed reproduction, and an acquisition-quality failure.
-8. Keep production activation disabled until the supported materials/devices, extractor artifact, quality gates, aggregation, thresholds, and attack populations are frozen and the independent blind validation gate passes.
-
-### Required implementation evidence
-
-- Source and contract tests for group binding, region completeness, fail-closed quality handling, deterministic versioned scoring, immutable reference selection, and neutral result projection.
-- Exact-APK proof on the designated physical Android device for one complete reference and verification pair.
-- A score report showing same-package and different-package observations without presenting the development set as a production error-rate claim.
-- Preserved originals, hashes, manifests, group identifiers, matcher version, and negative reproduction-attempt evidence.
+1. Add clear in-app instructions for the seller's item-to-package sequence, `PP` boundary mark, tape/seal application, and high-resolution end frame.
+2. Bind the seller's continuous packing video and reference still to one transaction, participant, evidence session, and finalized timeline.
+3. Add buyer guidance for recording the received package, label/package boundary, visible seams, tape, and unboxing sequence before disposal or alteration of the packaging.
+4. Preserve every original through the Android encrypted queue, exact-path upload, server hashing, manifest, and observable finalization path.
+5. Present the reference and arrival observations together in the dossier or review view with timestamps and provenance clearly labeled, without a system-generated physical verdict.
+6. State that human visual review is contextual and may identify visible similarities or differences but does not establish cause, actor, authenticity, custody, fraud, fault, liability, or disposition.
+7. Keep the 15-frame SISV acquisition profile optional and research-only. It is not required to complete a day-one PackProof transaction.
 
 ### Gate 5A pass boundary
 
-Gate 5A implementation passes when the exact Android APK produces a traceable end-to-end research comparison from server-finalized reference and verification originals, the result is reproducible from its recorded matcher inputs, and the negative cases fail closed. This proves an implemented research vertical slice; it does not by itself authorize a production physical-correspondence performance claim.
+Gate 5A passes when an exact Android APK produces one server-finalized seller packing video and reference image plus one server-finalized buyer arrival/unboxing record, and an authorized reviewer can locate both records and their provenance without PackProof producing an automated physical conclusion.
 
 ## Gate 5B - Two-party live core proof
 
@@ -589,7 +586,7 @@ Gate 5A implementation passes when the exact Android APK produces a traceable en
 9. Sign in and bind the buyer to the intended role.
 10. Have both participants review and confirm terms.
 11. Create and redeem a packing evidence session.
-12. Record native packing evidence.
+12. Record native packing evidence, including the visible `PP` label/package boundary mark, tape/seal application, and high-resolution reference view.
 13. Interrupt network access.
 14. Confirm that encrypted evidence remains queued.
 15. Restart the app and restore networking.
@@ -598,7 +595,7 @@ Gate 5A implementation passes when the exact Android APK produces a traceable en
 18. Observe the `onEvidenceUploaded` finalizer.
 19. Verify server SHA-256, size comparison, media comparison, manifest digest, bundle digest, service authentication, evidence record, pending-upload consumption, capture-session finalization, timeline event, and correct workflow state.
 20. Submit shipment and tracking information.
-21. Repeat the session, capture, upload, and finalization path for buyer unboxing.
+21. Repeat the session, capture, upload, and finalization path for buyer arrival and unboxing, including clear observations of the received package, boundary mark, tape, and seams.
 22. Generate and privately download the evidence dossier.
 23. Run the clean-room verifier.
 24. Mutate one byte and demonstrate rejection.
@@ -633,6 +630,7 @@ Gate 5A implementation passes when the exact Android APK produces a traceable en
 - No offline ciphertext is removed before server finalization is observable.
 - Every negative case fails as designed.
 - Dossier, stored evidence, and verifier results agree.
+- The dossier or review view places seller reference and buyer arrival observations in a human-reviewable sequence without an automated physical verdict.
 - No hidden Firestore edit is needed.
 
 ## Stop conditions

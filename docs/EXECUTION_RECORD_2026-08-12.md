@@ -394,3 +394,47 @@ Current classification:
 - unrelated user document deletions and local artifacts: `EXCLUDED`;
 - remote candidate branch and draft pull request: `PENDING_PUBLICATION`;
 - annotated release-candidate tag: `DEFERRED` until exact signed APK inspection and device regression pass.
+
+### Neutral SISV evidence-scope correction - 2026-08-13
+
+The repository owner reaffirmed that PackProof is neutral, evidence-based infrastructure for e-commerce and must not point the finger or determine who is at fault. The candidate's SISV plan, API vocabulary, UI copy, claims register, physical-observation architecture, and ADR authority were narrowed accordingly.
+
+SISV is now expressly an observation and measurement component, not a fraud detector, tamper detector, truth engine, authenticity service, custody proof, participant risk model, or adjudication engine. After validation, the only permitted PackProof product observations are `CONSISTENT_WITH_REFERENCE`, `VARIANCE_OBSERVED`, `INCONCLUSIVE`, and `NOT_EVALUATED`, each bounded to its named evidence, capture profile, supported population, quality policy, comparison artifact, observation policy, conditions, uncertainty, and limitations.
+
+SISV output has no workflow authority. It may not automatically advance, block, cancel, quarantine, score, or adjudicate a transaction, shipment, return, payment, refund, chargeback, account, marketplace case, insurance matter, claim, or legal process. Digital byte-integrity mismatch handling remains a separate fail-closed technical control and is not evidence of participant misconduct.
+
+ADR 0009 supersedes the earlier ADR language that contemplated future PackProof `MATCH` or `NON_MATCH` product decisions. The current callable now returns neutral `observationStatus` and `comparison` fields, with `COMPARISON_NOT_ENABLED` and no aggregate measurement. The Android UI describes the route as SISV observation research and does not display a match, identity, authenticity, tamper, fraud, fault, risk, or disposition result.
+
+Verification passed:
+
+- claims-register JSON parsing;
+- root TypeScript typecheck;
+- Expo lint;
+- Firebase Functions build;
+- Firebase Function export/secret-binding/Hosting rewrite metadata smoke test;
+- PackProof production claim vocabulary check; and
+- `git diff --check`.
+
+Current classification: `SOURCE_CHECKED`. No Firebase deployment, APK build, physical-device test, commit, push, tag, or PR update was performed for this scope correction.
+
+### Evidence-first go-to-market scope correction - 2026-08-13
+
+The launch position was changed from an SISV-dependent physical-verification story to neutral evidence infrastructure for e-commerce. The visible `PP` label/package-boundary mark, tape/seal observations, high-resolution seller reference, buyer arrival/unboxing observations, resilient evidence vault, digital-integrity records, and review-ready dossier remain in the initial two-device scope. ADR 0010 removes an SISV algorithm from the release-candidate critical path while preserving ADR 0009's permanent neutral-observation and non-adjudication boundary.
+
+Unsupported proposed claims were not adopted. PackProof does not publish a `95%` fraud-reduction claim, `90%` deterrence claim, fixed claims-agent review time, merchant-favorable outcome claim, current carrier-weight telemetry claim, or assertion that app/device signals prove continuous scene truth, GPS location, atomic capture time, physical custody, or non-alteration since sealing. Visa 13.1 and 13.3 are described only as Visa dispute conditions; Mastercard's separate current rules are not represented with Visa numbering.
+
+Production evidence is not automatically a model-training dataset. Any future SISV research use requires separate affirmative opt-in consent, purpose limitation, minimization and redaction, operational/research separation, retention/deletion/withdrawal behavior, lineage, versioning, and audited access.
+
+The controlling positioning is `docs/GO_TO_MARKET_EVIDENCE_FIRST_2026-08-13.md`. The claims register and production claim regression now include explicit boundaries for deterrence, human seam observations, carrier telemetry, training-data use, unsupported percentages, unsupported review-time statements, attestation, time/location, and attribution language.
+
+Verification passed:
+
+- claims-register JSON parsing;
+- root TypeScript typecheck;
+- Expo lint;
+- Firebase Functions build;
+- Firebase Function export, secret-binding and Hosting rewrite metadata smoke tests;
+- PackProof production claim vocabulary check; and
+- `git diff --check`.
+
+Current classification: `SOURCE_CHECKED_GTM_SCOPE`. No Firebase deployment, signed APK build, real-device test, two-device workflow test, dossier visual QA, commit, push, tag, or PR update was performed for this GTM correction.

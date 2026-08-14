@@ -116,7 +116,7 @@ export default function PhysicalCaptureScreen() {
     try {
       const cameraPermission = permission?.granted ? permission : await requestPermission();
       if (!cameraPermission?.granted) {
-        Alert.alert('Camera required', 'PackProof needs camera access to acquire physical correspondence regions.');
+        Alert.alert('Camera required', 'PackProof needs camera access to acquire the guided SISV observation regions.');
         return;
       }
       const collector = await startCaptureTelemetry(includeLocation);
@@ -328,7 +328,7 @@ export default function PhysicalCaptureScreen() {
       Alert.alert(
         thisBatchFinalized === queuedIds.length ? 'Physical capture finalized' : 'Physical capture protected',
         thisBatchFinalized === queuedIds.length
-          ? 'All 15 original frames were independently hashed, server-finalized, and sealed into PackProof manifests. The physical matcher remains validation-gated and will not fabricate a match score.'
+          ? 'All 15 original frames were independently hashed, server-finalized, and sealed into PackProof manifests. SISV comparison measurements remain validation-gated and cannot determine cause, actor, fraud, fault, authenticity, custody, or disposition.'
           : 'All 15 originals are encrypted in PackProof’s private queue. Any frame not yet server-finalized will retry automatically without changing its evidentiary identity.',
         [{ text: 'Done', onPress: () => router.replace(`/transaction/${id}`) }],
       );
@@ -379,7 +379,7 @@ export default function PhysicalCaptureScreen() {
   return <SafeAreaView style={styles.safe}><ScrollView contentContainerStyle={styles.container}>
     <Button label="Close" variant="ghost" onPress={() => router.back()} style={styles.close} disabled={stage === 'SECURING'} />
     {stage === 'INTRO' ? <>
-      <ScreenTitle eyebrow="Physical correspondence acquisition" title={intent === 'REFERENCE' ? 'Enroll the package surface' : 'Reacquire the package surface'} subtitle="PackProof will capture five predefined regions, three original frames per region. This creates a reproducible evidence set; it does not claim a physical match until a frozen matcher and thresholds have passed independent validation." />
+      <ScreenTitle eyebrow="SISV observation acquisition" title={intent === 'REFERENCE' ? 'Record the reference surface' : 'Record the comparison surface'} subtitle="PackProof will capture five predefined regions, three original frames per region. This preserves a reproducible evidence set; it does not determine identity, authenticity, tampering, fraud, fault, custody, or any transaction outcome." />
       <Card style={styles.profileCard}>
         <Text style={styles.profileId}>{PHYSICAL_CAPTURE_PROFILE_ID} · v{PHYSICAL_CAPTURE_PROFILE_VERSION}</Text>
         <Text style={styles.profileText}>Initial research scope: matte or low-gloss paper label on ordinary paperboard/cardboard. Glossy film, metallic, transparent, wet, severely damaged, or unknown substrates should not be treated as validated.</Text>
@@ -391,7 +391,7 @@ export default function PhysicalCaptureScreen() {
     </> : null}
     {stage === 'REVIEW' ? <>
       <ScreenTitle eyebrow="Acquisition complete" title="Secure the 15 original frames?" subtitle="Each frame will be encrypted with Android Keystore AES-256-GCM, independently SHA-256 hashed, assigned its own exact upload binding, and retained locally until server finalization is confirmed." />
-      <Card style={styles.reviewCard}><AppIcon name="checkmark.shield.fill" size={44} tintColor={colors.teal} /><Text style={styles.reviewTitle}>{PHYSICAL_CAPTURE_FRAME_COUNT} / {PHYSICAL_CAPTURE_FRAME_COUNT} frames captured</Text><Text style={styles.reviewText}>{attestation?.mode === 'JIT_APP_CHECK' ? 'Fresh App Check batch attestation is bound to the capture series.' : 'The series was acquired offline and will remain explicitly OFFLINE_UNATTESTED after synchronization.'}</Text><Text style={styles.reviewText}>No physical similarity score will be emitted by this build until PackProof-specific validation data and frozen thresholds exist.</Text></Card>
+      <Card style={styles.reviewCard}><AppIcon name="checkmark.shield.fill" size={44} tintColor={colors.teal} /><Text style={styles.reviewTitle}>{PHYSICAL_CAPTURE_FRAME_COUNT} / {PHYSICAL_CAPTURE_FRAME_COUNT} frames captured</Text><Text style={styles.reviewText}>{attestation?.mode === 'JIT_APP_CHECK' ? 'Fresh App Check batch attestation is bound to the capture series.' : 'The series was acquired offline and will remain explicitly OFFLINE_UNATTESTED after synchronization.'}</Text><Text style={styles.reviewText}>This build preserves the observations without producing a physical-comparison measurement or a conclusion about either participant.</Text></Card>
       <Button label="Encrypt, hash and sync series" icon="lock.shield.fill" onPress={secureSeries} />
       <Button label="Discard series" variant="danger" onPress={discard} />
     </> : null}
