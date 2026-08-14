@@ -209,7 +209,7 @@ function parseCameraObservation(value: unknown) {
     widthPixels: numberValue(input.widthPixels, 'manifest.cameraObservation.widthPixels', 1, 100_000, { nullable: true, integer: true }) as number | null,
     heightPixels: numberValue(input.heightPixels, 'manifest.cameraObservation.heightPixels', 1, 100_000, { nullable: true, integer: true }) as number | null,
     orientation: numberValue(input.orientation, 'manifest.cameraObservation.orientation', 0, 359, { nullable: true, integer: true }) as number | null,
-    flashMode: enumValue(input.flashMode, 'manifest.cameraObservation.flashMode', ['OFF'] as const),
+    flashMode: enumValue(input.flashMode, 'manifest.cameraObservation.flashMode', ['OFF', 'AUTO', 'ON', 'TORCH'] as const),
     zoom: numberValue(input.zoom, 'manifest.cameraObservation.zoom', 0, 1) as number,
     codec: enumValue(input.codec, 'manifest.cameraObservation.codec', ['PLATFORM_DEFAULT'] as const),
     metadataScope: enumValue(input.metadataScope, 'manifest.cameraObservation.metadataScope', ['LIMITED_BY_EXPO_CAMERA'] as const),
@@ -365,8 +365,19 @@ function parseAttestation(value: unknown, schemaVersion: 1 | 2) {
 function parseShippingLabel(value: unknown) {
   if (value === null || value === undefined) return null;
   const input = object(value, 'manifest.shippingLabel');
+  const hasRawDecodedValue = input.rawDecodedValue !== undefined;
+  const hasNormalizationProfile = input.normalizationProfile !== undefined;
+  if (hasRawDecodedValue !== hasNormalizationProfile) {
+    throw new ValidationError('manifest.shippingLabel', 'rawDecodedValue and normalizationProfile must be provided together');
+  }
   return {
+    ...(hasRawDecodedValue ? {
+      rawDecodedValue: text(input.rawDecodedValue, 'manifest.shippingLabel.rawDecodedValue', 1, 512, { trim: false }) as string,
+    } : {}),
     trackingNumber: text(input.trackingNumber, 'manifest.shippingLabel.trackingNumber', 8, 120, { pattern: /^[A-Z0-9]+$/ }) as string,
+    ...(hasNormalizationProfile ? {
+      normalizationProfile: enumValue(input.normalizationProfile, 'manifest.shippingLabel.normalizationProfile', ['PACKPROOF_TRACKING_ALNUM_V1'] as const),
+    } : {}),
     symbology: text(input.symbology, 'manifest.shippingLabel.symbology', 1, 80) as string,
     detectedAt: isoDate(input.detectedAt, 'manifest.shippingLabel.detectedAt') as string,
     source: enumValue(input.source, 'manifest.shippingLabel.source', ['CAMERA_BARCODE_SCANNER'] as const),

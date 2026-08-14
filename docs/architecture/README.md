@@ -35,6 +35,10 @@ This directory records the controlled migration of the current PackProof 0.8.5.0
 - Executable source: `functions/src/application/v1/public-commerce-handoff-service.ts`, `functions/src/infrastructure/firebase/v1/public-commerce-handoff-repository.ts`, `functions/src/api/v1`, `sdk/javascript/browser.js`, and `src/app/handoff/review.tsx`.
 - Gates: `npm run test:application`, `npm run test:application:firestore`, `npm run test:api`, `npm run test:api:firestore`, `npm run test:sdk`, and `npm run test:rules`.
 
+## Camera acquisition checkpoint
+
+- [Camera acquisition milestones 1 and 2 completion](CAMERA_ACQUISITION_MILESTONE_1_2_COMPLETION_2026-08-13.md) - native-preview readiness, bounded capture controls, raw and normalized barcode provenance, claim-disciplined framing guidance, interruption and temporary-file cleanup, source gates, Android bundleability evidence, and the remaining signed-device boundary.
+
 ## Authority and scope
 
 The canonical editable source is `C:\src\PackProof\repo`. The workspace `build/`, `releases/`, `documentation/` and `archives/` directories are not alternate source trees.

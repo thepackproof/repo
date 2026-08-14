@@ -217,7 +217,7 @@ function parseCameraObservation(value) {
         widthPixels: numberValue(input.widthPixels, 'manifest.cameraObservation.widthPixels', 1, 100_000, { nullable: true, integer: true }),
         heightPixels: numberValue(input.heightPixels, 'manifest.cameraObservation.heightPixels', 1, 100_000, { nullable: true, integer: true }),
         orientation: numberValue(input.orientation, 'manifest.cameraObservation.orientation', 0, 359, { nullable: true, integer: true }),
-        flashMode: enumValue(input.flashMode, 'manifest.cameraObservation.flashMode', ['OFF']),
+        flashMode: enumValue(input.flashMode, 'manifest.cameraObservation.flashMode', ['OFF', 'AUTO', 'ON', 'TORCH']),
         zoom: numberValue(input.zoom, 'manifest.cameraObservation.zoom', 0, 1),
         codec: enumValue(input.codec, 'manifest.cameraObservation.codec', ['PLATFORM_DEFAULT']),
         metadataScope: enumValue(input.metadataScope, 'manifest.cameraObservation.metadataScope', ['LIMITED_BY_EXPO_CAMERA']),
@@ -368,8 +368,19 @@ function parseShippingLabel(value) {
     if (value === null || value === undefined)
         return null;
     const input = object(value, 'manifest.shippingLabel');
+    const hasRawDecodedValue = input.rawDecodedValue !== undefined;
+    const hasNormalizationProfile = input.normalizationProfile !== undefined;
+    if (hasRawDecodedValue !== hasNormalizationProfile) {
+        throw new ValidationError('manifest.shippingLabel', 'rawDecodedValue and normalizationProfile must be provided together');
+    }
     return {
+        ...(hasRawDecodedValue ? {
+            rawDecodedValue: text(input.rawDecodedValue, 'manifest.shippingLabel.rawDecodedValue', 1, 512, { trim: false }),
+        } : {}),
         trackingNumber: text(input.trackingNumber, 'manifest.shippingLabel.trackingNumber', 8, 120, { pattern: /^[A-Z0-9]+$/ }),
+        ...(hasNormalizationProfile ? {
+            normalizationProfile: enumValue(input.normalizationProfile, 'manifest.shippingLabel.normalizationProfile', ['PACKPROOF_TRACKING_ALNUM_V1']),
+        } : {}),
         symbology: text(input.symbology, 'manifest.shippingLabel.symbology', 1, 80),
         detectedAt: isoDate(input.detectedAt, 'manifest.shippingLabel.detectedAt'),
         source: enumValue(input.source, 'manifest.shippingLabel.source', ['CAMERA_BARCODE_SCANNER']),

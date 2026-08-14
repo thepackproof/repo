@@ -7,7 +7,9 @@ export type DeviceKeyProof = {
 };
 
 export type ShippingLabelTelemetry = {
+  rawDecodedValue: string;
   trackingNumber: string;
+  normalizationProfile: 'PACKPROOF_TRACKING_ALNUM_V1';
   symbology: string;
   detectedAt: string;
   source: 'CAMERA_BARCODE_SCANNER';
@@ -86,7 +88,7 @@ export type CameraObservationTelemetry = {
   widthPixels: number | null;
   heightPixels: number | null;
   orientation: number | null;
-  flashMode: 'OFF';
+  flashMode: 'OFF' | 'AUTO' | 'ON' | 'TORCH';
   zoom: number;
   codec: 'PLATFORM_DEFAULT';
   metadataScope: 'LIMITED_BY_EXPO_CAMERA';
