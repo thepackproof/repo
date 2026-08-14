@@ -1,4 +1,6 @@
-# PackProof API development status — 2026-08-10
+# PackProof API development status - 2026-08-10
+
+> Historical snapshot only. The API surface expanded after this record. Use [`../agent.md`](../agent.md) for current launch sequencing and proof requirements, and the current OpenAPI contract for the implemented HTTP surface.
 
 > Historical checkpoint: this file records the initial merchant-transaction slice. Section 4 added the public page-declared commerce-handoff operation on 2026-08-11 without changing the merchant transaction contract. Its current implementation, 13-test HTTP/OpenAPI suite, three-test API Firestore suite, three-test application Firestore suite, browser SDK, app review handoff, security boundary, and unproved live gates are recorded in [`architecture/SECTION_4_COMPLETION_2026-08-11.md`](architecture/SECTION_4_COMPLETION_2026-08-11.md).
 

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { canonicalizeJson as producerCanonicalize, createEvidenceBundleSha256 as producerBundle, detectSupportedMediaType, deterministicUploadId as producerUploadId } from '../lib/evidence-format.js';
 import { canonicalizeJson as verifierCanonicalize, createEvidenceBundleSha256 as verifierBundle, deterministicUploadId as verifierUploadId } from '../../tools/evidence-format.mjs';
-import { uploadRequestSchema } from '../lib/validation.js';
+import { captureManifestInputSchema, uploadRequestSchema } from '../lib/validation.js';
 
 const vectors = JSON.parse(await readFile(new URL('../../docs/test-vectors/evidence-format-v2.json', import.meta.url), 'utf8'));
 
@@ -100,5 +100,32 @@ assert.throws(() => uploadRequestSchema.parse({
   transactionId: 'transaction_123', evidenceType: 'PHYSICAL_REFERENCE_FRAME', contentType: 'image/jpeg', originalName: 'physical-reference.jpg',
   clientEvidenceId: 'qe_physical_1234567890', manifest: { ...physicalManifest, physicalCaptureProfile: { ...physicalManifest.physicalCaptureProfile, observedRegion: 'INK_EDGE_A' } },
 }), /frozen frame\/region sequence/);
+
+const labelManifest = {
+  ...physicalManifest,
+  physicalCaptureProfile: null,
+  cameraObservation: { ...physicalManifest.cameraObservation, flashMode: 'AUTO', zoom: 0.15 },
+  shippingLabel: {
+    rawDecodedValue: ' 1Z 999 AA1 01 2345 6784 ',
+    trackingNumber: '1Z999AA10123456784',
+    normalizationProfile: 'PACKPROOF_TRACKING_ALNUM_V1',
+    symbology: 'code128',
+    detectedAt: '2026-08-10T12:00:00.500Z',
+    source: 'CAMERA_BARCODE_SCANNER',
+  },
+};
+const parsedLabelManifest = captureManifestInputSchema.parse(labelManifest);
+assert.equal(parsedLabelManifest.cameraObservation.flashMode, 'AUTO');
+assert.equal(parsedLabelManifest.cameraObservation.zoom, 0.15);
+assert.equal(parsedLabelManifest.shippingLabel?.rawDecodedValue, ' 1Z 999 AA1 01 2345 6784 ');
+assert.equal(parsedLabelManifest.shippingLabel?.trackingNumber, '1Z999AA10123456784');
+assert.throws(() => captureManifestInputSchema.parse({
+  ...labelManifest,
+  shippingLabel: { ...labelManifest.shippingLabel, normalizationProfile: undefined },
+}), /rawDecodedValue and normalizationProfile must be provided together/);
+assert.throws(() => captureManifestInputSchema.parse({
+  ...labelManifest,
+  cameraObservation: { ...labelManifest.cameraObservation, flashMode: 'ENHANCED' },
+}), /manifest.cameraObservation.flashMode/);
 
 console.log('PackProof evidence format producer/verifier conformance vectors passed.');

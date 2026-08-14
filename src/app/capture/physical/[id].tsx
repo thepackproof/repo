@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -84,16 +84,36 @@ export default function PhysicalCaptureScreen() {
   const { user } = useAuth();
   const camera = useRef<CameraView>(null);
   const collectorRef = useRef<Awaited<ReturnType<typeof startCaptureTelemetry>> | null>(null);
+  const framesRef = useRef<CapturedFrame[]>([]);
+  const mountedRef = useRef(true);
+  const securingRef = useRef(false);
   const [permission, requestPermission] = useCameraPermissions();
   const [stage, setStage] = useState<'INTRO' | 'CAMERA' | 'REVIEW' | 'SECURING'>('INTRO');
   const [includeLocation, setIncludeLocation] = useState(false);
   const [preparing, setPreparing] = useState(false);
+  const [cameraReady, setCameraReady] = useState(false);
+  const [cameraError, setCameraError] = useState<string | null>(null);
   const [frames, setFrames] = useState<CapturedFrame[]>([]);
   const [completedTelemetry, setCompletedTelemetry] = useState<CompletedTelemetry | null>(null);
   const [attestation, setAttestation] = useState<CaptureAttestation | null>(null);
   const [captureGroupId] = useState(() => evidenceCaptureGroupId || `pcg_${Crypto.randomUUID()}`);
   const [attempt, setAttempt] = useState(1);
   const [progress, setProgress] = useState(0);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      const collector = collectorRef.current;
+      collectorRef.current = null;
+      if (collector) void collector.finish().catch(() => undefined);
+      if (!securingRef.current) {
+        const temporaryFrames = framesRef.current;
+        framesRef.current = [];
+        void Promise.all(temporaryFrames.map((frame) => FileSystem.deleteAsync(frame.uri, { idempotent: true }).catch(() => undefined)));
+      }
+    };
+  }, []);
 
   const currentRegionIndex = Math.min(Math.floor(frames.length / PHYSICAL_FRAMES_PER_REGION), PHYSICAL_REGION_PLAN.length - 1);
   const currentRegion = PHYSICAL_REGION_PLAN[currentRegionIndex];
@@ -116,13 +136,18 @@ export default function PhysicalCaptureScreen() {
     try {
       const cameraPermission = permission?.granted ? permission : await requestPermission();
       if (!cameraPermission?.granted) {
-        Alert.alert('Camera required', 'PackProof needs camera access to acquire physical correspondence regions.');
+        Alert.alert('Camera required', 'PackProof needs camera access to acquire the guided SISV observation regions.');
         return;
       }
       const collector = await startCaptureTelemetry(includeLocation);
+      if (!mountedRef.current) {
+        await collector.finish().catch(() => undefined);
+        return;
+      }
       collectorRef.current = collector;
+      let preparedAttestation: CaptureAttestation;
       try {
-        setAttestation(evidenceSessionId && evidenceSessionToken && evidenceSessionOperationKey
+        preparedAttestation = evidenceSessionId && evidenceSessionToken && evidenceSessionOperationKey
           ? await prepareEvidenceSessionAttestation({
             evidenceSessionId,
             token: evidenceSessionToken,
@@ -135,7 +160,7 @@ export default function PhysicalCaptureScreen() {
             captureProfileId: PHYSICAL_CAPTURE_PROFILE_ID,
             captureGroupId,
             requestedEvidenceCount: PHYSICAL_CAPTURE_FRAME_COUNT,
-          }));
+          });
       } catch (error) {
         if (evidenceSessionId) {
           await collector.finish().catch(() => undefined);
@@ -144,23 +169,27 @@ export default function PhysicalCaptureScreen() {
         }
         const network = await NetInfo.fetch();
         if (network.isConnected === false || network.isInternetReachable === false) {
-          setAttestation(offlineBatchAttestation(captureGroupId));
+          preparedAttestation = offlineBatchAttestation(captureGroupId);
         } else {
           await collector.finish().catch(() => undefined);
           collectorRef.current = null;
           throw error;
         }
       }
+      if (!mountedRef.current) return;
+      setAttestation(preparedAttestation);
+      setCameraReady(false);
+      setCameraError(null);
       setStage('CAMERA');
     } catch (error) {
-      Alert.alert('Could not start physical capture', readableError(error));
+      if (mountedRef.current) Alert.alert('Could not start physical capture', readableError(error));
     } finally {
-      setPreparing(false);
+      if (mountedRef.current) setPreparing(false);
     }
   };
 
   const takeFrame = async () => {
-    if (!camera.current || preparing || !currentRegion) return;
+    if (!camera.current || !cameraReady || cameraError || preparing || !currentRegion) return;
     setPreparing(true);
     let uri: string | null = null;
     try {
@@ -169,6 +198,11 @@ export default function PhysicalCaptureScreen() {
       const picture = await camera.current.takePictureAsync({ quality: 1, exif: false, shutterSound: true });
       uri = picture?.uri ?? null;
       if (!picture?.uri) throw new Error('The camera returned no image.');
+      if (!mountedRef.current) {
+        await FileSystem.deleteAsync(picture.uri, { idempotent: true }).catch(() => undefined);
+        uri = null;
+        return;
+      }
       const captureFinishedAt = new Date().toISOString();
       const monotonicElapsedMs = Math.max(0, Math.round(performance.now() - monotonicStartedAt));
       const quality = clientDimensionGate(picture.width ?? null, picture.height ?? null);
@@ -180,6 +214,11 @@ export default function PhysicalCaptureScreen() {
         return;
       }
       const qualitySignals = await analyzeImageQuality(picture.uri);
+      if (!mountedRef.current) {
+        await FileSystem.deleteAsync(picture.uri, { idempotent: true }).catch(() => undefined);
+        uri = null;
+        return;
+      }
 
       const nextFrame: CapturedFrame = {
         uri: picture.uri,
@@ -195,21 +234,29 @@ export default function PhysicalCaptureScreen() {
         qualitySignals,
       };
       const next = [...frames, nextFrame];
-      setFrames(next);
-      setAttempt(1);
       if (next.length === PHYSICAL_CAPTURE_FRAME_COUNT) {
         const collector = collectorRef.current;
         if (!collector) throw new Error('Capture telemetry collector was unavailable at finalization.');
-        const telemetry = await collector.finish();
         collectorRef.current = null;
+        const telemetry = await collector.finish();
+        if (!mountedRef.current) {
+          await FileSystem.deleteAsync(picture.uri, { idempotent: true }).catch(() => undefined);
+          uri = null;
+          return;
+        }
         setCompletedTelemetry(telemetry);
+      }
+      framesRef.current = next;
+      setFrames(next);
+      setAttempt(1);
+      if (next.length === PHYSICAL_CAPTURE_FRAME_COUNT) {
         setStage('REVIEW');
       }
     } catch (error) {
       if (uri) await FileSystem.deleteAsync(uri, { idempotent: true }).catch(() => undefined);
-      Alert.alert('Frame capture failed', readableError(error));
+      if (mountedRef.current) Alert.alert('Frame capture failed', readableError(error));
     } finally {
-      setPreparing(false);
+      if (mountedRef.current) setPreparing(false);
     }
   };
 
@@ -217,6 +264,7 @@ export default function PhysicalCaptureScreen() {
     if (collectorRef.current) await collectorRef.current.finish().catch(() => undefined);
     collectorRef.current = null;
     await Promise.all(frames.map((frame) => FileSystem.deleteAsync(frame.uri, { idempotent: true }).catch(() => undefined)));
+    framesRef.current = [];
     setFrames([]);
     setCompletedTelemetry(null);
     router.back();
@@ -224,6 +272,7 @@ export default function PhysicalCaptureScreen() {
 
   const secureSeries = async () => {
     if (!id || !user || !completedTelemetry || !attestation || frames.length !== PHYSICAL_CAPTURE_FRAME_COUNT) return;
+    securingRef.current = true;
     setStage('SECURING');
     setProgress(0);
     const queuedIds: string[] = [];
@@ -311,7 +360,7 @@ export default function PhysicalCaptureScreen() {
           captureSessionId: attestation.captureSessionId,
         });
         queuedIds.push(item.id);
-        setProgress(((index + 1) / frames.length) * 0.45);
+        if (mountedRef.current) setProgress(((index + 1) / frames.length) * 0.45);
       }
 
       // From this point forward the complete original series has a durable,
@@ -320,43 +369,58 @@ export default function PhysicalCaptureScreen() {
       // not finish in the same UI session.
       encryptedSeriesCommitted = true;
       await Promise.all(frames.map((frame) => FileSystem.deleteAsync(frame.uri, { idempotent: true }).catch(() => undefined)));
-      setFrames([]);
-      setProgress(0.5);
+      framesRef.current = [];
+      if (mountedRef.current) {
+        setFrames([]);
+        setProgress(0.5);
+      }
       const result = await syncEvidenceQueue();
       const thisBatchFinalized = queuedIds.filter((queueId) => result.uploadedIds.includes(queueId)).length;
-      setProgress(1);
-      Alert.alert(
-        thisBatchFinalized === queuedIds.length ? 'Physical capture finalized' : 'Physical capture protected',
-        thisBatchFinalized === queuedIds.length
-          ? 'All 15 original frames were independently hashed, server-finalized, and sealed into PackProof manifests. The physical matcher remains validation-gated and will not fabricate a match score.'
-          : 'All 15 originals are encrypted in PackProof’s private queue. Any frame not yet server-finalized will retry automatically without changing its evidentiary identity.',
-        [{ text: 'Done', onPress: () => router.replace(`/transaction/${id}`) }],
-      );
+      if (mountedRef.current) {
+        setProgress(1);
+        Alert.alert(
+          thisBatchFinalized === queuedIds.length ? 'Physical capture finalized' : 'Physical capture protected',
+          thisBatchFinalized === queuedIds.length
+            ? 'All 15 original frames were independently hashed, server-finalized, and sealed into PackProof manifests. SISV comparison measurements remain validation-gated and cannot determine cause, actor, fraud, fault, authenticity, custody, or disposition.'
+            : 'All 15 originals are encrypted in PackProof’s private queue. Any frame not yet server-finalized will retry automatically without changing its evidentiary identity.',
+          [{ text: 'Done', onPress: () => router.replace(`/transaction/${id}`) }],
+        );
+      }
+      securingRef.current = false;
     } catch (error) {
       if (!encryptedSeriesCommitted) {
         // The encrypted series was incomplete, so remove only queue records that
         // are still safe to discard. The original camera files remain available
         // for a complete retry.
         await Promise.allSettled(queuedIds.map((queueId) => discardQueuedEvidence(queueId)));
-        setStage('REVIEW');
-        Alert.alert('Could not secure the full series', `${readableError(error)} The original camera files were retained so the complete series can be retried.`);
+        if (mountedRef.current) {
+          setStage('REVIEW');
+          Alert.alert('Could not secure the full series', `${readableError(error)} The original camera files were retained so the complete series can be retried.`);
+        }
       } else {
         // A complete encrypted series exists. Preserve it even if immediate
         // network synchronization fails; the background/foreground queue will
         // retry without changing frame identity.
-        setProgress(1);
-        Alert.alert(
-          'Physical capture protected',
-          `${readableError(error)} The complete 15-frame series remains encrypted in PackProof’s private queue and will retry synchronization without changing its evidentiary identity.`,
-          [{ text: 'Done', onPress: () => router.replace(`/transaction/${id}`) }],
-        );
+        if (mountedRef.current) {
+          setProgress(1);
+          Alert.alert(
+            'Physical capture protected',
+            `${readableError(error)} The complete 15-frame series remains encrypted in PackProof’s private queue and will retry synchronization without changing its evidentiary identity.`,
+            [{ text: 'Done', onPress: () => router.replace(`/transaction/${id}`) }],
+          );
+        }
+      }
+      securingRef.current = false;
+      if (!mountedRef.current && !encryptedSeriesCommitted) {
+        await Promise.all(frames.map((frame) => FileSystem.deleteAsync(frame.uri, { idempotent: true }).catch(() => undefined)));
+        framesRef.current = [];
       }
     }
   };
 
   if (stage === 'CAMERA') {
     return <View style={styles.cameraPage}>
-      <CameraView ref={camera} style={StyleSheet.absoluteFill} facing="back" mode="picture" />
+      <CameraView ref={camera} style={StyleSheet.absoluteFill} facing="back" mode="picture" flash="off" zoom={0} onCameraReady={() => { setCameraReady(true); setCameraError(null); }} onMountError={({ message }) => { setCameraReady(false); setCameraError(message); }} />
       <SafeAreaView style={styles.overlay}>
         <View style={styles.cameraHeader}>
           <Pressable onPress={discard} disabled={preparing} style={styles.circleButton}><AppIcon name="xmark" size={18} tintColor={colors.white} /></Pressable>
@@ -369,8 +433,8 @@ export default function PhysicalCaptureScreen() {
           <Text style={styles.frameText}>FRAME {currentFrameWithinRegion} OF {PHYSICAL_FRAMES_PER_REGION}</Text>
         </View>
         <View style={styles.cameraFooter}>
-          <Text style={styles.cameraHelp}>Keep the requested physical patch sharp and evenly lit. Small viewpoint differences between the three frames are useful; do not digitally zoom.</Text>
-          <Pressable accessibilityLabel="Capture physical evidence frame" onPress={takeFrame} disabled={preparing} style={[styles.shutter, preparing && { opacity: 0.5 }]}><View style={styles.shutterInner} /></Pressable>
+          <Text style={styles.cameraHelp}>{cameraError ? `The camera preview could not start: ${cameraError}` : !cameraReady ? 'Waiting for the native camera preview before capture is enabled.' : 'Keep the requested physical patch sharp and evenly lit. Small viewpoint differences between the three frames are useful; do not digitally zoom.'}</Text>
+          <Pressable accessibilityLabel="Capture physical evidence frame" onPress={takeFrame} disabled={preparing || !cameraReady || Boolean(cameraError)} style={[styles.shutter, (preparing || !cameraReady || Boolean(cameraError)) && { opacity: 0.5 }]}><View style={styles.shutterInner} /></Pressable>
         </View>
       </SafeAreaView>
     </View>;
@@ -379,7 +443,7 @@ export default function PhysicalCaptureScreen() {
   return <SafeAreaView style={styles.safe}><ScrollView contentContainerStyle={styles.container}>
     <Button label="Close" variant="ghost" onPress={() => router.back()} style={styles.close} disabled={stage === 'SECURING'} />
     {stage === 'INTRO' ? <>
-      <ScreenTitle eyebrow="Physical correspondence acquisition" title={intent === 'REFERENCE' ? 'Enroll the package surface' : 'Reacquire the package surface'} subtitle="PackProof will capture five predefined regions, three original frames per region. This creates a reproducible evidence set; it does not claim a physical match until a frozen matcher and thresholds have passed independent validation." />
+      <ScreenTitle eyebrow="SISV observation acquisition" title={intent === 'REFERENCE' ? 'Record the reference surface' : 'Record the comparison surface'} subtitle="PackProof will capture five predefined regions, three original frames per region. This preserves a reproducible evidence set; it does not determine identity, authenticity, tampering, fraud, fault, custody, or any transaction outcome." />
       <Card style={styles.profileCard}>
         <Text style={styles.profileId}>{PHYSICAL_CAPTURE_PROFILE_ID} · v{PHYSICAL_CAPTURE_PROFILE_VERSION}</Text>
         <Text style={styles.profileText}>Initial research scope: matte or low-gloss paper label on ordinary paperboard/cardboard. Glossy film, metallic, transparent, wet, severely damaged, or unknown substrates should not be treated as validated.</Text>
@@ -391,7 +455,7 @@ export default function PhysicalCaptureScreen() {
     </> : null}
     {stage === 'REVIEW' ? <>
       <ScreenTitle eyebrow="Acquisition complete" title="Secure the 15 original frames?" subtitle="Each frame will be encrypted with Android Keystore AES-256-GCM, independently SHA-256 hashed, assigned its own exact upload binding, and retained locally until server finalization is confirmed." />
-      <Card style={styles.reviewCard}><AppIcon name="checkmark.shield.fill" size={44} tintColor={colors.teal} /><Text style={styles.reviewTitle}>{PHYSICAL_CAPTURE_FRAME_COUNT} / {PHYSICAL_CAPTURE_FRAME_COUNT} frames captured</Text><Text style={styles.reviewText}>{attestation?.mode === 'JIT_APP_CHECK' ? 'Fresh App Check batch attestation is bound to the capture series.' : 'The series was acquired offline and will remain explicitly OFFLINE_UNATTESTED after synchronization.'}</Text><Text style={styles.reviewText}>No physical similarity score will be emitted by this build until PackProof-specific validation data and frozen thresholds exist.</Text></Card>
+      <Card style={styles.reviewCard}><AppIcon name="checkmark.shield.fill" size={44} tintColor={colors.teal} /><Text style={styles.reviewTitle}>{PHYSICAL_CAPTURE_FRAME_COUNT} / {PHYSICAL_CAPTURE_FRAME_COUNT} frames captured</Text><Text style={styles.reviewText}>{attestation?.mode === 'JIT_APP_CHECK' ? 'Fresh App Check batch attestation is bound to the capture series.' : 'The series was acquired offline and will remain explicitly OFFLINE_UNATTESTED after synchronization.'}</Text><Text style={styles.reviewText}>This build preserves the observations without producing a physical-comparison measurement or a conclusion about either participant.</Text></Card>
       <Button label="Encrypt, hash and sync series" icon="lock.shield.fill" onPress={secureSeries} />
       <Button label="Discard series" variant="danger" onPress={discard} />
     </> : null}

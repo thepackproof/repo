@@ -1,13 +1,15 @@
 # PackProof architecture governance
 
-This directory records the controlled migration of the current PackProof 0.3.0 working tree into a unified, API-first commerce evidence platform.
+> Current execution authority: follow [`../../agent.md`](../../agent.md) for launch sequencing, readiness status, demonstration gates, Play acceptance, and production rollout. This directory provides architecture and historical evidence; it does not override the current execution plan.
+
+This directory records the controlled migration of the current PackProof 0.8.5.0 working tree into a unified, API-first commerce evidence platform.
 
 ## Section 1 artifacts
 
 - [Architecture contract](ARCHITECTURE_CONTRACT.md) - mandatory dependency, security, evidence, API, provenance and claim boundaries.
 - [Baseline evidence](BASELINE_2026-08-11.md) - exact local source/emulator results and known open risks for the uncommitted 0.3.0 working tree.
 - [Migration map](MIGRATION_MAP.md) - current modules, current coupling and their target architectural destinations.
-- [Checkpoint plan](CHECKPOINT_PLAN.md) - proposed method for converting the current dirty tree into an honest, reviewable Git baseline.
+- [Checkpoint plan](CHECKPOINT_PLAN.md) - historical disposition of the now-resolved uncommitted-baseline problem.
 - [Architecture decisions](../adr/README.md) - accepted decisions that later sections must preserve.
 
 ## Section 2 artifacts
@@ -32,6 +34,10 @@ This directory records the controlled migration of the current PackProof 0.3.0 w
 - [Section 5 completion report](SECTION_5_COMPLETION_2026-08-11.md) - delivered participant/capture-session surface, emulator evidence, discovered projection fix and remaining live-proof limits.
 - Executable source: `functions/src/application/v1/public-commerce-handoff-service.ts`, `functions/src/infrastructure/firebase/v1/public-commerce-handoff-repository.ts`, `functions/src/api/v1`, `sdk/javascript/browser.js`, and `src/app/handoff/review.tsx`.
 - Gates: `npm run test:application`, `npm run test:application:firestore`, `npm run test:api`, `npm run test:api:firestore`, `npm run test:sdk`, and `npm run test:rules`.
+
+## Camera acquisition checkpoint
+
+- [Camera acquisition milestones 1 and 2 completion](CAMERA_ACQUISITION_MILESTONE_1_2_COMPLETION_2026-08-13.md) - native-preview readiness, bounded capture controls, raw and normalized barcode provenance, claim-disciplined framing guidance, interruption and temporary-file cleanup, source gates, Android bundleability evidence, and the remaining signed-device boundary.
 
 ## Authority and scope
 

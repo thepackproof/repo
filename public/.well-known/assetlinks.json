@@ -1,0 +1,14 @@
+[
+  {
+    "relation": [
+      "delegate_permission/common.handle_all_urls"
+    ],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.packproof.app",
+      "sha256_cert_fingerprints": [
+        "BE:47:12:52:5F:B4:0E:8C:3C:06:F5:8C:E8:73:49:B6:3A:6B:F1:DB:3B:B7:EA:CD:5D:10:97:2E:B9:AD:71:36"
+      ]
+    }
+  }
+]

@@ -3,7 +3,7 @@
   "private": true,
   "license": "UNLICENSED",
   "main": "expo-router/entry",
-  "version": "0.3.0",
+  "version": "0.8.5",
   "engines": {
     "node": "22"
   },
@@ -70,6 +70,9 @@
     "openapi-typescript-codegen": "^0.31.0",
     "typescript": "~6.0.3"
   },
+  "overrides": {
+    "nanoid": "3.3.18"
+  },
   "scripts": {
     "configure": "node scripts/configure.mjs",
     "sync:eas": "node scripts/sync-eas-env.mjs",
@@ -93,6 +96,9 @@
     "test:evidence-format": "npm --prefix functions run test:evidence-format",
     "test:evidence-verifier": "node scripts/test-evidence-verifier.mjs",
     "test:claims": "node scripts/test-claims.mjs",
+    "test:android-signing-plugin": "node scripts/test-packproof-gradle-plugin.mjs",
+    "test:android-release-config": "node scripts/test-android-release-config.mjs",
+    "test:queue-attention": "node --experimental-strip-types scripts/test-queue-attention.mjs",
     "validate:physical": "node scripts/analyze-physical-validation.mjs",
     "verify:manifest": "node tools/verify-evidence.mjs",
     "test:manifest-verifier": "node scripts/test-evidence-verifier.mjs",

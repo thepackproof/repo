@@ -20,26 +20,27 @@ Capture fulfillment as it happens:
 
 - Guided item, condition, identifier and certificate photos
 - Continuous packing and unboxing video workflows
+- A visible `PP` mark across the label/package boundary, tape/seal views and a high-resolution seller reference for human review alongside buyer arrival observations
 - Shipping carrier and tracking details
 - Server timestamps and SHA-256 file fingerprints
 - A shared status timeline for both participants
 - Downloadable evidence packets for your records
 - Private concern reporting and participant blocking
 
-PackProof Pro adds unlimited active transaction passports, full-resolution evidence features, extended retention and on-demand evidence packets. Purchases are processed securely by Google Play and can be restored in the app.
+The initial Android release does not advertise or sell PackProof Pro. Paid-plan code remains disabled behind a runtime feature flag until purchase, restore, renewal, cancellation, expiration, transfer, localized-price, webhook-authorization and Firebase-identity tests pass.
 
-Important: PackProof is a documentation tool. It does not authenticate users or items, determine ownership, provide appraisal, escrow, payment, shipping or insurance services, guarantee recovery, decide disputes, or guarantee that a marketplace, carrier, insurer, payment provider or court will accept a record. Always inspect independently and use an appropriate protected payment and shipping method.
+Important: PackProof is neutral evidence infrastructure and a documentation tool. It records and organizes evidence; it does not authenticate users or items, prove scene truth or custody, determine fraud or fault, determine ownership, provide appraisal, escrow, payment, shipping or insurance services, guarantee recovery, decide disputes, or guarantee that a marketplace, carrier, insurer, payment provider or court will accept a record. Always inspect independently and use an appropriate protected payment and shipping method.
 
 ## Screenshot sequence
 
 1. Home dashboard — “Every detail. One shared record.”
 2. New PackProof — item, value and identifiers.
 3. Mutual terms — exact record confirmed by buyer and seller.
-4. Guided packing — uninterrupted capture checklist.
+4. Guided packing — continuous capture, `PP` boundary mark, tape/seal and final reference checklist.
 5. Finalized evidence — separately labeled client/server times, SHA-256 fingerprints, and assurance limitations.
 6. Audit timeline — shipment, receipt and completion.
-7. Evidence packet — organized export for personal records.
-8. Account — linked sign-in methods, plan, export and deletion.
+7. Evidence packet — organized, source-linked export for review.
+8. Account — Google sign-in, export and deletion.
 
 Do not place simulated five-star ratings, “fraud-proof,” “legally binding,” “court-ready,” “authentic,” “verified seller,” “guaranteed,” escrow or insurance claims in graphics.
 

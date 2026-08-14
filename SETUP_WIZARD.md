@@ -211,7 +211,7 @@ After the first AAB is manually uploaded and the Play app exists, future builds 
 
 If something fails, run `npm run doctor` and copy only its output. Never share `.env`, `google-services.json`, service-account JSON, SMTP passwords or Firebase secret values.
 
-## 14. PackProof 0.3.0 evidence security and Connect setup
+## 14. PackProof 0.8.5.0 evidence security and Connect setup
 
 1. Generate and store the evidence-manifest HMAC secret, then set a non-secret key identifier in `functions/.env` (for example, `MANIFEST_SIGNING_KEY_ID=manifest-hmac-v1`):
 

@@ -12,3 +12,5 @@ Architecture decisions are immutable records. If a decision changes, add a new A
 | [0006](0006-android-secure-capture-boundary.md) | Android is the current secure-capture platform boundary | Accepted |
 | [0007](0007-physical-matcher-validation-gate.md) | Production physical matcher remains validation-gated | Accepted |
 | [0008](0008-manifest-authentication-evolution.md) | Explicit HMAC boundary and versioned asymmetric evolution | Accepted |
+| [0009](0009-neutral-sisv-observation-boundary.md) | SISV is neutral observation infrastructure, never an adjudication or fault engine | Accepted |
+| [0010](0010-evidence-vault-launch-before-sisv.md) | Launch the two-device evidence vault before consent-governed SISV research | Accepted |

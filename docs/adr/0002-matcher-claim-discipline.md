@@ -1,6 +1,8 @@
 # ADR 0002 — Physical-Feature Matcher and Claim Discipline
 
-Status: Confirmed (agentic). Decision date: 2026-08-11
+Status: Superseded by ADR 0009. Decision date: 2026-08-11
+
+ADR 0009 narrows the PackProof product contract permanently: research `MATCH`/`NON_MATCH` terminology does not become a PackProof product verdict after validation. Product-facing SISV observations are neutral and have no workflow or adjudication authority.
 
 Context
 - The whitepaper proposes a probabilistic physical-feature matcher for package-surface comparison but the repository does not include a validated matcher or a PackProof-specific blind validation corpus.

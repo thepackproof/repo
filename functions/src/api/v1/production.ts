@@ -87,6 +87,11 @@ function productionApp() {
 
 export const packproofApi = onRequest({
   cors: false,
+  // Cloud Run must accept the transport request so the API can apply its own
+  // credential, scope, origin, rate-limit and route authorization controls.
+  // Without this, even the intentionally public health/readiness routes are
+  // rejected by IAM before the application boundary executes.
+  invoker: 'public',
   timeoutSeconds: 60,
   memory: '512MiB',
   secrets: [apiCredentialPepper, publicHandoffSigningSecret, participantHandoffSigningSecret],

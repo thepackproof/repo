@@ -8,6 +8,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { Button, Card, Choice, Field, LoadingScreen, ProgressBar, StatusPill } from '@/components/ui';
 import { colors } from '@/constants/brand';
 import { callFunction, downloadUrl, subscribeEvents, subscribeEvidence, subscribeReturnPassports, subscribeTransaction } from '@/lib/api';
+import { forceFreshCallableCredentials } from '@/lib/firebase';
 import { enqueueEvidence, syncEvidenceQueue } from '@/lib/offline-evidence-queue';
 import { formatDate, formatMoney, readableError, statusProgress } from '@/lib/format';
 import { useAuth } from '@/providers/auth-provider';
@@ -19,11 +20,11 @@ const evidenceLabels: Record<EvidenceType, string> = {
 
 type PhysicalGroupSummary = { captureGroupId: string; frameCount: number; usableFrameCount: number; complete: boolean; missing: string[] };
 type PhysicalStatus = {
-  decision: 'NOT_EVALUATED' | 'FTA' | 'INCONCLUSIVE';
+  observationStatus: 'NOT_EVALUATED' | 'ACQUISITION_INCOMPLETE' | 'RESEARCH_ONLY';
   reason: string;
   reference: PhysicalGroupSummary | null;
   verification: PhysicalGroupSummary | null;
-  matcher: { status: 'VALIDATION_REQUIRED'; modelVersion: null; thresholdPolicyVersion: null; score: null };
+  comparison: { status: 'NOT_ENABLED'; artifactVersion: null; observationPolicyVersion: null; aggregateMeasurement: null };
   claimClass: 'V';
 };
 
@@ -114,6 +115,7 @@ export default function TransactionDetail() {
 
   const capture = (type: EvidenceType, returnPassportId?: string) => router.push({ pathname: '/capture/[id]', params: { id, type, ...(returnPassportId ? { returnPassportId } : {}) } });
   const createPacket = () => run('packet', async () => {
+    await forceFreshCallableCredentials();
     const result = await callFunction<{ transactionId: string }, { storagePath: string }>('createEvidencePacket', { transactionId: id });
     await Linking.openURL(await downloadUrl(result.storagePath));
   });
@@ -248,10 +250,10 @@ export default function TransactionDetail() {
     {item.shipping ? <Card style={styles.card}><Text style={styles.cardEyebrow}>SHIPMENT</Text><Info label="Carrier" value={item.shipping.carrier} /><Info label="Tracking" value={item.shipping.trackingNumber} />{item.shipping.labelEvidenceMatchStatus ? <Info label="Packing-label check" value={item.shipping.labelEvidenceMatchStatus.replaceAll('_', ' ').toLowerCase()} /> : null}<Info label="Recorded" value={formatDate(item.shipping.shippedAt)} /></Card> : null}
 
     <Card style={styles.card}>
-      <Text style={styles.cardEyebrow}>PHYSICAL CORRESPONDENCE RESEARCH</Text>
-      <Text style={styles.cardTitle}>{physicalStatus ? physicalStatus.decision.replaceAll('_', ' ') : 'STATUS UNAVAILABLE'}</Text>
-      <Text style={styles.body}>{physicalStatus?.reason === 'MATCHER_NOT_YET_VALIDATED'
-        ? 'Reference and verification acquisition sets are present. This build does not produce a similarity score or match decision because no PackProof-specific matcher and thresholds have completed independent validation.'
+      <Text style={styles.cardEyebrow}>SISV PHYSICAL OBSERVATION RESEARCH</Text>
+      <Text style={styles.cardTitle}>{physicalStatus ? physicalStatus.observationStatus.replaceAll('_', ' ') : 'STATUS UNAVAILABLE'}</Text>
+      <Text style={styles.body}>{physicalStatus?.reason === 'COMPARISON_NOT_ENABLED'
+        ? 'Reference and verification acquisition sets are present. This build preserves the observations but does not produce a physical-comparison measurement. SISV does not determine cause, actor, fraud, fault, authenticity, custody, risk, or any transaction or claim outcome.'
         : physicalStatus?.reason === 'NO_REFERENCE_CAPTURE'
           ? 'No reference series has been server-finalized.'
           : physicalStatus?.reason === 'NO_VERIFICATION_CAPTURE'
@@ -261,7 +263,7 @@ export default function TransactionDetail() {
               : 'The physical research status could not be retrieved. Evidence files remain independently visible below.'}</Text>
       <Info label="Reference frames" value={physicalStatus?.reference ? `${physicalStatus.reference.usableFrameCount}/15${physicalStatus.reference.complete ? ' complete' : ''}` : 'None'} />
       <Info label="Verification frames" value={physicalStatus?.verification ? `${physicalStatus.verification.usableFrameCount}/15${physicalStatus.verification.complete ? ' complete' : ''}` : 'None'} />
-      <Info label="Matcher" value="Validation required; no score emitted" />
+      <Info label="SISV comparison" value="Not enabled; no measurement or adjudication emitted" />
     </Card>
 
     <View style={styles.sectionHead}><Text style={styles.sectionTitle}>Evidence and assurance</Text><Text style={styles.count}>{evidence.length} FILE{evidence.length === 1 ? '' : 'S'}</Text></View>

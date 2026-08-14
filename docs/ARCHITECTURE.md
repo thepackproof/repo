@@ -1,4 +1,4 @@
-# PackProof 0.3.0 architecture
+# PackProof 0.8.5.0 architecture
 
 ## Canonical-domain and application-service migration status
 

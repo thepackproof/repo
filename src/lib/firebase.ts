@@ -5,7 +5,7 @@ import {
   ReactNativeFirebaseAppCheckProvider,
   type AppCheck,
 } from '@react-native-firebase/app-check';
-import { getAuth } from '@react-native-firebase/auth';
+import { getAuth, getIdToken } from '@react-native-firebase/auth';
 import { getFirestore } from '@react-native-firebase/firestore';
 import { getFunctions } from '@react-native-firebase/functions';
 import { getStorage } from '@react-native-firebase/storage';
@@ -32,4 +32,13 @@ export function initializeSecurity(): Promise<AppCheck> {
 export async function forceFreshAttestationToken(): Promise<void> {
   const appCheck = await initializeSecurity();
   await getToken(appCheck, true);
+}
+
+export async function forceFreshCallableCredentials(): Promise<void> {
+  const user = auth.currentUser;
+  if (!user) throw new Error('Sign in before performing this protected operation.');
+  await Promise.all([
+    getIdToken(user, true),
+    forceFreshAttestationToken(),
+  ]);
 }

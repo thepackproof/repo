@@ -1,7 +1,9 @@
 # ADR 0007: Physical matcher validation gate
 
-- Status: Accepted
+- Status: Superseded by ADR 0009
 - Date: 2026-08-11
+
+ADR 0009 retains the validation gate while narrowing all future PackProof product-facing SISV outputs to neutral observations with no fault, fraud, authenticity, custody, risk, liability, or disposition authority.
 
 ## Context
 

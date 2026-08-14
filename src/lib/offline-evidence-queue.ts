@@ -6,6 +6,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { deleteFile, decryptFile, encryptFile } from 'packproof-secure-file';
 import { EvidenceFinalizationPendingError, uploadQueuedEvidence } from '@/lib/api';
 import { auth } from '@/lib/firebase';
+import { classifyQueueAttentionReason, type QueueAttentionReason } from '@/lib/queue-attention';
 import type { EvidenceType } from '@/types/models';
 import type { CaptureManifestInput } from '@/types/telemetry';
 
@@ -75,7 +76,7 @@ export type QueueSyncResult = {
   terminalIds: string[];
 };
 
-export type QueueStatus = { queuedCount: number; attentionCount: number };
+export type QueueStatus = { queuedCount: number; attentionCount: number; attentionReason: QueueAttentionReason | null };
 
 let syncPromise: Promise<QueueSyncResult> | null = null;
 const listeners = new Set<() => void>();
@@ -265,15 +266,19 @@ export async function getQueuedEvidenceCount(uploaderId?: string | null): Promis
 }
 
 export async function getQueuedEvidenceStatus(uploaderId?: string | null): Promise<QueueStatus> {
-  if (!uploaderId) return { queuedCount: 0, attentionCount: 0 };
+  if (!uploaderId) return { queuedCount: 0, attentionCount: 0, attentionReason: null };
   const snapshot = await readQueueSnapshot();
   const owned = snapshot.items.filter((item) => item.uploaderId === uploaderId);
+  const terminal = owned.filter((item) => item.state === 'FAILED_TERMINAL');
   return {
     queuedCount: owned.filter((item) => item.state !== 'FAILED_TERMINAL').length,
     // An unreadable encrypted metadata container must stay visible as a local
     // queue fault. Its owner cannot be recovered without decrypting it, so the
     // signed-in user is shown the device-local attention count conservatively.
-    attentionCount: owned.filter((item) => item.state === 'FAILED_TERMINAL').length + snapshot.unreadableIds.length,
+    attentionCount: terminal.length + snapshot.unreadableIds.length,
+    attentionReason: snapshot.unreadableIds.length
+      ? 'LOCAL_CIPHERTEXT_UNREADABLE'
+      : terminal.length ? classifyQueueAttentionReason(terminal[0].lastError) : null,
   };
 }
 
@@ -281,7 +286,7 @@ export function subscribeQueuedEvidenceStatus(uploaderId: string | null, listene
   let active = true;
   const emit = () => getQueuedEvidenceStatus(uploaderId)
     .then((status) => { if (active) listener(status); })
-    .catch(() => { if (active) listener({ queuedCount: 0, attentionCount: 1 }); });
+    .catch(() => { if (active) listener({ queuedCount: 0, attentionCount: 1, attentionReason: 'LOCAL_CIPHERTEXT_UNREADABLE' }); });
   listeners.add(emit);
   emit();
   return () => { active = false; listeners.delete(emit); };
@@ -290,6 +295,7 @@ export function subscribeQueuedEvidenceStatus(uploaderId: string | null, listene
 export async function syncEvidenceQueue(options: {
   targetId?: string;
   onProgress?: (fraction: number) => void;
+  retryTerminal?: boolean;
 } = {}): Promise<QueueSyncResult> {
   if (syncPromise) {
     const activeResult = await syncPromise;
@@ -318,11 +324,11 @@ export async function syncEvidenceQueue(options: {
     const uploadedIds: string[] = [];
     const failedIds: string[] = [];
     const terminalIds = [
-      ...snapshot.items.filter((item) => item.state === 'FAILED_TERMINAL').map((item) => item.id),
+      ...snapshot.items.filter((item) => item.state === 'FAILED_TERMINAL' && !options.retryTerminal).map((item) => item.id),
       ...snapshot.unreadableIds,
     ];
     const candidates = items.filter((item) => item.uploaderId === currentUid
-      && item.state !== 'FAILED_TERMINAL'
+      && (item.state !== 'FAILED_TERMINAL' || options.retryTerminal)
       && (!options.targetId || item.id === options.targetId));
     for (const item of candidates) {
       const decryptedUri = tempUriFor(`${item.id}.upload`);

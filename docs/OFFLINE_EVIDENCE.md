@@ -1,6 +1,6 @@
 # Offline evidence queue
 
-PackProof 0.3.0 treats loss of connectivity as a synchronization delay. It does not label a locally encrypted file as uploaded or server-finalized.
+PackProof 0.8.5.0 treats loss of connectivity as a synchronization delay. It does not label a locally encrypted file as uploaded or server-finalized.
 
 ## Android storage design
 

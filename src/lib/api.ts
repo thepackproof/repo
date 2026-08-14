@@ -1,7 +1,7 @@
 import { collection, doc, getDoc, onSnapshot, orderBy, query, where } from '@react-native-firebase/firestore';
 import { httpsCallable } from '@react-native-firebase/functions';
 import { ref as storageRef, putFile } from '@react-native-firebase/storage';
-import { auth, db, fileStorage, forceFreshAttestationToken, functions } from './firebase';
+import { auth, db, fileStorage, forceFreshAttestationToken, forceFreshCallableCredentials, functions } from './firebase';
 import type { QueuedEvidence } from '@/lib/offline-evidence-queue';
 import type { EvidenceRecord, EvidenceType, PackProofTransaction, ReturnPassport, TimelineEvent, UserProfile } from '@/types/models';
 import type { CaptureAttestation, RuntimeIntegrityTelemetry } from '@/types/telemetry';
@@ -199,6 +199,7 @@ export async function uploadQueuedEvidence(
 }
 
 export async function downloadUrl(path: string): Promise<string> {
+  await forceFreshCallableCredentials();
   const result = await callFunction<{ storagePath: string }, { url: string; expiresAt: string }>('createPrivateDownloadUrl', { storagePath: path });
   return result.url;
 }

@@ -1,10 +1,11 @@
-import { useRef, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { Alert, AppState, Linking, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { CameraView, useCameraPermissions, useMicrophonePermissions } from 'expo-camera';
+import { CameraView, useCameraPermissions, useMicrophonePermissions, type FlashMode } from 'expo-camera';
 import * as Crypto from 'expo-crypto';
 import * as FileSystem from 'expo-file-system/legacy';
+import { Image } from 'expo-image';
 import * as Location from 'expo-location';
 import { AppIcon } from '@/components/app-icon';
 import NetInfo from '@react-native-community/netinfo';
@@ -20,6 +21,46 @@ import type { CaptureAttestation, CaptureManifestInput, ShippingLabelTelemetry }
 
 const videoTypes = new Set<EvidenceType>(['PACKING_VIDEO', 'UNBOXING_VIDEO', 'RETURN_PACKING_VIDEO', 'RETURN_UNBOXING_VIDEO']);
 const labelAwareTypes = new Set<EvidenceType>(['PACKING_VIDEO', 'SHIPPING_LABEL', 'RETURN_PACKING_VIDEO', 'RETURN_SHIPPING_LABEL']);
+const zoomSteps = [0, 0.15, 0.3] as const;
+const MAX_VIDEO_DURATION_SECONDS = 15 * 60;
+
+type CaptureGuide = { title: string; instruction: string; aspectRatio: number };
+type ReviewSummary = { durationMs: number; sizeBytes: number | null; widthPixels: number | null; heightPixels: number | null };
+
+const defaultPhotoGuide: CaptureGuide = {
+  title: 'Evidence framing guide',
+  instruction: 'Keep the complete relevant subject inside the guide with surrounding context visible.',
+  aspectRatio: 3 / 4,
+};
+
+const captureGuides: Partial<Record<EvidenceType, CaptureGuide>> = {
+  ITEM_PHOTO: { title: 'Complete item', instruction: 'Show the entire item without cropping its edges.', aspectRatio: 3 / 4 },
+  CONDITION_PHOTO: { title: 'Condition and context', instruction: 'Center the condition area while retaining enough surrounding detail to locate it.', aspectRatio: 1 },
+  IDENTIFIER_PHOTO: { title: 'Identifier and context', instruction: 'Keep the identifier readable and include the nearby item surface.', aspectRatio: 4 / 3 },
+  COA_PHOTO: { title: 'Complete document', instruction: 'Align all document edges inside the guide and avoid glare.', aspectRatio: 3 / 4 },
+  SHIPPING_LABEL: { title: 'Label and package boundary', instruction: 'Include the full label, tracking barcode, and adjacent package surface.', aspectRatio: 4 / 3 },
+  DELIVERY_PHOTO: { title: 'Package and delivery context', instruction: 'Show the complete package and only the surrounding context needed for the record.', aspectRatio: 3 / 4 },
+  SUPPORTING_DOCUMENT: { title: 'Complete document', instruction: 'Align all document edges inside the guide and keep text legible.', aspectRatio: 3 / 4 },
+  RETURN_CONDITION_PHOTO: { title: 'Return condition and context', instruction: 'Center the condition area while retaining identifying context.', aspectRatio: 1 },
+  RETURN_SHIPPING_LABEL: { title: 'Return label and package boundary', instruction: 'Include the full return label, barcode, and adjacent package surface.', aspectRatio: 4 / 3 },
+};
+
+const videoGuide: CaptureGuide = {
+  title: 'Continuous action area',
+  instruction: 'Keep the package, item, hands, and relevant action visible throughout the recording.',
+  aspectRatio: 3 / 4,
+};
+
+function formatDuration(totalSeconds: number): string {
+  const minutes = Math.floor(totalSeconds / 60);
+  return `${String(minutes).padStart(2, '0')}:${String(totalSeconds % 60).padStart(2, '0')}`;
+}
+
+function formatBytes(sizeBytes: number | null): string {
+  if (sizeBytes === null) return 'Size unavailable';
+  if (sizeBytes < 1024 * 1024) return `${Math.max(1, Math.round(sizeBytes / 1024))} KB`;
+  return `${(sizeBytes / (1024 * 1024)).toFixed(1)} MB`;
+}
 const titles: Record<EvidenceType, string> = {
   ITEM_PHOTO: 'Item photo',
   CONDITION_PHOTO: 'Condition photo',
@@ -115,6 +156,7 @@ export default function CaptureScreen() {
   const rawType = params.type;
   const type = rawType && titles[rawType] ? rawType : 'CONDITION_PHOTO';
   const isVideo = videoTypes.has(type);
+  const guide = isVideo ? videoGuide : captureGuides[type] ?? defaultPhotoGuide;
   const router = useRouter();
   const { user } = useAuth();
   const camera = useRef<CameraView>(null);
@@ -123,20 +165,76 @@ export default function CaptureScreen() {
   const [stage, setStage] = useState<'CHECKLIST' | 'CAMERA' | 'REVIEW' | 'UPLOADING'>('CHECKLIST');
   const [recording, setRecording] = useState(false);
   const [preparing, setPreparing] = useState(false);
+  const [cameraReady, setCameraReady] = useState(false);
+  const [cameraError, setCameraError] = useState<string | null>(null);
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
+  const [flashMode, setFlashMode] = useState<FlashMode>('off');
+  const [torchEnabled, setTorchEnabled] = useState(false);
+  const [zoom, setZoom] = useState<number>(zoomSteps[0]);
   const [includeLocation, setIncludeLocation] = useState(false);
   const [localUri, setLocalUri] = useState<string | null>(null);
   const [manifest, setManifest] = useState<CaptureManifestInput | null>(null);
+  const [reviewSummary, setReviewSummary] = useState<ReviewSummary | null>(null);
   const [progress, setProgress] = useState(0);
   const [shippingLabel, setShippingLabel] = useState<ShippingLabelTelemetry | null>(null);
   const shippingLabelRef = useRef<ShippingLabelTelemetry | null>(null);
   const captureAttemptRef = useRef(0);
+  const mountedRef = useRef(true);
+  const captureInFlightRef = useRef(false);
+  const recordingRef = useRef(false);
+  const collectorRef = useRef<Awaited<ReturnType<typeof startCaptureTelemetry>> | null>(null);
+  const interruptionRef = useRef<string | null>(null);
+  const localUriRef = useRef<string | null>(null);
+  const securingRef = useRef(false);
+  const stopRecordingRef = useRef<(() => void) | null>(null);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active' || !captureInFlightRef.current) return;
+      interruptionRef.current = recordingRef.current
+        ? 'Recording stopped because PackProof left the foreground. Retake the evidence as one continuous recording.'
+        : 'Capture cancelled because PackProof left the foreground. Return to the camera and retake the evidence.';
+      if (recordingRef.current) stopRecordingRef.current?.();
+    });
+    return () => {
+      mountedRef.current = false;
+      captureInFlightRef.current = false;
+      subscription.remove();
+      if (recordingRef.current) {
+        interruptionRef.current = 'Recording stopped because the camera screen closed.';
+        stopRecordingRef.current?.();
+      }
+      stopRecordingRef.current = null;
+      const collector = collectorRef.current;
+      collectorRef.current = null;
+      if (collector) void collector.finish().catch(() => undefined);
+      if (localUriRef.current && !securingRef.current) {
+        const temporaryUri = localUriRef.current;
+        localUriRef.current = null;
+        void FileSystem.deleteAsync(temporaryUri, { idempotent: true }).catch(() => undefined);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!recording) return;
+    const startedAt = Date.now();
+    const timer = setInterval(() => {
+      setRecordingSeconds(Math.min(MAX_VIDEO_DURATION_SECONDS, Math.floor((Date.now() - startedAt) / 1000)));
+    }, 250);
+    return () => clearInterval(timer);
+  }, [recording]);
 
   const handleBarcodeScanned = ({ data, type: symbology }: { data: string; type: string }) => {
     if (!labelAwareTypes.has(type)) return;
-    const trackingNumber = data.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 120);
+    if (!data || data.length > 512) return;
+    const trackingNumber = data.normalize('NFKC').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 120);
     if (trackingNumber.length < 8) return;
     const next: ShippingLabelTelemetry = {
+      rawDecodedValue: data,
       trackingNumber,
+      normalizationProfile: 'PACKPROOF_TRACKING_ALNUM_V1',
       symbology: String(symbology).slice(0, 80),
       detectedAt: new Date().toISOString(),
       source: 'CAMERA_BARCODE_SCANNER',
@@ -146,13 +244,38 @@ export default function CaptureScreen() {
     setShippingLabel(next);
   };
 
+  const cycleFlash = () => {
+    if (isVideo) {
+      setTorchEnabled((enabled) => !enabled);
+      return;
+    }
+    setFlashMode((current) => current === 'off' ? 'auto' : current === 'auto' ? 'on' : 'off');
+  };
+
+  const cycleZoom = () => {
+    setZoom((current) => zoomSteps[(zoomSteps.indexOf(current as typeof zoomSteps[number]) + 1) % zoomSteps.length]);
+  };
+
+  const observedFlashMode: CaptureManifestInput['cameraObservation']['flashMode'] = isVideo
+    ? (torchEnabled ? 'TORCH' : 'OFF')
+    : flashMode.toUpperCase() as CaptureManifestInput['cameraObservation']['flashMode'];
+
   const requestPermissions = async () => {
     const cameraResult = cameraPermission?.granted ? cameraPermission : await requestCameraPermission();
     const micResult = !isVideo || microphonePermission?.granted ? microphonePermission : await requestMicrophonePermission();
     if (!cameraResult?.granted || (isVideo && !micResult?.granted)) {
-      Alert.alert('Permission required', 'Camera and microphone access are required to capture transaction evidence. You can change this in Android Settings.');
+      const blocked = cameraResult?.canAskAgain === false || (isVideo && micResult?.canAskAgain === false);
+      Alert.alert(
+        'Permission required',
+        isVideo ? 'Camera and microphone access are required to record evidence video.' : 'Camera access is required to photograph transaction evidence.',
+        blocked
+          ? [{ text: 'Cancel', style: 'cancel' }, { text: 'Open settings', onPress: () => { void Linking.openSettings(); } }]
+          : [{ text: 'OK' }],
+      );
       return;
     }
+    setCameraReady(false);
+    setCameraError(null);
     setStage('CAMERA');
   };
 
@@ -168,14 +291,18 @@ export default function CaptureScreen() {
   };
 
   const capture = async () => {
-    if (!camera.current || preparing) return;
+    if (!camera.current || !cameraReady || cameraError || preparing) return;
     setPreparing(true);
     let collector: Awaited<ReturnType<typeof startCaptureTelemetry>> | null = null;
     let capturedUri: string | null = null;
     try {
+      captureInFlightRef.current = true;
+      interruptionRef.current = null;
+      setReviewSummary(null);
       captureAttemptRef.current += 1;
       const captureId = Crypto.randomUUID();
       collector = await startCaptureTelemetry(includeLocation);
+      collectorRef.current = collector;
       let attestation: CaptureAttestation;
       try {
         attestation = evidenceSessionId && evidenceSessionToken && evidenceSessionOperationKey
@@ -203,21 +330,51 @@ export default function CaptureScreen() {
         } else throw error;
       }
 
+      if (!mountedRef.current) {
+        captureInFlightRef.current = false;
+        collector = null;
+        return;
+      }
+      if (interruptionRef.current) throw new Error(interruptionRef.current);
+      const activeCamera = camera.current;
+      if (!activeCamera) throw new Error('The native camera became unavailable before capture started.');
+
       const captureStartedAt = collector.markCaptureStarted();
       let result: { uri?: string; width?: number; height?: number } | null | undefined = null;
       if (isVideo) {
+        recordingRef.current = true;
+        stopRecordingRef.current = () => activeCamera.stopRecording();
+        setRecordingSeconds(0);
         setRecording(true);
         setPreparing(false);
-        result = await camera.current.recordAsync({ maxDuration: 900 });
+        result = await activeCamera.recordAsync({ maxDuration: MAX_VIDEO_DURATION_SECONDS });
+        recordingRef.current = false;
+        stopRecordingRef.current = null;
         setRecording(false);
       } else {
-        result = await camera.current.takePictureAsync({ quality: 0.92, exif: false, shutterSound: true });
+        result = await activeCamera.takePictureAsync({ quality: 0.92, exif: false, shutterSound: true });
         setPreparing(false);
       }
       capturedUri = result?.uri ?? null;
       if (!capturedUri) throw new Error('The camera returned no capture file.');
+      if (interruptionRef.current) throw new Error(interruptionRef.current);
+      if (!mountedRef.current) {
+        await FileSystem.deleteAsync(capturedUri, { idempotent: true }).catch(() => undefined);
+        capturedUri = null;
+        captureInFlightRef.current = false;
+        collector = null;
+        return;
+      }
+      const fileInfo = await FileSystem.getInfoAsync(capturedUri);
+      collectorRef.current = null;
       const telemetry = await collector.finish();
       collector = null;
+      if (!mountedRef.current) {
+        await FileSystem.deleteAsync(capturedUri, { idempotent: true }).catch(() => undefined);
+        capturedUri = null;
+        captureInFlightRef.current = false;
+        return;
+      }
       if (result?.uri) {
         const nextManifest: CaptureManifestInput = {
           schemaVersion: 2,
@@ -248,8 +405,8 @@ export default function CaptureScreen() {
             widthPixels: result.width ?? null,
             heightPixels: result.height ?? null,
             orientation: null,
-            flashMode: 'OFF',
-            zoom: 0,
+            flashMode: observedFlashMode,
+            zoom,
             codec: 'PLATFORM_DEFAULT',
             metadataScope: 'LIMITED_BY_EXPO_CAMERA',
             packProofTransformationsBeforeHashing: 'NONE',
@@ -272,32 +429,61 @@ export default function CaptureScreen() {
           shippingLabel: shippingLabelRef.current,
           attestation,
         };
+        localUriRef.current = result.uri;
         setLocalUri(result.uri);
         setManifest(nextManifest);
+        setReviewSummary({
+          durationMs: telemetry.monotonicElapsedMs,
+          sizeBytes: fileInfo.exists && typeof fileInfo.size === 'number' ? fileInfo.size : null,
+          widthPixels: result.width ?? null,
+          heightPixels: result.height ?? null,
+        });
+        captureInFlightRef.current = false;
         setStage('REVIEW');
       }
     } catch (error) {
-      setRecording(false);
-      setPreparing(false);
-      if (collector) await collector.finish().catch(() => undefined);
+      captureInFlightRef.current = false;
+      recordingRef.current = false;
+      stopRecordingRef.current = null;
+      if (mountedRef.current) {
+        setRecording(false);
+        setPreparing(false);
+      }
+      if (collector && collectorRef.current === collector) {
+        collectorRef.current = null;
+        await collector.finish().catch(() => undefined);
+      }
       if (capturedUri) await FileSystem.deleteAsync(capturedUri, { idempotent: true }).catch(() => undefined);
-      Alert.alert('Capture failed', readableError(error));
+      if (mountedRef.current) Alert.alert('Capture failed', readableError(error));
     }
   };
 
-  const stop = () => camera.current?.stopRecording();
+  const stop = () => stopRecordingRef.current?.();
 
   const discard = async () => {
-    if (localUri) await FileSystem.deleteAsync(localUri, { idempotent: true }).catch(() => undefined);
+    const temporaryUri = localUriRef.current ?? localUri;
+    localUriRef.current = null;
+    if (temporaryUri) await FileSystem.deleteAsync(temporaryUri, { idempotent: true }).catch(() => undefined);
     setLocalUri(null);
     setManifest(null);
+    setReviewSummary(null);
     shippingLabelRef.current = null;
     setShippingLabel(null);
+    setCameraReady(false);
+    setCameraError(null);
     setStage('CAMERA');
+  };
+
+  const close = async () => {
+    const temporaryUri = localUriRef.current;
+    localUriRef.current = null;
+    if (temporaryUri) await FileSystem.deleteAsync(temporaryUri, { idempotent: true }).catch(() => undefined);
+    router.back();
   };
 
   const upload = async () => {
     if (!localUri || !id || !user) return;
+    securingRef.current = true;
     setStage('UPLOADING');
     setProgress(0);
     let queuedId: string | null = null;
@@ -316,50 +502,75 @@ export default function CaptureScreen() {
         connectSessionId: connectSessionId ?? null,
       });
       queuedId = item.id;
+      localUriRef.current = null;
       await FileSystem.deleteAsync(localUri, { idempotent: true }).catch(() => undefined);
-      setLocalUri(null);
-      setManifest(null);
-      const result = await syncEvidenceQueue({ targetId: item.id, onProgress: setProgress });
+      if (mountedRef.current) {
+        setLocalUri(null);
+        setManifest(null);
+        setReviewSummary(null);
+      }
+      securingRef.current = false;
+      const result = await syncEvidenceQueue({ targetId: item.id, onProgress: (value) => { if (mountedRef.current) setProgress(value); } });
       const uploaded = result.uploadedIds.includes(item.id);
       const terminal = result.terminalIds.includes(item.id);
-      Alert.alert(
-        uploaded ? 'Evidence finalized' : terminal ? 'Evidence retained — attention required' : 'Evidence secured in queue',
-        uploaded
-          ? 'The encrypted queue transferred the original file, and the server completed independent hashing plus a service-authenticated manifest.'
-          : terminal
-            ? 'The encrypted original was retained, but automatic retry stopped because the queue encountered a non-retryable condition. Do not clear app data or uninstall; review the Capture queue before relying on this evidence.'
-            : 'The original capture is encrypted in PackProof’s private queue and will retry automatically when server access and connectivity are available.',
-        [{ text: 'Done', onPress: () => router.replace(`/transaction/${id}`) }],
-      );
-    } catch (error) {
-      if (queuedId) {
-        setProgress(1);
+      if (mountedRef.current) {
         Alert.alert(
-          'Evidence secured in queue',
-          `The original was encrypted locally before synchronization encountered a problem. Automatic retry remains enabled; do not clear app data or uninstall. ${readableError(error)}`,
+          uploaded ? 'Evidence finalized' : terminal ? 'Evidence retained — attention required' : 'Evidence secured in queue',
+          uploaded
+            ? 'The encrypted queue transferred the original file, and the server completed independent hashing plus a service-authenticated manifest.'
+            : terminal
+              ? 'The encrypted original was retained, but automatic retry stopped because the queue encountered a non-retryable condition. Do not clear app data or uninstall; review the Capture queue before relying on this evidence.'
+              : 'The original capture is encrypted in PackProof’s private queue and will retry automatically when server access and connectivity are available.',
           [{ text: 'Done', onPress: () => router.replace(`/transaction/${id}`) }],
         );
+      }
+    } catch (error) {
+      securingRef.current = false;
+      if (queuedId) {
+        if (mountedRef.current) {
+          setProgress(1);
+          Alert.alert(
+            'Evidence secured in queue',
+            `The original was encrypted locally before synchronization encountered a problem. Automatic retry remains enabled; do not clear app data or uninstall. ${readableError(error)}`,
+            [{ text: 'Done', onPress: () => router.replace(`/transaction/${id}`) }],
+          );
+        }
       } else {
-        setStage('REVIEW');
-        Alert.alert('Could not secure evidence', readableError(error));
+        if (!mountedRef.current) {
+          localUriRef.current = null;
+          await FileSystem.deleteAsync(localUri, { idempotent: true }).catch(() => undefined);
+        } else {
+          setStage('REVIEW');
+          Alert.alert('Could not secure evidence', readableError(error));
+        }
       }
     }
   };
 
   if (stage === 'CAMERA') return <View style={styles.cameraPage}>
-    <CameraView ref={camera} style={StyleSheet.absoluteFill} facing="back" mode={isVideo ? 'video' : 'picture'} videoQuality="720p" mute={false} onBarcodeScanned={labelAwareTypes.has(type) ? handleBarcodeScanned : undefined} barcodeScannerSettings={{ barcodeTypes: ['code128', 'code39', 'code93', 'qr', 'pdf417', 'aztec', 'ean13', 'ean8', 'upc_a', 'upc_e', 'itf14', 'datamatrix'] }} />
+    <CameraView ref={camera} style={StyleSheet.absoluteFill} facing="back" mode={isVideo ? 'video' : 'picture'} flash={isVideo ? 'off' : flashMode} enableTorch={isVideo && torchEnabled} zoom={zoom} videoQuality="720p" mute={false} onCameraReady={() => { setCameraReady(true); setCameraError(null); }} onMountError={({ message }) => { setCameraReady(false); setCameraError(message); }} onBarcodeScanned={labelAwareTypes.has(type) ? handleBarcodeScanned : undefined} barcodeScannerSettings={{ barcodeTypes: ['code128', 'code39', 'code93', 'qr', 'pdf417', 'aztec', 'ean13', 'ean8', 'upc_a', 'upc_e', 'itf14', 'datamatrix'] }} />
     <SafeAreaView style={styles.overlay}>
-      <View style={styles.cameraHeader}><Pressable disabled={recording || preparing} onPress={() => router.back()} style={styles.circleButton}><AppIcon name="xmark" size={18} tintColor={colors.white} /></Pressable><View style={styles.captureLabel}><View style={[styles.liveDot, recording && { backgroundColor: colors.danger }]} /><Text style={styles.captureLabelText}>{preparing ? 'CHECKING APP CONTEXT…' : recording ? 'RECORDING · DO NOT PAUSE' : titles[type].toUpperCase()}</Text></View></View>
+      <View style={styles.cameraHeader}><Pressable disabled={recording || preparing} onPress={() => { void close(); }} style={styles.circleButton}><AppIcon name="xmark" size={18} tintColor={colors.white} /></Pressable><View style={styles.captureLabel}><View style={[styles.liveDot, recording && { backgroundColor: colors.danger }, cameraError && { backgroundColor: colors.danger }]} /><Text style={styles.captureLabelText}>{cameraError ? 'CAMERA UNAVAILABLE' : preparing ? 'CHECKING APP CONTEXT…' : recording ? `REC ${formatDuration(recordingSeconds)} · CONTINUOUS` : cameraReady ? titles[type].toUpperCase() : 'STARTING CAMERA…'}</Text></View></View>
+      <View pointerEvents="none" style={styles.guideArea}>
+        <View style={[styles.frameGuide, { aspectRatio: guide.aspectRatio }]} />
+        <Text style={styles.guideTitle}>{guide.title}</Text>
+        <Text style={styles.guideInstruction}>{guide.instruction}</Text>
+        <Text style={styles.guideDisclaimer}>GUIDE ONLY · COVERAGE IS NOT MACHINE-CONFIRMED</Text>
+      </View>
       <View style={styles.cameraFooter}>
+        <View style={styles.cameraControls}>
+          <Pressable accessibilityLabel={isVideo ? `${torchEnabled ? 'Disable' : 'Enable'} camera light` : `Change flash mode, currently ${flashMode}`} disabled={recording || preparing || !cameraReady} onPress={cycleFlash} style={[styles.controlPill, (recording || preparing || !cameraReady) && styles.controlDisabled]}><Text style={styles.controlText}>{isVideo ? `LIGHT ${torchEnabled ? 'ON' : 'OFF'}` : `FLASH ${flashMode.toUpperCase()}`}</Text></Pressable>
+          <Pressable accessibilityLabel={`Change camera zoom, currently ${Math.round(zoom * 100)} percent of device maximum`} disabled={recording || preparing || !cameraReady} onPress={cycleZoom} style={[styles.controlPill, (recording || preparing || !cameraReady) && styles.controlDisabled]}><Text style={styles.controlText}>ZOOM {Math.round(zoom * 100)}%</Text></Pressable>
+        </View>
         {labelAwareTypes.has(type) ? <View style={styles.barcodeBadge}><AppIcon name={shippingLabel ? 'checkmark.circle.fill' : 'barcode.viewfinder'} size={16} tintColor={shippingLabel ? colors.teal : colors.white} /><Text style={styles.barcodeText}>{shippingLabel ? `LABEL READ · ${shippingLabel.trackingNumber}` : 'AIM AT THE TRACKING BARCODE'}</Text></View> : null}
-        <Text style={styles.cameraHelp}>{preparing ? 'Refreshing online app-integrity context and starting capture telemetry.' : recording ? 'Keep every relevant item and the package in frame. Hold steady for the final three seconds.' : isVideo ? 'Tap once to begin a continuous recording.' : 'Frame the evidence clearly, then capture.'}</Text>
-        <Pressable accessibilityLabel={recording ? 'Stop recording' : 'Start capture'} disabled={preparing} onPress={recording ? stop : capture} style={[styles.shutter, recording && styles.shutterRecording, preparing && { opacity: 0.55 }]}><View style={[styles.shutterInner, recording && styles.stopInner]} /></Pressable>
+        <Text style={styles.cameraHelp}>{cameraError ? `The camera preview could not start: ${cameraError}` : !cameraReady ? 'Waiting for the native camera preview before capture is enabled.' : preparing ? 'Refreshing online app-integrity context and starting capture telemetry.' : recording ? 'Keep every relevant item and the package in frame. Hold steady for the final three seconds.' : isVideo ? 'Tap once to begin a continuous recording.' : 'Frame the evidence clearly, then capture.'}</Text>
+        <Pressable accessibilityLabel={recording ? 'Stop recording' : 'Start capture'} disabled={preparing || (!recording && (!cameraReady || Boolean(cameraError)))} onPress={recording ? stop : capture} style={[styles.shutter, recording && styles.shutterRecording, (preparing || (!recording && (!cameraReady || Boolean(cameraError)))) && { opacity: 0.55 }]}><View style={[styles.shutterInner, recording && styles.stopInner]} /></Pressable>
       </View>
     </SafeAreaView>
   </View>;
 
   return <SafeAreaView style={styles.safe}><ScrollView contentContainerStyle={styles.container}>
-    <Button label="Close" variant="ghost" onPress={() => router.back()} style={styles.close} disabled={stage === 'UPLOADING'} />
+    <Button label="Close" variant="ghost" onPress={() => { void close(); }} style={styles.close} disabled={stage === 'UPLOADING'} />
     {stage === 'CHECKLIST' ? <>
       <ScreenTitle eyebrow="Before you begin" title={titles[type]} subtitle={isVideo ? 'This must be one continuous, unedited recording. Prepare the package and supplies before you start.' : 'Capture an original image directly in PackProof so it stays connected to this transaction.'} />
       <Card style={styles.checklist}>{(checklists[type] ?? checklists.CONDITION_PHOTO!).map((item, index) => <View key={item} style={styles.check}><View style={styles.number}><Text style={styles.numberText}>{index + 1}</Text></View><Text style={styles.checkText}>{item}</Text></View>)}</Card>
@@ -369,7 +580,8 @@ export default function CaptureScreen() {
     </> : null}
     {stage === 'REVIEW' ? <>
       <ScreenTitle eyebrow="Encrypted queue ready" title="Secure this evidence?" subtitle="PackProof will hash and encrypt the original capture before attempting any network transfer. It remains queued if connectivity drops." />
-      <Card style={styles.review}><AppIcon name={isVideo ? 'video.fill' : 'photo.fill'} size={42} tintColor={colors.teal} /><Text style={styles.reviewTitle}>{titles[type]}</Text><Text style={styles.reviewText}>{manifest?.attestation.mode === 'JIT_APP_CHECK' ? 'Fresh online App Check context and any available device-key proof are bound to this capture; neither proves the physical scene.' : 'Captured offline; the manifest records that fresh online attestation and trusted absolute capture time were unavailable.'} Acquisition quality is not machine-evaluated, and physical correspondence is not available in this build.{manifest?.shippingLabel ? ` Tracking barcode: ${manifest.shippingLabel.trackingNumber}.` : ''}</Text></Card>
+      {!isVideo && localUri ? <Image source={{ uri: localUri }} contentFit="contain" style={styles.reviewImage} accessibilityLabel="Captured evidence preview" /> : null}
+      <Card style={styles.review}><AppIcon name={isVideo ? 'video.fill' : 'photo.fill'} size={42} tintColor={colors.teal} /><Text style={styles.reviewTitle}>{titles[type]}</Text>{reviewSummary ? <View style={styles.reviewFacts}><Text style={styles.reviewFact}>{isVideo ? `Duration ${formatDuration(Math.round(reviewSummary.durationMs / 1000))}` : reviewSummary.widthPixels && reviewSummary.heightPixels ? `${reviewSummary.widthPixels} × ${reviewSummary.heightPixels} px` : 'Dimensions unavailable'}</Text><Text style={styles.reviewFact}>{formatBytes(reviewSummary.sizeBytes)}</Text><Text style={styles.reviewFact}>{manifest?.cameraObservation.flashMode ?? 'OFF'} · zoom {Math.round((manifest?.cameraObservation.zoom ?? 0) * 100)}%</Text></View> : null}<Text style={styles.reviewText}>{manifest?.attestation.mode === 'JIT_APP_CHECK' ? 'Fresh online App Check context and any available device-key proof are bound to this capture; neither proves the physical scene.' : 'Captured offline; the manifest records that fresh online attestation and trusted absolute capture time were unavailable.'} Acquisition quality is not machine-evaluated, and physical correspondence is not available in this build.{manifest?.shippingLabel ? ` Tracking barcode: ${manifest.shippingLabel.trackingNumber}.` : ''}</Text></Card>
       <Button label="Encrypt, hash and sync" icon="lock.shield.fill" onPress={upload} />
       <Button label="Discard and retake" variant="danger" onPress={discard} />
     </> : null}
@@ -382,8 +594,8 @@ const styles = StyleSheet.create({
   checklist: { gap: 17 }, check: { flexDirection: 'row', gap: 12, alignItems: 'flex-start' }, number: { width: 28, height: 28, borderRadius: 14, backgroundColor: 'rgba(70,124,99,0.1)', alignItems: 'center', justifyContent: 'center' }, numberText: { color: colors.teal, fontSize: 12, fontWeight: '900' }, checkText: { flex: 1, color: colors.ink, fontSize: 13, lineHeight: 20 },
   locationCard: { flexDirection: 'row', gap: 12, alignItems: 'center' }, locationTitle: { color: colors.ink, fontSize: 13, fontWeight: '800' }, locationText: { color: colors.muted, fontSize: 10, lineHeight: 15 },
   caution: { flexDirection: 'row', gap: 11, backgroundColor: 'rgba(138,91,0,0.06)' }, cautionText: { flex: 1, color: colors.amber, fontSize: 11, lineHeight: 17 },
-  cameraPage: { flex: 1, backgroundColor: colors.black }, overlay: { flex: 1, justifyContent: 'space-between' }, cameraHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 18 }, circleButton: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(0,0,0,0.55)', alignItems: 'center', justifyContent: 'center' }, captureLabel: { flexDirection: 'row', gap: 7, alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.55)', paddingHorizontal: 12, paddingVertical: 9, borderRadius: 999 }, liveDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.teal }, captureLabelText: { color: colors.white, fontSize: 10, fontWeight: '900', letterSpacing: 0.7 },
-  cameraFooter: { alignItems: 'center', gap: 18, padding: 24, paddingBottom: 32, backgroundColor: 'rgba(0,0,0,0.38)' }, barcodeBadge: { maxWidth: '100%', flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: 'rgba(0,0,0,0.62)', borderRadius: 999, paddingHorizontal: 12, paddingVertical: 8 }, barcodeText: { color: colors.white, fontSize: 9, fontWeight: '900', letterSpacing: 0.4 }, cameraHelp: { color: colors.white, fontSize: 12, lineHeight: 18, textAlign: 'center' }, shutter: { width: 82, height: 82, borderRadius: 41, borderWidth: 5, borderColor: colors.white, alignItems: 'center', justifyContent: 'center' }, shutterInner: { width: 62, height: 62, borderRadius: 31, backgroundColor: colors.white }, shutterRecording: { borderColor: colors.danger }, stopInner: { width: 31, height: 31, borderRadius: 7, backgroundColor: colors.danger },
-  review: { alignItems: 'center', gap: 9, paddingVertical: 32 }, reviewTitle: { color: colors.ink, fontSize: 20, fontWeight: '900' }, reviewText: { color: colors.muted, fontSize: 12, lineHeight: 18, textAlign: 'center' },
+  cameraPage: { flex: 1, backgroundColor: colors.black }, overlay: { flex: 1, justifyContent: 'space-between' }, cameraHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 18 }, circleButton: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(0,0,0,0.55)', alignItems: 'center', justifyContent: 'center' }, captureLabel: { flexDirection: 'row', gap: 7, alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.55)', paddingHorizontal: 12, paddingVertical: 9, borderRadius: 999 }, liveDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.teal }, captureLabelText: { color: colors.white, fontSize: 10, fontWeight: '900', letterSpacing: 0.7 }, guideArea: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 28, gap: 7 }, frameGuide: { width: '88%', maxHeight: '70%', borderWidth: 2, borderColor: 'rgba(255,255,255,0.9)', borderRadius: 18, backgroundColor: 'rgba(0,0,0,0.03)' }, guideTitle: { color: colors.white, fontSize: 15, fontWeight: '900', textAlign: 'center', textShadowColor: colors.black, textShadowRadius: 4 }, guideInstruction: { color: colors.white, maxWidth: 340, fontSize: 10, lineHeight: 15, textAlign: 'center', textShadowColor: colors.black, textShadowRadius: 4 }, guideDisclaimer: { color: colors.white, opacity: 0.78, fontSize: 8, fontWeight: '900', letterSpacing: 0.7, textAlign: 'center' },
+  cameraFooter: { alignItems: 'center', gap: 18, padding: 24, paddingBottom: 32, backgroundColor: 'rgba(0,0,0,0.38)' }, cameraControls: { flexDirection: 'row', gap: 10 }, controlPill: { minWidth: 100, alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.62)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.35)', borderRadius: 999, paddingHorizontal: 13, paddingVertical: 9 }, controlDisabled: { opacity: 0.45 }, controlText: { color: colors.white, fontSize: 9, fontWeight: '900', letterSpacing: 0.6 }, barcodeBadge: { maxWidth: '100%', flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: 'rgba(0,0,0,0.62)', borderRadius: 999, paddingHorizontal: 12, paddingVertical: 8 }, barcodeText: { color: colors.white, fontSize: 9, fontWeight: '900', letterSpacing: 0.4 }, cameraHelp: { color: colors.white, fontSize: 12, lineHeight: 18, textAlign: 'center' }, shutter: { width: 82, height: 82, borderRadius: 41, borderWidth: 5, borderColor: colors.white, alignItems: 'center', justifyContent: 'center' }, shutterInner: { width: 62, height: 62, borderRadius: 31, backgroundColor: colors.white }, shutterRecording: { borderColor: colors.danger }, stopInner: { width: 31, height: 31, borderRadius: 7, backgroundColor: colors.danger },
+  reviewImage: { width: '100%', aspectRatio: 3 / 4, borderRadius: 18, backgroundColor: colors.black }, review: { alignItems: 'center', gap: 9, paddingVertical: 32 }, reviewTitle: { color: colors.ink, fontSize: 20, fontWeight: '900' }, reviewFacts: { width: '100%', flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 7 }, reviewFact: { color: colors.tealDark, backgroundColor: colors.accent, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6, fontSize: 9, fontWeight: '900' }, reviewText: { color: colors.muted, fontSize: 12, lineHeight: 18, textAlign: 'center' },
   uploading: { flex: 1, justifyContent: 'center', gap: 16, paddingVertical: 80 }, uploadTitle: { color: colors.ink, fontSize: 25, fontWeight: '900', textAlign: 'center' }, uploadPercent: { color: colors.teal, fontSize: 36, fontWeight: '900', textAlign: 'center' }, uploadText: { color: colors.muted, fontSize: 12, lineHeight: 18, textAlign: 'center' },
 });

@@ -21,6 +21,20 @@ const prohibited = [
   /\bverified (?:capture|file|record|fulfillment|status)\b/i,
   /\btrusted server timestamp\b/i,
   /\bimmutable evidence(?: metadata| record)?\b/i,
+  /\bSISV (?:proves|detects|determines|establishes) (?:tampering|fraud|fault|liability|authenticity|custody|identity)\b/i,
+  /\bSISV (?:fraud|tamper|authenticity|participant risk) score\b/i,
+  /\b(?:seller|buyer|participant) (?:caused the variance|tampered with|committed fraud|is at fault)\b/i,
+  /\b(?:defeats?|prevents?|stops?|eliminates?) (?:more than )?(?:90|95|100)%[^.\n]*(?:fraud|scam|chargeback|dispute)\b/i,
+  /\b(?:90|95|100)%[^.\n]*(?:scammers?|fraud|chargebacks?|disputes?)[^.\n]*(?:back down|prevented|defeated|stopped|won)\b/i,
+  /\bclaims? agents? (?:have|has|take|takes|spend|spends) (?:about )?60 seconds\b/i,
+  /\bcryptographic bluff\b/i,
+  /\bhardware attestation proves? (?:the )?(?:video|capture|scene|continuous take)\b/i,
+  /\batomic UTC (?:time|timestamp|capture timestamp)\b/i,
+  /\bGPS proves? (?:the )?(?:capture )?(?:location|where)\b/i,
+  /\b(?:carrier|intake|laser|weight|scale)[^.\n]*instantly exposes? fraud\b/i,
+  /\b(?:every|each) transaction[^.\n]*(?:automatically|passively)[^.\n]*(?:trains?|builds?)[^.\n]*(?:SISV|model|dataset)\b/i,
+  /\bCORRESPONDS\b/,
+  /\bVARIANCE_DETECTED\b/,
 ];
 const boundedContext = /\b(?:not|never|cannot|does not|is not|neither|no|unsupported|prohibited|avoid|without)\b/i;
 
