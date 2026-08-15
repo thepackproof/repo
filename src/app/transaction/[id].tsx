@@ -11,21 +11,12 @@ import { callFunction, downloadUrl, subscribeEvents, subscribeEvidence, subscrib
 import { forceFreshCallableCredentials } from '@/lib/firebase';
 import { enqueueEvidence, syncEvidenceQueue } from '@/lib/offline-evidence-queue';
 import { formatDate, formatMoney, readableError, statusProgress } from '@/lib/format';
+import { formatRuntimeEnum, normalizePhysicalStatus, type PhysicalStatusView } from '@/lib/runtime-display';
 import { useAuth } from '@/providers/auth-provider';
 import type { EvidenceRecord, EvidenceType, PackProofTransaction, ReturnPassport, TimelineEvent } from '@/types/models';
 
 const evidenceLabels: Record<EvidenceType, string> = {
   ITEM_PHOTO: 'Item photo', CONDITION_PHOTO: 'Condition photo', IDENTIFIER_PHOTO: 'Identifier photo', COA_PHOTO: 'COA photo', PACKING_VIDEO: 'Continuous packing video', SHIPPING_LABEL: 'Shipping label', UNBOXING_VIDEO: 'Continuous unboxing video', DELIVERY_PHOTO: 'Delivery photo', SUPPORTING_DOCUMENT: 'Supporting document', RETURN_CONDITION_PHOTO: 'Return condition photo', RETURN_PACKING_VIDEO: 'Continuous return repacking video', RETURN_SHIPPING_LABEL: 'Return shipping label', RETURN_UNBOXING_VIDEO: 'Continuous returned-item unboxing video', PHYSICAL_REFERENCE_FRAME: 'Physical reference frame', PHYSICAL_VERIFICATION_FRAME: 'Physical verification frame',
-};
-
-type PhysicalGroupSummary = { captureGroupId: string; frameCount: number; usableFrameCount: number; complete: boolean; missing: string[] };
-type PhysicalStatus = {
-  observationStatus: 'NOT_EVALUATED' | 'ACQUISITION_INCOMPLETE' | 'RESEARCH_ONLY';
-  reason: string;
-  reference: PhysicalGroupSummary | null;
-  verification: PhysicalGroupSummary | null;
-  comparison: { status: 'NOT_ENABLED'; artifactVersion: null; observationPolicyVersion: null; aggregateMeasurement: null };
-  claimClass: 'V';
 };
 
 function shortId(id?: string | null) { return id ? `${id.slice(0, 5)}…${id.slice(-4)}` : 'Not joined'; }
@@ -55,7 +46,7 @@ function trackingStatus(record: EvidenceRecord): EvidenceRecord['carrierTracking
 function trackingLabel(record: EvidenceRecord): string | null {
   const status = trackingStatus(record);
   if (!status || status === 'NOT_SCANNED') return null;
-  return `${record.postSubmissionTrackingMatchStatus ? 'SUBMITTED TRACKING' : 'TRACKING'} ${status.replaceAll('_', ' ')}`;
+  return `${record.postSubmissionTrackingMatchStatus ? 'SUBMITTED TRACKING' : 'TRACKING'} ${formatRuntimeEnum(status)}`;
 }
 
 export default function TransactionDetail() {
@@ -78,7 +69,7 @@ export default function TransactionDetail() {
   const [showReturnShipping, setShowReturnShipping] = useState(false);
   const [returnCarrier, setReturnCarrier] = useState('USPS');
   const [returnTracking, setReturnTracking] = useState('');
-  const [physicalStatus, setPhysicalStatus] = useState<PhysicalStatus | null>(null);
+  const [physicalStatus, setPhysicalStatus] = useState<PhysicalStatusView | null>(null);
 
   useEffect(() => {
     if (!id) return;
@@ -92,8 +83,8 @@ export default function TransactionDetail() {
   useEffect(() => {
     if (!id) return;
     let active = true;
-    callFunction<{ transactionId: string }, PhysicalStatus>('getPhysicalCorrespondenceStatus', { transactionId: id })
-      .then((status) => { if (active) setPhysicalStatus(status); })
+    callFunction<{ transactionId: string }, unknown>('getPhysicalCorrespondenceStatus', { transactionId: id })
+      .then((status) => { if (active) setPhysicalStatus(normalizePhysicalStatus(status)); })
       .catch(() => { if (active) setPhysicalStatus(null); });
     return () => { active = false; };
   }, [id, evidence.length]);
@@ -213,7 +204,7 @@ export default function TransactionDetail() {
     {showConcern ? <Card style={styles.form}>
       <Text style={styles.cardTitle}>Raise a private concern</Text>
       <Text style={styles.small}>This freezes the normal completion flow and creates a moderation record. It does not decide the dispute.</Text>
-      <View style={styles.choices}>{(['FRAUD', 'HARASSMENT', 'PROHIBITED_ITEM', 'IMPERSONATION', 'PRIVACY', 'OTHER'] as const).map((value) => <Choice key={value} label={value.replaceAll('_', ' ').toLowerCase()} selected={concernReason === value} onPress={() => setConcernReason(value)} />)}</View>
+      <View style={styles.choices}>{(['FRAUD', 'HARASSMENT', 'PROHIBITED_ITEM', 'IMPERSONATION', 'PRIVACY', 'OTHER'] as const).map((value) => <Choice key={value} label={formatRuntimeEnum(value).toLowerCase()} selected={concernReason === value} onPress={() => setConcernReason(value)} />)}</View>
       <Field label="What happened?" value={concernDetails} onChangeText={setConcernDetails} multiline placeholder="Describe the issue factually and reference relevant evidence." />
       <Button label="Submit concern" variant="danger" busy={busy === 'concern'} disabled={concernDetails.trim().length < 5} onPress={() => run('concern', async () => { await callFunction('raiseConcern', { transactionId: id, targetUserId: role === 'SELLER' ? item.buyerId : item.sellerId, reason: concernReason, details: concernDetails.trim() }); setShowConcern(false); })} />
       <Button label="Block the other participant" variant="ghost" busy={busy === 'block'} onPress={() => Alert.alert('Block this user?', 'They will be unable to join new PackProofs with you. Existing shared records remain available to both parties.', [{ text: 'Cancel', style: 'cancel' }, { text: 'Block', style: 'destructive', onPress: () => run('block', () => callFunction('blockUser', { targetUserId: role === 'SELLER' ? item.buyerId : item.sellerId }).then(() => undefined)) }])} />
@@ -232,8 +223,8 @@ export default function TransactionDetail() {
     <Card style={styles.card}>
       <Text style={styles.cardEyebrow}>LOCKED TERMS</Text>
       <Info label="Fulfillment" value={item.terms.saleType === 'SHIPPED' ? 'Shipped transaction' : 'Local handoff'} />
-      <Info label="Shipping cost" value={item.terms.shippingResponsibility.replaceAll('_', ' ').toLowerCase()} />
-      <Info label="Returns" value={`${item.terms.returns.replaceAll('_', ' ').toLowerCase()} · ${item.terms.returnWindowDays} day window`} />
+      <Info label="Shipping cost" value={formatRuntimeEnum(item.terms.shippingResponsibility).toLowerCase()} />
+      <Info label="Returns" value={`${formatRuntimeEnum(item.terms.returns).toLowerCase()} · ${item.terms.returnWindowDays} day window`} />
       <Info label="Additional terms" value={item.terms.customTerms || 'No additional terms.'} vertical />
       <View style={styles.confirmations}><Text style={styles.confirmation}>{item.confirmedBy.includes(item.sellerId) ? '✓' : '○'} Seller</Text><Text style={styles.confirmation}>{item.buyerId && item.confirmedBy.includes(item.buyerId) ? '✓' : '○'} Buyer</Text></View>
       {item.terms.saleType === 'LOCAL_HANDOFF' ? <><Text style={styles.cardEyebrow}>HANDOFF CONFIRMATIONS</Text><View style={styles.confirmations}><Text style={styles.confirmation}>{item.handoffConfirmedBy?.includes(item.sellerId) ? '✓' : '○'} Seller</Text><Text style={styles.confirmation}>{item.buyerId && item.handoffConfirmedBy?.includes(item.buyerId) ? '✓' : '○'} Buyer</Text></View></> : null}
@@ -242,16 +233,16 @@ export default function TransactionDetail() {
     {returnPassports.length ? <Card style={styles.card}>
       <Text style={styles.cardEyebrow}>SYMMETRIC RETURN PASSPORT</Text>
       {returnPassports.map((passport) => <View key={passport.id} style={styles.returnRow}>
-        <View style={{ flex: 1, gap: 3 }}><Text style={styles.cardTitle}>{passport.status.replaceAll('_', ' ')}</Text><Text style={styles.small}>{passport.reason}</Text>{passport.shipping ? <Text style={styles.small}>{passport.shipping.carrier} · {passport.shipping.trackingNumber}{passport.shipping.labelEvidenceMatchStatus ? ` · label ${passport.shipping.labelEvidenceMatchStatus.toLowerCase()}` : ''}</Text> : null}<Text style={styles.hash}>{passport.originalEvidenceHashes?.length ?? 0} ORIGINAL EVIDENCE HASHES SNAPSHOTTED</Text></View>
+        <View style={{ flex: 1, gap: 3 }}><Text style={styles.cardTitle}>{formatRuntimeEnum(passport.status)}</Text><Text style={styles.small}>{passport.reason}</Text>{passport.shipping ? <Text style={styles.small}>{passport.shipping.carrier} · {passport.shipping.trackingNumber}{passport.shipping.labelEvidenceMatchStatus ? ` · label ${formatRuntimeEnum(passport.shipping.labelEvidenceMatchStatus).toLowerCase()}` : ''}</Text> : null}<Text style={styles.hash}>{passport.originalEvidenceHashes?.length ?? 0} ORIGINAL EVIDENCE HASHES SNAPSHOTTED</Text></View>
         <Text style={styles.updated}>{formatDate(passport.updatedAt)}</Text>
       </View>)}
     </Card> : null}
 
-    {item.shipping ? <Card style={styles.card}><Text style={styles.cardEyebrow}>SHIPMENT</Text><Info label="Carrier" value={item.shipping.carrier} /><Info label="Tracking" value={item.shipping.trackingNumber} />{item.shipping.labelEvidenceMatchStatus ? <Info label="Packing-label check" value={item.shipping.labelEvidenceMatchStatus.replaceAll('_', ' ').toLowerCase()} /> : null}<Info label="Recorded" value={formatDate(item.shipping.shippedAt)} /></Card> : null}
+    {item.shipping ? <Card style={styles.card}><Text style={styles.cardEyebrow}>SHIPMENT</Text><Info label="Carrier" value={item.shipping.carrier} /><Info label="Tracking" value={item.shipping.trackingNumber} />{item.shipping.labelEvidenceMatchStatus ? <Info label="Packing-label check" value={formatRuntimeEnum(item.shipping.labelEvidenceMatchStatus).toLowerCase()} /> : null}<Info label="Recorded" value={formatDate(item.shipping.shippedAt)} /></Card> : null}
 
     <Card style={styles.card}>
       <Text style={styles.cardEyebrow}>SISV PHYSICAL OBSERVATION RESEARCH</Text>
-      <Text style={styles.cardTitle}>{physicalStatus ? physicalStatus.observationStatus.replaceAll('_', ' ') : 'STATUS UNAVAILABLE'}</Text>
+      <Text style={styles.cardTitle}>{physicalStatus ? formatRuntimeEnum(physicalStatus.observationStatus) : 'STATUS UNAVAILABLE'}</Text>
       <Text style={styles.body}>{physicalStatus?.reason === 'COMPARISON_NOT_ENABLED'
         ? 'Reference and verification acquisition sets are present. This build preserves the observations but does not produce a physical-comparison measurement. SISV does not determine cause, actor, fraud, fault, authenticity, custody, risk, or any transaction or claim outcome.'
         : physicalStatus?.reason === 'NO_REFERENCE_CAPTURE'
@@ -280,12 +271,12 @@ export default function TransactionDetail() {
           <Text style={styles.hash}>FILE SHA-256 · {record.sha256.slice(0, 16)}…</Text>
           {record.manifestSha256 ? <Text style={styles.hash}>MANIFEST · {record.manifestSha256.slice(0, 16)}…</Text> : null}
           <View style={styles.verificationRow}>
-            <Text style={[styles.verification, byteIntegrity === 'MISMATCH' && styles.verificationDanger]}>BYTE INTEGRITY {byteIntegrity.replaceAll('_', ' ')}</Text>
+            <Text style={[styles.verification, byteIntegrity === 'MISMATCH' && styles.verificationDanger]}>BYTE INTEGRITY {formatRuntimeEnum(byteIntegrity)}</Text>
             <Text style={styles.verification}>{attestationLabel(record)}</Text>
-            <Text style={styles.verification}>ACQUISITION {acquisitionQuality.replaceAll('_', ' ')}</Text>
-            <Text style={styles.verificationWarning}>PHYSICAL {physicalCorrespondence.replaceAll('_', ' ')}</Text>
+            <Text style={styles.verification}>ACQUISITION {formatRuntimeEnum(acquisitionQuality)}</Text>
+            <Text style={styles.verificationWarning}>PHYSICAL {formatRuntimeEnum(physicalCorrespondence)}</Text>
             {trackingLabel(record) ? <Text style={[styles.verification, trackingStatus(record) === 'MISMATCH' && styles.verificationDanger]}>{trackingLabel(record)}</Text> : <Text style={styles.verification}>CARRIER CONTEXT NONE</Text>}
-            <Text style={styles.verificationWarning}>BUSINESS/LEGAL {businessRelevance.replaceAll('_', ' ')}</Text>
+            <Text style={styles.verificationWarning}>BUSINESS/LEGAL {formatRuntimeEnum(businessRelevance)}</Text>
           </View>
           <Text style={styles.evidenceMeta}>{formatDate(record.createdAt)} · {(record.sizeBytes / 1024 / 1024).toFixed(1)} MB</Text>
         </View>
@@ -296,7 +287,7 @@ export default function TransactionDetail() {
     </View>
 
     <View style={styles.sectionHead}><Text style={styles.sectionTitle}>Audit timeline</Text></View>
-    <Card style={styles.timeline}>{events.map((event, index) => <View key={event.id} style={styles.event}><View style={styles.eventRail}><View style={styles.eventDot} />{index < events.length - 1 ? <View style={styles.eventLine} /> : null}</View><View style={{ flex: 1, paddingBottom: 17 }}><Text style={styles.eventType}>{event.type.replaceAll('_', ' ')}</Text><Text style={styles.eventSummary}>{event.summary}</Text><Text style={styles.eventDate}>{formatDate(event.createdAt)}</Text></View></View>)}</Card>
+    <Card style={styles.timeline}>{events.map((event, index) => <View key={event.id} style={styles.event}><View style={styles.eventRail}><View style={styles.eventDot} />{index < events.length - 1 ? <View style={styles.eventLine} /> : null}</View><View style={{ flex: 1, paddingBottom: 17 }}><Text style={styles.eventType}>{formatRuntimeEnum(event.type)}</Text><Text style={styles.eventSummary}>{event.summary}</Text><Text style={styles.eventDate}>{formatDate(event.createdAt)}</Text></View></View>)}</Card>
   </ScrollView></SafeAreaView>;
 }
 

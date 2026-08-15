@@ -1,6 +1,24 @@
-const { withAppBuildGradle, withGradleProperties } = require('@expo/config-plugins');
+const fs = require('node:fs/promises');
+const path = require('node:path');
+const { withAppBuildGradle, withDangerousMod, withGradleProperties } = require('@expo/config-plugins');
 
 const SIGNING_MARKER = '// PACKPROOF_SANDBOX_SIGNING_PROFILE';
+const RELEASE_LOG_MARKER = '# PACKPROOF_RELEASE_LOG_MINIMIZATION';
+
+function patchProguardRules(contents) {
+  if (contents.includes(RELEASE_LOG_MARKER)) return contents;
+
+  const separator = contents.length && !contents.endsWith('\n') ? '\n' : '';
+  return `${contents}${separator}
+${RELEASE_LOG_MARKER}
+# Release builds discard verbose/debug Android logs so SDK internals cannot
+# expose user metadata or private storage paths through logcat.
+-assumenosideeffects class android.util.Log {
+    public static int v(...);
+    public static int d(...);
+}
+`;
+}
 
 function patchAppBuildGradle(contents) {
   if (contents.includes(SIGNING_MARKER)) return contents;
@@ -89,13 +107,26 @@ module.exports = function withPackProofGradleProperties(config) {
     return nextConfig;
   });
 
-  return withAppBuildGradle(withProperties, (nextConfig) => {
+  const withSigning = withAppBuildGradle(withProperties, (nextConfig) => {
     if (nextConfig.modResults.language !== 'groovy') {
       throw new Error('PackProof Android signing supports only Groovy app/build.gradle files.');
     }
     nextConfig.modResults.contents = patchAppBuildGradle(nextConfig.modResults.contents);
     return nextConfig;
   });
+
+  return withDangerousMod(withSigning, ['android', async (nextConfig) => {
+    const proguardPath = path.join(nextConfig.modRequest.platformProjectRoot, 'app', 'proguard-rules.pro');
+    let contents = '';
+    try {
+      contents = await fs.readFile(proguardPath, 'utf8');
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw error;
+    }
+    await fs.writeFile(proguardPath, patchProguardRules(contents), 'utf8');
+    return nextConfig;
+  }]);
 };
 
 module.exports.patchAppBuildGradle = patchAppBuildGradle;
+module.exports.patchProguardRules = patchProguardRules;
