@@ -14,6 +14,14 @@ exports.parseCreateParticipantInvitation = parseCreateParticipantInvitation;
 exports.parseClaimParticipant = parseClaimParticipant;
 exports.parseCreateEvidenceSession = parseCreateEvidenceSession;
 exports.parseRedeemEvidenceSession = parseRedeemEvidenceSession;
+exports.parseAccessibleTransactionId = parseAccessibleTransactionId;
+exports.parseEvidenceArtifactId = parseEvidenceArtifactId;
+exports.parseEvidenceReportId = parseEvidenceReportId;
+exports.parseReturnPassportId = parseReturnPassportId;
+exports.parseConnectSessionId = parseConnectSessionId;
+exports.parseCreateConnectSession = parseCreateConnectSession;
+exports.parseAssociateShipment = parseAssociateShipment;
+exports.parseCreateEvidenceReport = parseCreateEvidenceReport;
 exports.asApiError = asApiError;
 const core_1 = require("./core");
 const commerce_1 = require("../../domain/v1/commerce");
@@ -334,6 +342,100 @@ function parseRedeemEvidenceSession(value) {
         token,
         runtimeArtifactHash: optionalNullableString(input.runtimeArtifactHash, 'runtimeArtifactHash', 64, 64, /^[a-f0-9]{64}$/i),
     };
+}
+function parseAccessibleTransactionId(value) {
+    if (typeof value === 'string' && /^txn_[a-f0-9]{32}$/.test(value))
+        return value;
+    if (typeof value === 'string' && /^[A-Za-z0-9_-]{10,128}$/.test(value))
+        return value;
+    throw new core_1.InputValidationError([{ field: 'transactionId', code: 'INVALID_ID', message: 'transactionId is not a valid PackProof transaction identifier.' }]);
+}
+function parseEvidenceArtifactId(value) {
+    if (typeof value !== 'string' || !/^[A-Za-z0-9_-]{8,128}$/.test(value)) {
+        throw new core_1.InputValidationError([{ field: 'artifactId', code: 'INVALID_ID', message: 'artifactId is not a valid evidence artifact identifier.' }]);
+    }
+    return value;
+}
+function parseEvidenceReportId(value) {
+    if (typeof value !== 'string' || !/^[A-Za-z0-9_-]{8,128}$/.test(value)) {
+        throw new core_1.InputValidationError([{ field: 'reportId', code: 'INVALID_ID', message: 'reportId is not a valid evidence report identifier.' }]);
+    }
+    return value;
+}
+function parseReturnPassportId(value) {
+    if (typeof value !== 'string' || !/^[A-Za-z0-9_-]{8,128}$/.test(value)) {
+        throw new core_1.InputValidationError([{ field: 'returnPassportId', code: 'INVALID_ID', message: 'returnPassportId is not a valid return-passport identifier.' }]);
+    }
+    return value;
+}
+function parseConnectSessionId(value) {
+    if (typeof value !== 'string' || !/^[a-f0-9]{64}$/.test(value)) {
+        throw new core_1.InputValidationError([{ field: 'sessionId', code: 'INVALID_ID', message: 'sessionId is not a valid PackProof Connect session identifier.' }]);
+    }
+    return value;
+}
+function parseHttpsCallbackUrl(value, field) {
+    const raw = string(value, field, 12, 2_000);
+    let parsed;
+    try {
+        parsed = new URL(raw);
+    }
+    catch {
+        throw new core_1.InputValidationError([{ field, code: 'INVALID_URL', message: `${field} must be a valid URL.` }]);
+    }
+    if (parsed.protocol !== 'https:' || parsed.username || parsed.password) {
+        throw new core_1.InputValidationError([{ field, code: 'INVALID_URL', message: `${field} must use HTTPS without embedded credentials.` }]);
+    }
+    return raw;
+}
+function parseCreateConnectSession(value) {
+    const input = object(value, 'body');
+    rejectUnknown(input, [
+        'schemaVersion', 'platform', 'externalOrderId', 'externalSellerId', 'itemTitle', 'itemDescription',
+        'amount', 'trackingNumber', 'carrier', 'declaredWeightGrams', 'callbackUrl',
+    ]);
+    if (input.schemaVersion !== 1) {
+        throw new core_1.InputValidationError([{ field: 'schemaVersion', code: 'UNSUPPORTED_SCHEMA_VERSION', message: 'schemaVersion must equal 1.' }]);
+    }
+    return {
+        platform: string(input.platform, 'platform', 2, 80),
+        externalOrderId: string(input.externalOrderId, 'externalOrderId', 1, 200),
+        externalSellerId: string(input.externalSellerId, 'externalSellerId', 1, 200),
+        itemTitle: string(input.itemTitle, 'itemTitle', 1, 300),
+        itemDescription: string(input.itemDescription, 'itemDescription', 0, 3_000, false) ?? '',
+        amount: (() => {
+            if (input.amount === undefined) {
+                throw new core_1.InputValidationError([{ field: 'amount', code: 'REQUIRED', message: 'amount is required.' }]);
+            }
+            const amount = parseAmount(input.amount);
+            if (!amount)
+                throw new core_1.InputValidationError([{ field: 'amount', code: 'REQUIRED', message: 'amount is required.' }]);
+            return amount;
+        })(),
+        trackingNumber: string(input.trackingNumber, 'trackingNumber', 3, 160, false),
+        carrier: string(input.carrier, 'carrier', 1, 80, false),
+        declaredWeightGrams: input.declaredWeightGrams === undefined ? undefined : integer(input.declaredWeightGrams, 'declaredWeightGrams', 0, 2_000_000),
+        callbackUrl: parseHttpsCallbackUrl(input.callbackUrl, 'callbackUrl'),
+    };
+}
+function parseAssociateShipment(value) {
+    const input = object(value, 'body');
+    rejectUnknown(input, ['schemaVersion', 'carrier', 'trackingNumber']);
+    if (input.schemaVersion !== 1) {
+        throw new core_1.InputValidationError([{ field: 'schemaVersion', code: 'UNSUPPORTED_SCHEMA_VERSION', message: 'schemaVersion must equal 1.' }]);
+    }
+    return {
+        carrier: string(input.carrier, 'carrier', 1, 80),
+        trackingNumber: string(input.trackingNumber, 'trackingNumber', 3, 160),
+    };
+}
+function parseCreateEvidenceReport(value) {
+    const input = object(value, 'body');
+    rejectUnknown(input, ['schemaVersion']);
+    if (input.schemaVersion !== 1) {
+        throw new core_1.InputValidationError([{ field: 'schemaVersion', code: 'UNSUPPORTED_SCHEMA_VERSION', message: 'schemaVersion must equal 1.' }]);
+    }
+    return { schemaVersion: 1 };
 }
 function asApiError(error) {
     return error instanceof core_1.InputValidationError ? [...error.details] : [];

@@ -24,6 +24,7 @@ export type MerchantPrincipal = {
   organizationId: string;
   environment: ApiEnvironment;
   scopes: readonly ApiScope[];
+  integrationId?: string | null;
 };
 
 export const merchantTransactionStatuses = [

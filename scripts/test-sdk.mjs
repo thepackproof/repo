@@ -51,6 +51,33 @@ await assert.rejects(
 const legacyResult = await client.createVerification(request);
 assert.deepEqual(legacyResult, { success: true, sessionId: 'session-123' });
 
+let v1Observed;
+const v1Client = new PackProofConnect({
+  apiKey: 'pp_sandbox_validation.secret',
+  baseUrl: 'https://packproof.example',
+  fetchImpl: async (url, init) => {
+    v1Observed = { url, init };
+    return new Response(JSON.stringify({
+      data: { id: 'a'.repeat(64), object: 'connect_session', externalOrderId: 'order-123' },
+      captureInstructions: { state: 'PENDING_REDEMPTION', captureUrl: 'https://packproof.example/connect/capture', token: 'token', expiresAt: '2026-08-18T12:00:00.000Z' },
+    }), { status: 201, headers: { 'Content-Type': 'application/json' } });
+  },
+});
+const v1Session = await v1Client.createConnectSession({
+  platform: 'custom',
+  externalOrderId: 'order-123',
+  externalSellerId: 'seller-42',
+  itemTitle: 'Collectible camera',
+  amount: { currency: 'USD', minorUnits: 129900 },
+  callbackUrl: 'https://merchant.example/webhooks/packproof',
+  idempotencyKey: 'fulfillment-order-123-v1',
+});
+assert.equal(v1Session.data.object, 'connect_session');
+assert.equal(v1Observed.url, 'https://packproof.example/v1/connect/sessions');
+assert.equal(v1Observed.init.headers['Idempotency-Key'], 'fulfillment-order-123-v1');
+assert.equal(JSON.parse(v1Observed.init.body).schemaVersion, 1);
+assert.equal(JSON.parse(v1Observed.init.body).idempotencyKey, undefined);
+
 const rawBody = JSON.stringify({ event: 'packproof.evidence.finalized', orderId: 'order-123', evidenceStatus: 'DIGITAL_EVIDENCE_WITH_LIMITATIONS' });
 const secret = 'whsec_validation_secret';
 const timestamp = '1786039200';

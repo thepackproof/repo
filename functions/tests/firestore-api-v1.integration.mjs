@@ -15,11 +15,20 @@ const { TransactionService } = require('../lib/api/v1/transaction-service.js');
 const { PublicCommerceHandoffApplicationService } = require('../lib/application/v1/public-commerce-handoff-service.js');
 const { ParticipantCaptureApplicationService } = require('../lib/application/v1/participant-capture-service.js');
 const { MerchantAuthorizationPolicy } = require('../lib/application/v1/merchant-transaction-service.js');
+const { MerchantEvidenceApplicationService } = require('../lib/application/v1/merchant-evidence-service.js');
+const { MerchantConnectApplicationService } = require('../lib/application/v1/merchant-connect-service.js');
+const { CommerceContextApplicationService } = require('../lib/application/v1/commerce-context-service.js');
 const { HmacParticipantHandoffTokenIssuer } = require('../lib/infrastructure/crypto/participant-handoff-token-issuer.js');
 const { HmacPublicHandoffTokenIssuer } = require('../lib/infrastructure/crypto/public-handoff-token-issuer.js');
+const { HmacConnectSessionTokenIssuer } = require('../lib/infrastructure/crypto/connect-session-token-issuer.js');
 const { Sha256TokenVerifier } = require('../lib/infrastructure/crypto/sha256-token-verifier.js');
 const { FirestorePublicCommerceHandoffRepository } = require('../lib/infrastructure/firebase/v1/public-commerce-handoff-repository.js');
 const { FirestoreParticipantCaptureRepository } = require('../lib/infrastructure/firebase/v1/participant-capture-repository.js');
+const { FirestoreCommerceContextRepository } = require('../lib/infrastructure/firebase/v1/commerce-context-repository.js');
+const {
+  FirestoreMerchantConnectAdapter,
+  FirestoreMerchantEvidenceRepository,
+} = require('../lib/infrastructure/firebase/v1/merchant-evidence-repository.js');
 
 const emulatorAvailable = Boolean(process.env.FIRESTORE_EMULATOR_HOST);
 const adminApp = emulatorAvailable ? initializeApp({ projectId: 'packproof-api-test' }, `api-v1-${Date.now()}`) : null;
@@ -98,6 +107,27 @@ before(async () => {
       new FirestoreAuditWriter(firestore),
       new MerchantAuthorizationPolicy(),
       { environment: 'sandbox' },
+    ),
+    merchantEvidenceService: new MerchantEvidenceApplicationService(
+      new FirestoreMerchantEvidenceRepository(firestore),
+      new FirestoreIdempotencyStore(firestore),
+      new FirestoreAuditWriter(firestore),
+      new MerchantAuthorizationPolicy(),
+      { generate: async (transactionId) => ({ reportId: 'report_emulator', storagePath: `reports/${transactionId}/emulator.pdf`, sha256: 'e'.repeat(64), evidenceCount: 0 }) },
+      { sign: async () => 'https://files.example/emulator.pdf' },
+      { environment: 'sandbox' },
+    ),
+    merchantConnectService: new MerchantConnectApplicationService(
+      new CommerceContextApplicationService(
+        new FirestoreCommerceContextRepository(firestore),
+        new HmacConnectSessionTokenIssuer(),
+      ),
+      new FirestoreMerchantConnectAdapter(firestore),
+      new FirestoreMerchantConnectAdapter(firestore),
+      { validate: async () => undefined },
+      new MerchantAuthorizationPolicy(),
+      { environment: 'sandbox' },
+      () => 'https://packproof.example',
     ),
     publicHandoffReviewBaseUrl: () => 'https://packproof.example',
     participantHandoffBaseUrl: () => 'https://packproof.example',
@@ -393,6 +423,46 @@ test('HTTP participant claim and evidence-session flow persists one actor-bound 
   });
   assert.equal(cancelled.response.status, 200);
   assert.equal(cancelled.body.data.status, 'CANCELLED');
+});
+
+test('Firestore evidence list and review package stay organization-isolated', { skip: !emulatorAvailable }, async () => {
+  const created = await request('/v1/transactions', tokenA, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'idempotency-key': 'evidence-review-1' },
+    body: JSON.stringify({
+      merchantReference: 'emulator-review-1',
+      title: 'Emulator review camera',
+      amount: { currency: 'USD', minorUnits: 2500 },
+      participants: [{ role: 'SELLER', externalReference: 'seller-emulator' }],
+      captureRequirements: { requiredArtifactTypes: ['PACKING_VIDEO'] },
+    }),
+  });
+  assert.equal(created.response.status, 201);
+  const transactionId = created.body.data.id;
+  await firestore.collection('transactions').doc(transactionId).collection('evidence').doc('pack-emulator').set({
+    id: 'pack-emulator',
+    type: 'PACKING_VIDEO',
+    role: 'SELLER',
+    contentType: 'video/mp4',
+    sizeBytes: 2048,
+    sha256: 'f'.repeat(64),
+    manifestSha256: '1'.repeat(64),
+    evidenceBundleSha256: '2'.repeat(64),
+    serverFinalized: true,
+    clientHashMatched: true,
+    clientSizeMatched: true,
+    contentTypeMatched: true,
+    createdAt: new Date('2026-08-11T12:00:00.000Z'),
+  });
+  const isolated = await request(`/v1/transactions/${transactionId}/evidence`, tokenB);
+  assert.equal(isolated.response.status, 404);
+  const listed = await request(`/v1/transactions/${transactionId}/evidence`, tokenA);
+  assert.equal(listed.response.status, 200);
+  assert.equal(listed.body.data[0].workflowReady, true);
+  const review = await request(`/v1/transactions/${transactionId}/review-package`, tokenA);
+  assert.equal(review.response.status, 200);
+  assert.equal(review.body.data.limitations.physicalCorrespondence, 'NOT_AVAILABLE');
+  assert.equal(review.body.data.protocolCompleteness.sellerPackingVideo, 'PRESENT');
 });
 
 test('Firestore idempotency retry retains one stable operation ID after a failed attempt', { skip: !emulatorAvailable }, async () => {

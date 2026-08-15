@@ -100,3 +100,15 @@ After the protocol commit `71f00de`, a second source increment aligned launch su
 - Shipping fail-closed rules now share one tested helper for workflow-ready packing and seal evidence.
 
 Source gates rerun: typecheck, claims, package-seal protocol, and 10 application tests passed. Live sandbox, APK, and device capture remain `NOT_YET_TESTED` for this branch.
+
+## Continuation on `cursor/connect-headless-api`
+
+Headless PackProof Connect v1 routes for merchants, e-commerce platforms, and claims-review tools are now implemented in source:
+
+- Evidence list/read, timeline, presentation-dossier create/get, shipment get/associate, and return-passport read.
+- Claims-review package with protocol completeness, documentation-category labels, and permanent no-verdict limitations.
+- `POST/GET /v1/connect/sessions` for merchant credentials bound to an active Connect integration.
+- Shipment association reuses the packing-plus-seal fail-closed rule.
+- General webhook registration remains unimplemented and is not advertised.
+
+Source gates rerun: API/OpenAPI, application, domain, claims, SDK, and function-export smoke tests passed. No Firebase deploy, APK, or live credential exercise was performed.

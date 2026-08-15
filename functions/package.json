@@ -10,7 +10,7 @@
     "build": "tsc",
     "build:watch": "tsc --watch",
     "test:domain": "npm run build && node --test tests/domain-v1.test.mjs",
-    "test:application": "npm run build && node --test tests/application-v1.test.mjs tests/package-seal-protocol.test.mjs",
+    "test:application": "npm run build && node --test tests/application-v1.test.mjs tests/package-seal-protocol.test.mjs tests/merchant-evidence-service.test.mjs",
     "test:application:firestore:inner": "npm run build && node --test tests/application-firestore.integration.mjs",
     "test:api": "npm run build && node --test tests/api-v1.test.mjs tests/openapi-v1.test.mjs",
     "test:api:firestore:inner": "npm run build && node --test tests/firestore-api-v1.integration.mjs tests/webhook-delivery.integration.mjs tests/webhook-attempts.integration.mjs tests/idempotency-cleanup.integration.mjs tests/admin-requeue.integration.mjs",

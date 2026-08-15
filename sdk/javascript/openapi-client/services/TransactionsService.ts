@@ -6,6 +6,7 @@ import type { CreateTransactionRequest } from '../models/CreateTransactionReques
 import type { CreateTransactionResponse } from '../models/CreateTransactionResponse';
 import type { GetTransactionResponse } from '../models/GetTransactionResponse';
 import type { ListTransactionsResponse } from '../models/ListTransactionsResponse';
+import type { TimelineResponse } from '../models/TimelineResponse';
 import type { TransactionStatus } from '../models/TransactionStatus';
 import type { CancelablePromise } from '../core/CancelablePromise';
 import type { BaseHttpRequest } from '../core/BaseHttpRequest';
@@ -101,6 +102,36 @@ export class TransactionsService {
         return this.httpRequest.request({
             method: 'GET',
             url: '/v1/transactions/{transactionId}',
+            path: {
+                'transactionId': transactionId,
+            },
+            errors: {
+                400: `Invalid request.`,
+                401: `Missing or invalid authentication.`,
+                403: `Authenticated but not authorized.`,
+                404: `The resource was not found in the authenticated organization.`,
+                429: `The operation rate limit was exceeded.`,
+                500: `An internal failure occurred without exposing implementation details.`,
+            },
+        });
+    }
+    /**
+     * Retrieve the public audit timeline
+     * Returns participant-visible timeline summaries. Internal actor identifiers are excluded.
+     * @returns TimelineResponse The public audit timeline.
+     * @throws ApiError
+     */
+    public getTimeline({
+        transactionId,
+    }: {
+        /**
+         * A merchant transaction identifier or an accepted Connect-origin transaction identifier. Possession of the identifier does not grant access.
+         */
+        transactionId: string,
+    }): CancelablePromise<TimelineResponse> {
+        return this.httpRequest.request({
+            method: 'GET',
+            url: '/v1/transactions/{transactionId}/timeline',
             path: {
                 'transactionId': transactionId,
             },

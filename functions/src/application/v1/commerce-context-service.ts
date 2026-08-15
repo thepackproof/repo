@@ -7,6 +7,7 @@ export type CommerceIntegrationPrincipal = {
   integrationId: string;
   platform: string;
   webhookSigningSecret: string;
+  organizationId?: string | null;
 };
 
 export type ConnectOrderInput = {
@@ -42,6 +43,7 @@ export type CommerceContextMutation = {
     priceMinor: number;
     currency: string;
     callbackUrl: string;
+    organizationId: string | null;
     status: 'PENDING_REDEMPTION';
     expiresAt: Date;
   };
@@ -181,6 +183,7 @@ export class CommerceContextApplicationService {
         priceMinor: input.priceMinor,
         currency: input.currency,
         callbackUrl: input.callbackUrl,
+        organizationId: principal.organizationId ?? null,
         status: 'PENDING_REDEMPTION',
         expiresAt,
       },

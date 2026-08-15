@@ -70,6 +70,7 @@ export class FirestoreCommerceContextRepository implements CommerceContextReposi
         callbackUrl: session.callbackUrl,
         tokenHash: mutation.sessionTokenHash,
         requestPayloadHash: mutation.requestPayloadHash,
+        organizationId: session.organizationId,
         status: session.status,
         transactionId: null,
         claimedBy: null,

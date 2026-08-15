@@ -42,6 +42,24 @@ The browser entry point uses a publishable installation key and exact-origin all
 
 The SDK prefers explicit `data` passed to `mountPackProofButton`, then reads Schema.org `Product` JSON-LD, and finally falls back to a narrow set of Open Graph product metadata. It does not scrape arbitrary page text. The resulting passport draft is labeled `PAGE_DECLARED` and must be reviewed in the PackProof app. Server-to-server Connect remains the authoritative path for binding an external order.
 
+The same client can call the versioned merchant API when the credential is a `pp_sandbox_` / `pp_live_` merchant key bound to a Connect integration:
+
+```js
+const session = await client.createConnectSession({
+  platform: 'custom',
+  externalOrderId: 'order-123',
+  externalSellerId: 'merchant-42',
+  itemTitle: 'Vintage camera',
+  amount: { currency: 'USD', minorUnits: 129900 },
+  callbackUrl: 'https://merchant.example/webhooks/packproof',
+  idempotencyKey: 'fulfillment-123-v1',
+});
+
+const review = await client.getReviewPackage(session.data.transactionId ?? 'txn_after_seller_redemption');
+```
+
+`getReviewPackage` organizes hashes, protocol completeness, and limitations for human review. It does not decide fraud, fault, or a dispute outcome.
+
 For callbacks, pass the exact raw HTTP body plus `X-PackProof-Timestamp`, `X-PackProof-Signature`, and the integration webhook secret to `verifyPackProofWebhook`. Do not parse and re-serialize the body before verification.
 
 The callback event is `packproof.evidence.finalized`. Treat `evidenceStatus`, `statusReasonCodes`, and the layered `assurance` object as structured evidence metadata, not as item authentication or a guaranteed dispute outcome. `createVerification` remains as a deprecated v0.2 compatibility alias.

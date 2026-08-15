@@ -16,8 +16,20 @@ The canonical API contract is [`openapi/packproof-api-v1.json`](openapi/packproo
 - `GET /v1/evidence-sessions/{evidenceSessionId}`
 - `POST /v1/evidence-sessions/{evidenceSessionId}/redeem`
 - `POST /v1/evidence-sessions/{evidenceSessionId}/cancel`
+- `GET /v1/transactions/{transactionId}/evidence`
+- `GET /v1/transactions/{transactionId}/evidence/{artifactId}`
+- `GET /v1/transactions/{transactionId}/timeline`
+- `GET /v1/transactions/{transactionId}/review-package`
+- `POST /v1/transactions/{transactionId}/reports`
+- `GET /v1/transactions/{transactionId}/reports/{reportId}`
+- `GET /v1/transactions/{transactionId}/shipment`
+- `POST /v1/transactions/{transactionId}/shipment`
+- `GET /v1/transactions/{transactionId}/returns`
+- `GET /v1/transactions/{transactionId}/returns/{returnPassportId}`
+- `POST /v1/connect/sessions`
+- `GET /v1/connect/sessions/{sessionId}`
 
-The public operation produces only a page-declared editable passport-draft handoff; it is not merchant authentication or order binding. Participant claims and evidence-session redemption bridge merchant transactions into the existing native capture-session path, but they do not prove that a capture was completed, uploaded, or server-finalized. Evidence-manifest/finalization, verification, shipment, receiver, return, webhook, and support routes remain subsequent milestones. They must reuse the same ports and controls rather than bypassing them.
+The public operation produces only a page-declared editable passport-draft handoff; it is not merchant authentication or order binding. Participant claims and evidence-session redemption bridge merchant transactions into the existing native capture-session path, but they do not prove that a capture was completed, uploaded, or server-finalized. Evidence list/read, review-package, presentation-dossier, shipment association, return-passport read, and v1 Connect session routes are now implemented as organization-isolated merchant projections. They reuse the existing ports, package-seal fail-closed rule, and layered-assurance fields. They do not authenticate items, prove custody, decide fraud or fault, or enable the general webhook dispatcher. Receiver write, return write, verification, general webhooks, and support-export routes remain subsequent milestones.
 
 ## Boundaries
 
@@ -36,6 +48,8 @@ The implementation lives under `functions/src/api/v1`:
 - `application/v1/public-commerce-handoff-service.ts` owns public-origin authorization, trust, lifecycle, replay, claim, quota, and draft-prefill rules without Express or Firestore dependencies.
 - `infrastructure/firebase/v1/public-commerce-handoff-repository.ts` owns atomic context/draft/handoff/outbox persistence and one-user redemption.
 - `application/v1/participant-capture-service.ts` owns declared-reference claims, role/purpose/artifact bounds, expiry, cancellation, one-time redemption, and native capture-session issuance.
+- `application/v1/merchant-evidence-service.ts` owns tenant-isolated evidence inventory, timeline, claims-review package, presentation-dossier request, shipment association, and return-passport read projections.
+- `application/v1/merchant-connect-service.ts` owns v1 Connect session create/get for API clients bound to an active integration.
 - `infrastructure/firebase/v1/participant-capture-repository.ts` owns atomic claim/session/capture/timeline/outbox persistence and explicit public projections.
 - `infrastructure/crypto/participant-handoff-token-issuer.ts` creates deterministic, purpose-separated claim and redemption tokens while persisting only SHA-256 digests.
 
@@ -101,7 +115,7 @@ Provisioning command shape (values are examples, not production credentials):
 
 ```powershell
 $env:PACKPROOF_API_CREDENTIAL_PEPPER='<same value securely set in Firebase Secret Manager>'
-npm.cmd --prefix functions run provision:api-client -- --organization-id org_example --organization-name 'Example Merchant' --client-id client_example_backend --client-name 'Example backend' --environment sandbox --scopes transactions:read,transactions:write,participant_claims:write,evidence:read,evidence:write
+npm.cmd --prefix functions run provision:api-client -- --organization-id org_example --organization-name 'Example Merchant' --client-id client_example_backend --client-name 'Example backend' --environment sandbox --scopes transactions:read,transactions:write,participant_claims:write,evidence:read,evidence:write,shipments:read,shipments:write --integration-id YOUR_CONNECT_INTEGRATION_ID
 ```
 
 The command prints the API key once. Do not paste it into source, chat, issue trackers, build logs, or ordinary documentation.
