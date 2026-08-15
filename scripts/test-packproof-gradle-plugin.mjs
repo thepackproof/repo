@@ -3,7 +3,7 @@ import { createRequire } from 'node:module';
 import { readFileSync } from 'node:fs';
 
 const require = createRequire(import.meta.url);
-const { patchAppBuildGradle } = require('../plugins/with-packproof-gradle-properties.js');
+const { patchAppBuildGradle, patchProguardRules } = require('../plugins/with-packproof-gradle-properties.js');
 
 const fixture = `
 android {
@@ -46,9 +46,17 @@ assert.throws(
   'plugin must fail when the expected Expo template changes',
 );
 
+const proguardFixture = '# Existing release rules\n-keep class com.packproof.** { *; }\n';
+const patchedProguard = patchProguardRules(proguardFixture);
+assert.match(patchedProguard, /PACKPROOF_RELEASE_LOG_MINIMIZATION/);
+assert.match(patchedProguard, /public static int v\(\.\.\.\);/);
+assert.match(patchedProguard, /public static int d\(\.\.\.\);/);
+assert.doesNotMatch(patchedProguard, /public static int [iwe]\(\.\.\.\);/i, 'warning, error, and informational logs must remain available');
+assert.equal(patchProguardRules(patchedProguard), patchedProguard, 'release log rules must be idempotent');
+
 const sandboxBuildScript = readFileSync(new URL('./build-sandbox-apk.ps1', import.meta.url), 'utf8');
 assert.match(sandboxBuildScript, /packproof-sandbox-device-test-20260813\.jks/);
 assert.match(sandboxBuildScript, /packproof-sandbox-20260813/);
 assert.doesNotMatch(sandboxBuildScript, /packproof-sandbox-device-test\.jks/);
 
-process.stdout.write('PackProof Gradle signing plugin tests passed.\n');
+process.stdout.write('PackProof Gradle signing and release log tests passed.\n');

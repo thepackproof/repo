@@ -99,6 +99,7 @@
     "test:android-signing-plugin": "node scripts/test-packproof-gradle-plugin.mjs",
     "test:android-release-config": "node scripts/test-android-release-config.mjs",
     "test:queue-attention": "node --experimental-strip-types scripts/test-queue-attention.mjs",
+    "test:runtime-display": "node --experimental-strip-types scripts/test-runtime-display.mjs",
     "validate:physical": "node scripts/analyze-physical-validation.mjs",
     "verify:manifest": "node tools/verify-evidence.mjs",
     "test:manifest-verifier": "node scripts/test-evidence-verifier.mjs",
