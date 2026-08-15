@@ -73,6 +73,7 @@ export type PackProofTransaction = {
     labelEvidenceMatchStatus?: 'MATCHED' | 'MISMATCH' | 'NOT_SCANNED';
     scannedTrackingNumber?: string | null;
     packingEvidenceId?: string;
+    sealEvidenceId?: string;
   };
   source?:
     | {
@@ -187,6 +188,7 @@ export type ReturnPassport = {
     labelEvidenceMatchStatus?: 'MATCHED' | 'MISMATCH' | 'NOT_SCANNED';
     scannedTrackingNumber?: string | null;
     packingEvidenceId?: string;
+    sealEvidenceId?: string;
   };
   completedBy: string[];
 };

@@ -102,14 +102,20 @@ exports.submitReturnShipping = (0, https_1.onCall)(callOptions, async (request) 
         throw new https_1.HttpsError('permission-denied', 'Only the returning participant can record return shipping.');
     if (!['PACKED', 'AUTHORIZED'].includes(data.status))
         throw new https_1.HttpsError('failed-precondition', 'The return is not ready for shipping.');
-    const packingVideos = await config_1.db.collection('transactions').doc(input.transactionId).collection('evidence')
-        .where('returnPassportId', '==', input.returnPassportId).where('type', '==', 'RETURN_PACKING_VIDEO').get();
+    const evidenceRef = config_1.db.collection('transactions').doc(input.transactionId).collection('evidence');
+    const packingVideos = await evidenceRef.where('returnPassportId', '==', input.returnPassportId).where('type', '==', 'RETURN_PACKING_VIDEO').get();
+    const sealPhotos = await evidenceRef.where('returnPassportId', '==', input.returnPassportId).where('type', '==', 'RETURN_SHIPPING_LABEL').get();
     const packingVideo = packingVideos.docs.find((item) => evidenceReadyForWorkflow(item.data()));
+    const sealPhoto = sealPhotos.docs.find((item) => evidenceReadyForWorkflow(item.data()));
     if (!packingVideo)
         throw new https_1.HttpsError('failed-precondition', 'A server-finalized return repacking video with no recorded byte-integrity mismatch is required first.');
+    if (!sealPhoto)
+        throw new https_1.HttpsError('failed-precondition', 'A server-finalized high-resolution return seal reference photograph with no recorded byte-integrity mismatch is required first.');
     const packingEvidenceRef = packingVideo.ref;
+    const sealEvidenceRef = sealPhoto.ref;
     const packingEvidence = packingVideo.data();
-    const scannedTrackingNumber = normalizeTracking(packingEvidence.scannedTrackingNumber);
+    const sealEvidence = sealPhoto.data();
+    const scannedTrackingNumber = normalizeTracking(sealEvidence.scannedTrackingNumber) ?? normalizeTracking(packingEvidence.scannedTrackingNumber);
     const submittedTrackingNumber = normalizeTracking(input.trackingNumber);
     const labelEvidenceMatchStatus = !scannedTrackingNumber
         ? 'NOT_SCANNED'
@@ -117,16 +123,18 @@ exports.submitReturnShipping = (0, https_1.onCall)(callOptions, async (request) 
             ? 'MATCHED'
             : 'MISMATCH';
     await config_1.db.runTransaction(async (tx) => {
-        const [freshReturn, freshEvidence] = await Promise.all([tx.get(ref), tx.get(packingEvidenceRef)]);
-        if (!freshReturn.exists || !freshEvidence.exists)
+        const [freshReturn, freshPacking, freshSeal] = await Promise.all([tx.get(ref), tx.get(packingEvidenceRef), tx.get(sealEvidenceRef)]);
+        if (!freshReturn.exists || !freshPacking.exists || !freshSeal.exists)
             throw new https_1.HttpsError('failed-precondition', 'Return evidence changed before shipping could be recorded.');
         const freshReturnData = freshReturn.data();
         if ((freshReturnData.returningParticipantId ?? transaction.buyerId) !== uid)
             throw new https_1.HttpsError('permission-denied', 'Only the returning participant can record return shipping.');
         if (!['PACKED', 'AUTHORIZED'].includes(freshReturnData.status))
             throw new https_1.HttpsError('failed-precondition', 'The return is not ready for shipping.');
-        if (!evidenceReadyForWorkflow(freshEvidence.data()))
+        if (!evidenceReadyForWorkflow(freshPacking.data()))
             throw new https_1.HttpsError('failed-precondition', 'The return packing evidence no longer satisfies byte-integrity workflow requirements.');
+        if (!evidenceReadyForWorkflow(freshSeal.data()))
+            throw new https_1.HttpsError('failed-precondition', 'The return seal-reference evidence no longer satisfies byte-integrity workflow requirements.');
         tx.update(ref, {
             status: 'IN_TRANSIT',
             shipping: {
@@ -136,6 +144,7 @@ exports.submitReturnShipping = (0, https_1.onCall)(callOptions, async (request) 
                 labelEvidenceMatchStatus,
                 scannedTrackingNumber,
                 packingEvidenceId: packingEvidenceRef.id,
+                sealEvidenceId: sealEvidenceRef.id,
             },
             updatedAt: firestore_1.FieldValue.serverTimestamp(),
         });
@@ -143,7 +152,15 @@ exports.submitReturnShipping = (0, https_1.onCall)(callOptions, async (request) 
             postSubmissionTrackingMatchStatus: labelEvidenceMatchStatus,
             postSubmissionExpectedTrackingNumber: submittedTrackingNumber,
             postSubmissionComparedAt: firestore_1.FieldValue.serverTimestamp(),
-            ...(labelEvidenceMatchStatus === 'MISMATCH' && freshEvidence.data()?.moderationStatus === 'UNREVIEWED'
+            ...(labelEvidenceMatchStatus === 'MISMATCH' && freshPacking.data()?.moderationStatus === 'UNREVIEWED'
+                ? { moderationStatus: 'TRACKING_MISMATCH_REVIEW' }
+                : {}),
+        });
+        tx.update(sealEvidenceRef, {
+            postSubmissionTrackingMatchStatus: labelEvidenceMatchStatus,
+            postSubmissionExpectedTrackingNumber: submittedTrackingNumber,
+            postSubmissionComparedAt: firestore_1.FieldValue.serverTimestamp(),
+            ...(labelEvidenceMatchStatus === 'MISMATCH' && freshSeal.data()?.moderationStatus === 'UNREVIEWED'
                 ? { moderationStatus: 'TRACKING_MISMATCH_REVIEW' }
                 : {}),
         });
@@ -152,6 +169,7 @@ exports.submitReturnShipping = (0, https_1.onCall)(callOptions, async (request) 
         returnPassportId: input.returnPassportId,
         trackingNumber: input.trackingNumber,
         packingEvidenceId: packingEvidenceRef.id,
+        sealEvidenceId: sealEvidenceRef.id,
         labelEvidenceMatchStatus,
         scannedTrackingNumber,
     });

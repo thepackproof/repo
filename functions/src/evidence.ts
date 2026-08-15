@@ -14,6 +14,7 @@ import {
   sha256Hex,
 } from './evidence-format';
 import { appendEvent, assertParticipant, getTransaction, notifyOtherParticipants, requireUid } from './helpers';
+import { HUMAN_REVIEW_DISCLAIMER, groupPackageSealObservations } from './package-seal-protocol';
 import type { EvidenceType } from './types';
 import { transactionIdSchema } from './validation';
 
@@ -509,6 +510,27 @@ export async function generateEvidencePacket(transactionId: string, generatedBy:
   if (data.source) addLine(`PackProof Connect: ${data.source.platform}; external order: ${data.source.externalOrderId}`);
   y -= 8;
 
+  const observations = groupPackageSealObservations(evidence);
+  addLine('HUMAN-REVIEWABLE PACKAGE OBSERVATIONS', { bold: true, size: 12, gap: 5 });
+  addLine(HUMAN_REVIEW_DISCLAIMER, { gap: 8 });
+  addLine('Seller reference', { bold: true });
+  if (!observations.sellerReference.length) addLine('No seller packing video or high-resolution seal reference was present.');
+  for (const item of observations.sellerReference) {
+    addLine(`${item.type} — SHA-256 ${item.sha256 ?? 'not recorded'}; server time ${timestampIso(item.serverReceivedAt) ?? timestampIso(item.createdAt) ?? 'unknown'}`);
+  }
+  addLine('Buyer arrival', { bold: true });
+  if (!observations.buyerArrival.length) addLine('No buyer arrival observation or unboxing video was present.');
+  for (const item of observations.buyerArrival) {
+    addLine(`${item.type} — SHA-256 ${item.sha256 ?? 'not recorded'}; server time ${timestampIso(item.serverReceivedAt) ?? timestampIso(item.createdAt) ?? 'unknown'}`);
+  }
+  if (observations.returnReference.length || observations.returnArrival.length) {
+    addLine('Return observations', { bold: true });
+    for (const item of [...observations.returnReference, ...observations.returnArrival]) {
+      addLine(`${item.type} — SHA-256 ${item.sha256 ?? 'not recorded'}; server time ${timestampIso(item.serverReceivedAt) ?? timestampIso(item.createdAt) ?? 'unknown'}`);
+    }
+  }
+  y -= 8;
+
   addLine('FINALIZED EVIDENCE', { bold: true, size: 12, gap: 5 });
   if (!evidence.length) addLine('No evidence files were present when this dossier was generated.');
   for (const item of evidence) {
@@ -569,7 +591,7 @@ export async function generateEvidencePacket(transactionId: string, generatedBy:
     sourceEvidenceBundleSha256s: evidence.map((item) => item.evidenceBundleSha256).filter((value): value is string => typeof value === 'string'),
     transformation: {
       id: 'packproof-evidence-dossier-pdf',
-      version: '2.0.0',
+      version: '2.1.0',
       source: 'SERVER_DERIVED',
       presentationOnly: true,
       originalsReplaced: false,
