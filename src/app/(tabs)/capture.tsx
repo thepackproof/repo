@@ -18,15 +18,17 @@ export default function CaptureHub() {
   return <SafeAreaView style={styles.safe} edges={['top']}><ScrollView contentContainerStyle={styles.container}>
     <ScreenTitle eyebrow="Guided evidence" title="Capture" subtitle="Record directly inside the transaction so the server can add its receipt/finalization time and independently compute a SHA-256 fingerprint. Client capture time remains separately labeled." />
     {queuedCount || attentionCount ? <View style={styles.queue}><View style={{ flex: 1 }}><Text style={styles.queueTitle}>{attentionCount ? `${attentionCount} encrypted queue item${attentionCount === 1 ? '' : 's'} require attention` : `${queuedCount} encrypted capture${queuedCount === 1 ? '' : 's'} waiting to sync`}</Text><Text style={styles.queueText}>{attentionCount && attentionReason ? queueAttentionMessage(attentionReason) : 'PackProof retries automatically when connectivity returns and keeps ciphertext until server finalization.'}</Text></View>{attentionCount ? <Button label="Retry retained" variant="secondary" onPress={retryAttention} /> : queuedCount ? <Button label="Sync now" variant="secondary" onPress={syncNow} /> : null}</View> : null}
-    <View style={styles.tip}><AppIcon name="exclamationmark.shield.fill" size={23} tintColor={colors.amber} /><Text style={styles.tipText}>Packing and unboxing videos must be continuous. Do not pause, trim or edit the recording before upload.</Text></View>
+    <View style={styles.tip}><AppIcon name="exclamationmark.shield.fill" size={23} tintColor={colors.amber} /><Text style={styles.tipText}>Packing and unboxing videos must be continuous. Include the PP mark, tape or seal, and a steady high-resolution view of the label/package boundary. PackProof does not decide whether the package later matches.</Text></View>
     <View style={styles.list}>
       {eligible.map((item) => {
         const seller = item.sellerId === user!.uid;
-        const type = seller ? 'PACKING_VIDEO' : 'UNBOXING_VIDEO';
-        const canVideo = seller ? item.status === 'TERMS_LOCKED' : item.status === 'SHIPPED';
+        const type = seller
+          ? item.status === 'TERMS_LOCKED' ? 'PACKING_VIDEO' : item.status === 'PACKED' ? 'SHIPPING_LABEL' : 'CONDITION_PHOTO'
+          : item.status === 'SHIPPED' ? 'DELIVERY_PHOTO' : 'CONDITION_PHOTO';
+        const label = type === 'PACKING_VIDEO' ? 'Packing video' : type === 'SHIPPING_LABEL' ? 'Seal reference' : type === 'DELIVERY_PHOTO' ? 'Arrival observation' : 'Condition photo';
         return <Card key={item.id} style={styles.card}>
           <View style={{ flex: 1, gap: 8 }}><Text style={styles.title}>{item.title}</Text><StatusPill status={item.status} /></View>
-          <Button label={canVideo ? (seller ? 'Packing video' : 'Unboxing video') : 'Condition photo'} icon="camera.fill" variant="secondary" onPress={() => router.push({ pathname: '/capture/[id]', params: { id: item.id, type: canVideo ? type : 'CONDITION_PHOTO' } })} />
+          <Button label={label} icon="camera.fill" variant="secondary" onPress={() => router.push({ pathname: '/capture/[id]', params: { id: item.id, type } })} />
         </Card>;
       })}
       {!eligible.length ? <EmptyState icon="camera.fill" title="Nothing ready for capture" body="After both parties confirm the transaction terms, the guided packing or unboxing workflow will appear here." /> : null}

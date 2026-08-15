@@ -11,12 +11,13 @@ import { callFunction, downloadUrl, subscribeEvents, subscribeEvidence, subscrib
 import { forceFreshCallableCredentials } from '@/lib/firebase';
 import { enqueueEvidence, syncEvidenceQueue } from '@/lib/offline-evidence-queue';
 import { formatDate, formatMoney, readableError, statusProgress } from '@/lib/format';
+import { HUMAN_REVIEW_DISCLAIMER, groupHumanReviewObservations, packageSealProtocolStatus } from '@/lib/package-seal-protocol';
 import { formatRuntimeEnum, normalizePhysicalStatus, type PhysicalStatusView } from '@/lib/runtime-display';
 import { useAuth } from '@/providers/auth-provider';
 import type { EvidenceRecord, EvidenceType, PackProofTransaction, ReturnPassport, TimelineEvent } from '@/types/models';
 
 const evidenceLabels: Record<EvidenceType, string> = {
-  ITEM_PHOTO: 'Item photo', CONDITION_PHOTO: 'Condition photo', IDENTIFIER_PHOTO: 'Identifier photo', COA_PHOTO: 'COA photo', PACKING_VIDEO: 'Continuous packing video', SHIPPING_LABEL: 'Shipping label', UNBOXING_VIDEO: 'Continuous unboxing video', DELIVERY_PHOTO: 'Delivery photo', SUPPORTING_DOCUMENT: 'Supporting document', RETURN_CONDITION_PHOTO: 'Return condition photo', RETURN_PACKING_VIDEO: 'Continuous return repacking video', RETURN_SHIPPING_LABEL: 'Return shipping label', RETURN_UNBOXING_VIDEO: 'Continuous returned-item unboxing video', PHYSICAL_REFERENCE_FRAME: 'Physical reference frame', PHYSICAL_VERIFICATION_FRAME: 'Physical verification frame',
+  ITEM_PHOTO: 'Item photo', CONDITION_PHOTO: 'Condition photo', IDENTIFIER_PHOTO: 'Identifier photo', COA_PHOTO: 'COA photo', PACKING_VIDEO: 'Continuous packing video', SHIPPING_LABEL: 'High-resolution seal reference', UNBOXING_VIDEO: 'Continuous unboxing video', DELIVERY_PHOTO: 'Arrival package observation', SUPPORTING_DOCUMENT: 'Supporting document', RETURN_CONDITION_PHOTO: 'Return condition photo', RETURN_PACKING_VIDEO: 'Continuous return repacking video', RETURN_SHIPPING_LABEL: 'High-resolution return seal reference', RETURN_UNBOXING_VIDEO: 'Continuous returned-item unboxing video', PHYSICAL_REFERENCE_FRAME: 'Physical reference frame', PHYSICAL_VERIFICATION_FRAME: 'Physical verification frame',
 };
 
 function shortId(id?: string | null) { return id ? `${id.slice(0, 5)}…${id.slice(-4)}` : 'Not joined'; }
@@ -94,7 +95,13 @@ export default function TransactionDetail() {
   const handoffConfirmed = Boolean(user?.uid && item?.handoffConfirmedBy?.includes(user.uid));
   const completed = Boolean(user?.uid && item?.completedBy?.includes(user.uid));
   const hashes = useMemo(() => new Set(evidence.map((record) => record.sha256)), [evidence]);
+  const protocol = useMemo(() => packageSealProtocolStatus(evidence), [evidence]);
+  const reviewGroups = useMemo(() => groupHumanReviewObservations(evidence), [evidence]);
   const activeReturn = returnPassports.find((passport) => !['COMPLETED', 'CANCELLED'].includes(passport.status)) ?? null;
+  const returnProtocol = useMemo(
+    () => (activeReturn ? packageSealProtocolStatus(evidence, { returnPassportId: activeReturn.id }) : null),
+    [activeReturn, evidence],
+  );
   const returnRequester = activeReturn?.initiatedBy === user?.uid;
   const returningParticipant = (activeReturn?.returningParticipantId ?? item?.buyerId) === user?.uid;
   const returnRecipient = activeReturn?.recipientId === user?.uid;
@@ -148,20 +155,25 @@ export default function TransactionDetail() {
     {['DRAFT', 'AWAITING_BUYER', 'TERMS_REVIEW'].includes(item.status) && role === 'SELLER' ? <Button label="Add item or condition photo" icon="camera.fill" variant="secondary" onPress={() => capture('ITEM_PHOTO')} /> : null}
     {item.status === 'TERMS_REVIEW' ? <Button label={confirmed ? 'Terms confirmed—waiting' : 'Confirm these exact terms'} icon="checkmark.shield.fill" disabled={confirmed} busy={busy === 'confirm'} onPress={() => run('confirm', () => callFunction('confirmTerms', { transactionId: id }).then(() => undefined))} /> : null}
     {item.status === 'TERMS_LOCKED' && item.terms.saleType === 'SHIPPED' && role === 'SELLER' ? <Button label="Record continuous packing" icon="video.fill" onPress={() => capture('PACKING_VIDEO')} /> : null}
-    {role === 'SELLER' && ['TERMS_LOCKED', 'PACKED'].includes(item.status) ? <Button label="Capture physical reference series" icon="camera.metering.center.weighted" variant="secondary" onPress={() => router.push({ pathname: '/capture/physical/[id]', params: { id, intent: 'REFERENCE' } })} /> : null}
+    {role === 'SELLER' && ['TERMS_LOCKED', 'PACKED'].includes(item.status) && item.terms.saleType === 'SHIPPED' ? <Button label={protocol.hasSealReference ? 'Add another seal reference' : 'Record high-resolution seal reference'} icon="camera.fill" variant={protocol.hasPackingVideo && !protocol.hasSealReference ? 'primary' : 'secondary'} onPress={() => capture('SHIPPING_LABEL')} /> : null}
+    {role === 'SELLER' && ['TERMS_LOCKED', 'PACKED'].includes(item.status) ? <Button label="Optional research series (not required)" icon="camera.metering.center.weighted" variant="secondary" onPress={() => router.push({ pathname: '/capture/physical/[id]', params: { id, intent: 'REFERENCE' } })} /> : null}
     {item.status === 'TERMS_LOCKED' && item.terms.saleType === 'LOCAL_HANDOFF' ? <Button label={handoffConfirmed ? 'Handoff confirmed—waiting' : 'Confirm item changed hands'} icon="person.2.fill" disabled={handoffConfirmed} busy={busy === 'handoff'} onPress={() => run('handoff', () => callFunction('confirmLocalHandoff', { transactionId: id }).then(() => undefined))} /> : null}
     {item.status === 'TERMS_LOCKED' && item.terms.saleType === 'LOCAL_HANDOFF' && role === 'BUYER' ? <Button label="Capture received condition" icon="camera.fill" variant="secondary" onPress={() => capture('DELIVERY_PHOTO')} /> : null}
-    {item.status === 'PACKED' && role === 'SELLER' ? <Button label="Add shipment details" icon="truck.box.fill" onPress={() => setShowShipping(true)} /> : null}
-    {item.status === 'SHIPPED' && role === 'BUYER' ? <Button label="Record continuous unboxing" icon="video.fill" onPress={() => capture('UNBOXING_VIDEO')} /> : null}
-    {role === 'BUYER' && ['SHIPPED', 'BUYER_REVIEW', 'DISPUTED'].includes(item.status) ? <Button label="Capture physical verification series" icon="viewfinder" variant="secondary" onPress={() => router.push({ pathname: '/capture/physical/[id]', params: { id, intent: 'VERIFICATION' } })} /> : null}
-    {item.status === 'SHIPPED' && role === 'BUYER' ? <Button label="Mark received without video" variant="secondary" busy={busy === 'received'} onPress={() => run('received', () => callFunction('markReceived', { transactionId: id }).then(() => undefined))} /> : null}
+    {item.status === 'PACKED' && role === 'SELLER' ? <Button label="Add shipment details" icon="truck.box.fill" disabled={!protocol.sellerReferenceComplete} onPress={() => setShowShipping(true)} /> : null}
+    {item.status === 'PACKED' && role === 'SELLER' && !protocol.sellerReferenceComplete ? <Text style={styles.small}>Shipment can be recorded after a server-finalized packing video and high-resolution seal reference are present with no byte-integrity mismatch.</Text> : null}
+    {item.status === 'SHIPPED' && role === 'BUYER' ? <Button label={protocol.hasArrivalPhoto ? 'Add another arrival observation' : 'Record arrival package observation'} icon="camera.fill" onPress={() => capture('DELIVERY_PHOTO')} /> : null}
+    {item.status === 'SHIPPED' && role === 'BUYER' ? <Button label="Record continuous unboxing" icon="video.fill" variant={protocol.hasArrivalPhoto ? 'primary' : 'secondary'} onPress={() => capture('UNBOXING_VIDEO')} /> : null}
+    {role === 'BUYER' && ['SHIPPED', 'BUYER_REVIEW', 'DISPUTED'].includes(item.status) ? <Button label="Optional research series (not required)" icon="viewfinder" variant="secondary" onPress={() => router.push({ pathname: '/capture/physical/[id]', params: { id, intent: 'VERIFICATION' } })} /> : null}
+    {item.status === 'SHIPPED' && role === 'BUYER' ? <Button label="Mark received without video" variant="secondary" busy={busy === 'received'} onPress={() => Alert.alert('Skip arrival and unboxing observations?', 'The human-reviewable package protocol is incomplete without an arrival observation and unboxing record. PackProof will not infer a physical conclusion either way.', [{ text: 'Keep capturing', style: 'cancel' }, { text: 'Mark received', onPress: () => run('received', () => callFunction('markReceived', { transactionId: id }).then(() => undefined)) }])} /> : null}
     {role === 'SELLER' && !['COMPLETED', 'CANCELLED', 'ARCHIVED'].includes(item.status) ? <View style={styles.quickEvidence}><Text style={styles.quickLabel}>ADD SUPPORTING EVIDENCE</Text><View style={styles.choices}><Choice label="Condition" selected={false} onPress={() => capture('CONDITION_PHOTO')} /><Choice label="Identifier" selected={false} onPress={() => capture('IDENTIFIER_PHOTO')} /><Choice label="COA" selected={false} onPress={() => capture('COA_PHOTO')} />{['PACKED', 'SHIPPED'].includes(item.status) ? <Choice label="Shipping label" selected={false} onPress={() => capture('SHIPPING_LABEL')} /> : null}</View></View> : null}
     {!['COMPLETED', 'CANCELLED', 'ARCHIVED'].includes(item.status) ? <Button label="Attach supporting PDF" icon="doc.fill" variant="secondary" busy={busy === 'document'} onPress={attachPdf} /> : null}
     {item.status === 'BUYER_REVIEW' ? <Button label={completed ? 'Completion confirmed—waiting' : 'Everything is complete'} icon="checkmark.circle.fill" disabled={completed} busy={busy === 'complete'} onPress={() => run('complete', () => callFunction('completeTransaction', { transactionId: id }).then(() => undefined))} /> : null}
     {!activeReturn && item.buyerId && ['SHIPPED', 'BUYER_REVIEW', 'COMPLETED', 'DISPUTED'].includes(item.status) && (item.terms.returns !== 'NO_RETURNS' || item.status === 'DISPUTED') ? <Button label="Start return passport" icon="arrow.uturn.backward.circle.fill" variant="secondary" onPress={() => setShowReturnRequest(true)} /> : null}
     {activeReturn?.status === 'REQUESTED' && !returnRequester ? <Button label="Authorize return passport" icon="checkmark.shield.fill" busy={busy === 'authorizeReturn'} onPress={() => run('authorizeReturn', () => callFunction('authorizeReturnPassport', { transactionId: id, returnPassportId: activeReturn.id }).then(() => undefined))} /> : null}
     {activeReturn?.status === 'AUTHORIZED' && returningParticipant ? <Button label="Record continuous return repacking" icon="video.fill" onPress={() => capture('RETURN_PACKING_VIDEO', activeReturn.id)} /> : null}
-    {activeReturn?.status === 'PACKED' && returningParticipant ? <Button label="Add return shipment details" icon="truck.box.fill" onPress={() => setShowReturnShipping(true)} /> : null}
+    {activeReturn && ['AUTHORIZED', 'PACKED'].includes(activeReturn.status) && returningParticipant ? <Button label={returnProtocol?.hasSealReference ? 'Add another return seal reference' : 'Record high-resolution return seal reference'} icon="camera.fill" variant={returnProtocol?.hasPackingVideo && !returnProtocol.hasSealReference ? 'primary' : 'secondary'} onPress={() => capture('RETURN_SHIPPING_LABEL', activeReturn.id)} /> : null}
+    {activeReturn?.status === 'PACKED' && returningParticipant ? <Button label="Add return shipment details" icon="truck.box.fill" disabled={!returnProtocol?.sellerReferenceComplete} onPress={() => setShowReturnShipping(true)} /> : null}
+    {activeReturn?.status === 'PACKED' && returningParticipant && !returnProtocol?.sellerReferenceComplete ? <Text style={styles.small}>Return shipment can be recorded after a server-finalized return packing video and high-resolution seal reference are present with no byte-integrity mismatch.</Text> : null}
     {activeReturn?.status === 'IN_TRANSIT' && returnRecipient ? <Button label="Record returned-item unboxing" icon="video.fill" onPress={() => capture('RETURN_UNBOXING_VIDEO', activeReturn.id)} /> : null}
     {activeReturn?.status === 'IN_TRANSIT' && returnRecipient ? <Button label="Mark return received without video" variant="secondary" busy={busy === 'returnReceived'} onPress={() => run('returnReceived', () => callFunction('markReturnReceived', { transactionId: id, returnPassportId: activeReturn.id }).then(() => undefined))} /> : null}
     {activeReturn && !['REQUESTED', 'COMPLETED', 'CANCELLED'].includes(activeReturn.status) ? <Button label="Add return condition photo" icon="camera.fill" variant="secondary" onPress={() => capture('RETURN_CONDITION_PHOTO', activeReturn.id)} /> : null}
@@ -239,6 +251,23 @@ export default function TransactionDetail() {
     </Card> : null}
 
     {item.shipping ? <Card style={styles.card}><Text style={styles.cardEyebrow}>SHIPMENT</Text><Info label="Carrier" value={item.shipping.carrier} /><Info label="Tracking" value={item.shipping.trackingNumber} />{item.shipping.labelEvidenceMatchStatus ? <Info label="Packing-label check" value={formatRuntimeEnum(item.shipping.labelEvidenceMatchStatus).toLowerCase()} /> : null}<Info label="Recorded" value={formatDate(item.shipping.shippedAt)} /></Card> : null}
+
+    {item.terms.saleType === 'SHIPPED' && !['DRAFT', 'AWAITING_BUYER', 'TERMS_REVIEW', 'CANCELLED'].includes(item.status) ? <Card style={styles.card}>
+      <Text style={styles.cardEyebrow}>HUMAN-REVIEWABLE PACKAGE OBSERVATIONS</Text>
+      <Text style={styles.cardTitle}>{protocol.outboundComplete ? 'Seller reference and buyer arrival records are present' : 'Guided package-seal protocol'}</Text>
+      <Text style={styles.body}>{HUMAN_REVIEW_DISCLAIMER}</Text>
+      <Info label="Seller packing video" value={protocol.hasPackingVideo ? 'Present' : 'Not yet finalized'} />
+      <Info label="Seller seal reference" value={protocol.hasSealReference ? 'Present' : 'Not yet finalized'} />
+      <Info label="Buyer arrival observation" value={protocol.hasArrivalPhoto ? 'Present' : 'Not yet finalized'} />
+      <Info label="Buyer unboxing video" value={protocol.hasUnboxingVideo ? 'Present' : 'Not yet finalized'} />
+      {reviewGroups.sellerReference.length || reviewGroups.buyerArrival.length ? <>
+        <View style={styles.divider} />
+        <Text style={styles.cardEyebrow}>SELLER REFERENCE</Text>
+        {reviewGroups.sellerReference.length ? reviewGroups.sellerReference.map((record) => <Info key={record.id} label={evidenceLabels[record.type]} value={`${record.sha256.slice(0, 12)}… · ${formatDate(record.createdAt)}`} />) : <Text style={styles.small}>No seller packing or seal reference has been server-finalized.</Text>}
+        <Text style={styles.cardEyebrow}>BUYER ARRIVAL</Text>
+        {reviewGroups.buyerArrival.length ? reviewGroups.buyerArrival.map((record) => <Info key={record.id} label={evidenceLabels[record.type]} value={`${record.sha256.slice(0, 12)}… · ${formatDate(record.createdAt)}`} />) : <Text style={styles.small}>No buyer arrival or unboxing observation has been server-finalized.</Text>}
+      </> : null}
+    </Card> : null}
 
     <Card style={styles.card}>
       <Text style={styles.cardEyebrow}>SISV PHYSICAL OBSERVATION RESEARCH</Text>
