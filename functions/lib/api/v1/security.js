@@ -95,6 +95,7 @@ class FirestoreMerchantAuthenticator {
             organizationId,
             environment,
             scopes,
+            integrationId: typeof client.integrationId === 'string' && client.integrationId ? client.integrationId : null,
         };
         // Use append-only usage records instead of mutating one credential document
         // on every request; the latter becomes a per-credential write hotspot.

@@ -20,26 +20,94 @@ export class PackProofConnect {
     this.fetch = fetchImpl;
   }
 
-  async createEvidenceSession(input, { signal } = {}) {
-    const response = await this.fetch(`${this.baseUrl}/api/connect/orders`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${this.apiKey}`,
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-      },
-      body: JSON.stringify(input),
+  async request(path, { method = 'GET', body, idempotencyKey, signal } = {}) {
+    const headers = {
+      Authorization: `Bearer ${this.apiKey}`,
+      Accept: 'application/json',
+    };
+    if (body !== undefined) headers['Content-Type'] = 'application/json';
+    if (idempotencyKey) headers['Idempotency-Key'] = idempotencyKey;
+    const response = await this.fetch(`${this.baseUrl}${path}`, {
+      method,
+      headers,
+      body: body === undefined ? undefined : JSON.stringify(body),
       signal,
     });
-    const body = await response.json().catch(() => ({}));
+    const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
-      throw new PackProofConnectError(body.message || `PackProof Connect returned HTTP ${response.status}.`, {
+      const error = payload.error && typeof payload.error === 'object' ? payload.error : payload;
+      throw new PackProofConnectError(error.message || `PackProof Connect returned HTTP ${response.status}.`, {
         status: response.status,
-        code: body.error || 'http_error',
-        details: body.details || null,
+        code: error.code || error.error || 'http_error',
+        details: error.details || payload.details || null,
       });
     }
-    return body;
+    return payload;
+  }
+
+  async createEvidenceSession(input, { signal } = {}) {
+    return this.request('/api/connect/orders', { method: 'POST', body: input, signal });
+  }
+
+  async createConnectSession(input, { idempotencyKey, signal } = {}) {
+    const key = idempotencyKey || input.idempotencyKey;
+    if (!key) throw new TypeError('idempotencyKey is required for v1 Connect sessions.');
+    const body = { ...input };
+    delete body.idempotencyKey;
+    return this.request('/v1/connect/sessions', {
+      method: 'POST',
+      body: { schemaVersion: 1, ...body },
+      idempotencyKey: key,
+      signal,
+    });
+  }
+
+  async getConnectSession(sessionId, options = {}) {
+    return this.request(`/v1/connect/sessions/${encodeURIComponent(sessionId)}`, options);
+  }
+
+  async listEvidence(transactionId, options = {}) {
+    return this.request(`/v1/transactions/${encodeURIComponent(transactionId)}/evidence`, options);
+  }
+
+  async getReviewPackage(transactionId, options = {}) {
+    return this.request(`/v1/transactions/${encodeURIComponent(transactionId)}/review-package`, options);
+  }
+
+  async createEvidenceReport(transactionId, { idempotencyKey, signal } = {}) {
+    if (!idempotencyKey) throw new TypeError('idempotencyKey is required for evidence reports.');
+    return this.request(`/v1/transactions/${encodeURIComponent(transactionId)}/reports`, {
+      method: 'POST',
+      body: { schemaVersion: 1 },
+      idempotencyKey,
+      signal,
+    });
+  }
+
+  async getEvidenceReport(transactionId, reportId, options = {}) {
+    return this.request(`/v1/transactions/${encodeURIComponent(transactionId)}/reports/${encodeURIComponent(reportId)}`, options);
+  }
+
+  async getTimeline(transactionId, options = {}) {
+    return this.request(`/v1/transactions/${encodeURIComponent(transactionId)}/timeline`, options);
+  }
+
+  async associateShipment(transactionId, input, { idempotencyKey, signal } = {}) {
+    if (!idempotencyKey) throw new TypeError('idempotencyKey is required for shipment association.');
+    return this.request(`/v1/transactions/${encodeURIComponent(transactionId)}/shipment`, {
+      method: 'POST',
+      body: { schemaVersion: 1, ...input },
+      idempotencyKey,
+      signal,
+    });
+  }
+
+  async getShipment(transactionId, options = {}) {
+    return this.request(`/v1/transactions/${encodeURIComponent(transactionId)}/shipment`, options);
+  }
+
+  async listReturns(transactionId, options = {}) {
+    return this.request(`/v1/transactions/${encodeURIComponent(transactionId)}/returns`, options);
   }
 
   // Backward-compatible alias for v0.2 clients. The response is an evidence

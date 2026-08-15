@@ -3,7 +3,7 @@
   "info": {
     "title": "PackProof API",
     "version": "1.0.0",
-    "description": "The contract for PackProof's versioned merchant transaction and public page-declared commerce-handoff API. Transaction and handoff identifiers never confer merchant authority, and API responses intentionally exclude internal persistence, support, secret, and forensic-only fields."
+    "description": "The contract for PackProof's versioned merchant, Connect, and claims-review API. Transaction, session, and handoff identifiers never confer merchant authority. Responses inventory evidence, hashes, and layered assurance; they do not authenticate items, prove custody, decide fraud or fault, or guarantee a dispute outcome. Internal persistence, support, secret, and forensic-only fields are excluded."
   },
   "servers": [
     {
@@ -16,7 +16,13 @@
     { "name": "Commerce Handoffs" },
     { "name": "Transactions" },
     { "name": "Participant Claims" },
-    { "name": "Evidence Sessions" }
+    { "name": "Evidence Sessions" },
+    { "name": "Evidence" },
+    { "name": "Reports" },
+    { "name": "Shipments" },
+    { "name": "Returns" },
+    { "name": "Connect Sessions" },
+    { "name": "Claims Review" }
   ],
   "paths": {
     "/v1/health": {
@@ -354,6 +360,266 @@
           "500": { "$ref": "#/components/responses/InternalError" }
         }
       }
+    },
+    "/v1/transactions/{transactionId}/evidence": {
+      "get": {
+        "operationId": "listEvidence",
+        "tags": ["Evidence"],
+        "summary": "List transaction evidence artifacts",
+        "description": "Returns the organization-authorized inventory of captured evidence metadata, hashes, and layered assurance. Storage paths, uploader identities, and forensic-only fields are excluded. This is not item authentication or a dispute outcome.",
+        "security": [{ "merchantApiKey": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/AccessibleTransactionId" }],
+        "responses": {
+          "200": { "$ref": "#/components/responses/EvidenceListRetrieved" },
+          "400": { "$ref": "#/components/responses/InvalidRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/v1/transactions/{transactionId}/evidence/{artifactId}": {
+      "get": {
+        "operationId": "getEvidence",
+        "tags": ["Evidence"],
+        "summary": "Retrieve one evidence artifact",
+        "security": [{ "merchantApiKey": [] }],
+        "parameters": [
+          { "$ref": "#/components/parameters/AccessibleTransactionId" },
+          { "$ref": "#/components/parameters/EvidenceArtifactId" }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/EvidenceRetrieved" },
+          "400": { "$ref": "#/components/responses/InvalidRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/v1/transactions/{transactionId}/timeline": {
+      "get": {
+        "operationId": "getTimeline",
+        "tags": ["Transactions"],
+        "summary": "Retrieve the public audit timeline",
+        "description": "Returns participant-visible timeline summaries. Internal actor identifiers are excluded.",
+        "security": [{ "merchantApiKey": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/AccessibleTransactionId" }],
+        "responses": {
+          "200": { "$ref": "#/components/responses/TimelineRetrieved" },
+          "400": { "$ref": "#/components/responses/InvalidRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/v1/transactions/{transactionId}/review-package": {
+      "get": {
+        "operationId": "getReviewPackage",
+        "tags": ["Claims Review"],
+        "summary": "Retrieve a claims-review evidence package",
+        "description": "Organizes terms, protocol completeness, hashed evidence, shipment/return records, and timeline for authorized human review. Documentation categories are filing labels only. The package never states fraud, fault, authenticity, custody, or a card-network, carrier, marketplace, or payment disposition.",
+        "security": [{ "merchantApiKey": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/AccessibleTransactionId" }],
+        "responses": {
+          "200": { "$ref": "#/components/responses/ReviewPackageRetrieved" },
+          "400": { "$ref": "#/components/responses/InvalidRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/v1/transactions/{transactionId}/reports": {
+      "post": {
+        "operationId": "createEvidenceReport",
+        "tags": ["Reports"],
+        "summary": "Create or replay a presentation dossier",
+        "description": "Generates a presentation-only PDF dossier from retained originals and manifests. The dossier does not replace native evidence. A short-lived download URL is included and expires after 15 minutes.",
+        "security": [{ "merchantApiKey": [] }],
+        "parameters": [
+          { "$ref": "#/components/parameters/AccessibleTransactionId" },
+          { "$ref": "#/components/parameters/IdempotencyKey" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateEvidenceReportRequest" } } }
+        },
+        "responses": {
+          "201": { "$ref": "#/components/responses/EvidenceReportCreated" },
+          "200": { "$ref": "#/components/responses/EvidenceReportReplayed" },
+          "400": { "$ref": "#/components/responses/InvalidRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "413": { "$ref": "#/components/responses/RequestTooLarge" },
+          "415": { "$ref": "#/components/responses/UnsupportedMediaType" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/v1/transactions/{transactionId}/reports/{reportId}": {
+      "get": {
+        "operationId": "getEvidenceReport",
+        "tags": ["Reports"],
+        "summary": "Retrieve a presentation dossier and short-lived URL",
+        "security": [{ "merchantApiKey": [] }],
+        "parameters": [
+          { "$ref": "#/components/parameters/AccessibleTransactionId" },
+          { "$ref": "#/components/parameters/EvidenceReportId" }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/EvidenceReportRetrieved" },
+          "400": { "$ref": "#/components/responses/InvalidRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/v1/transactions/{transactionId}/shipment": {
+      "get": {
+        "operationId": "getShipment",
+        "tags": ["Shipments"],
+        "summary": "Retrieve the associated shipment",
+        "description": "Returns merchant-asserted carrier and tracking context. This is not carrier custody proof.",
+        "security": [{ "merchantApiKey": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/AccessibleTransactionId" }],
+        "responses": {
+          "200": { "$ref": "#/components/responses/ShipmentRetrieved" },
+          "400": { "$ref": "#/components/responses/InvalidRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      },
+      "post": {
+        "operationId": "associateShipment",
+        "tags": ["Shipments"],
+        "summary": "Associate tracking after packing and seal evidence",
+        "description": "Records merchant-asserted carrier tracking only after a server-finalized packing video and high-resolution seal reference are present with no recorded byte-integrity mismatch. Tracking association is not a custody, delivery, or fraud determination.",
+        "security": [{ "merchantApiKey": [] }],
+        "parameters": [
+          { "$ref": "#/components/parameters/AccessibleTransactionId" },
+          { "$ref": "#/components/parameters/IdempotencyKey" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AssociateShipmentRequest" } } }
+        },
+        "responses": {
+          "201": { "$ref": "#/components/responses/ShipmentCreated" },
+          "200": { "$ref": "#/components/responses/ShipmentReplayed" },
+          "400": { "$ref": "#/components/responses/InvalidRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "413": { "$ref": "#/components/responses/RequestTooLarge" },
+          "415": { "$ref": "#/components/responses/UnsupportedMediaType" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/v1/transactions/{transactionId}/returns": {
+      "get": {
+        "operationId": "listReturns",
+        "tags": ["Returns"],
+        "summary": "List return passports",
+        "security": [{ "merchantApiKey": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/AccessibleTransactionId" }],
+        "responses": {
+          "200": { "$ref": "#/components/responses/ReturnListRetrieved" },
+          "400": { "$ref": "#/components/responses/InvalidRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/v1/transactions/{transactionId}/returns/{returnPassportId}": {
+      "get": {
+        "operationId": "getReturn",
+        "tags": ["Returns"],
+        "summary": "Retrieve one return passport",
+        "security": [{ "merchantApiKey": [] }],
+        "parameters": [
+          { "$ref": "#/components/parameters/AccessibleTransactionId" },
+          { "$ref": "#/components/parameters/ReturnPassportId" }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/ReturnRetrieved" },
+          "400": { "$ref": "#/components/responses/InvalidRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/v1/connect/sessions": {
+      "post": {
+        "operationId": "createConnectSession",
+        "tags": ["Connect Sessions"],
+        "summary": "Create or replay an order-bound Connect session",
+        "description": "Creates a seven-day order-bound capture session for an API client bound to an active PackProof Connect integration. This is merchant-server attested order binding, not the page-declared Button path. The capture URL and token are returned only here and on exact idempotent replay.",
+        "security": [{ "merchantApiKey": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/IdempotencyKey" }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateConnectSessionRequest" } } }
+        },
+        "responses": {
+          "201": { "$ref": "#/components/responses/ConnectSessionCreated" },
+          "200": { "$ref": "#/components/responses/ConnectSessionReplayed" },
+          "400": { "$ref": "#/components/responses/InvalidRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "413": { "$ref": "#/components/responses/RequestTooLarge" },
+          "415": { "$ref": "#/components/responses/UnsupportedMediaType" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/v1/connect/sessions/{sessionId}": {
+      "get": {
+        "operationId": "getConnectSession",
+        "tags": ["Connect Sessions"],
+        "summary": "Retrieve a Connect session",
+        "description": "Returns session status and the bound transaction identifier after seller redemption. The handoff token is never returned on GET.",
+        "security": [{ "merchantApiKey": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/ConnectSessionId" }],
+        "responses": {
+          "200": { "$ref": "#/components/responses/ConnectSessionRetrieved" },
+          "400": { "$ref": "#/components/responses/InvalidRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
     }
   },
   "components": {
@@ -410,6 +676,37 @@
         "in": "path",
         "required": true,
         "schema": { "type": "string", "pattern": "^es_[a-f0-9]{40}$" }
+      },
+      "AccessibleTransactionId": {
+        "name": "transactionId",
+        "in": "path",
+        "required": true,
+        "description": "A merchant transaction identifier or an accepted Connect-origin transaction identifier. Possession of the identifier does not grant access.",
+        "schema": { "type": "string", "minLength": 10, "maxLength": 128, "pattern": "^(txn_[a-f0-9]{32}|[A-Za-z0-9_-]{10,128})$" }
+      },
+      "EvidenceArtifactId": {
+        "name": "artifactId",
+        "in": "path",
+        "required": true,
+        "schema": { "type": "string", "minLength": 8, "maxLength": 128, "pattern": "^[A-Za-z0-9_-]{8,128}$" }
+      },
+      "EvidenceReportId": {
+        "name": "reportId",
+        "in": "path",
+        "required": true,
+        "schema": { "type": "string", "minLength": 8, "maxLength": 128, "pattern": "^[A-Za-z0-9_-]{8,128}$" }
+      },
+      "ReturnPassportId": {
+        "name": "returnPassportId",
+        "in": "path",
+        "required": true,
+        "schema": { "type": "string", "minLength": 8, "maxLength": 128, "pattern": "^[A-Za-z0-9_-]{8,128}$" }
+      },
+      "ConnectSessionId": {
+        "name": "sessionId",
+        "in": "path",
+        "required": true,
+        "schema": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
       }
     },
     "headers": {
@@ -875,6 +1172,310 @@
         "required": ["schemaVersion"],
         "properties": { "schemaVersion": { "const": 1 } }
       },
+      "AssuranceDimension": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["status", "reasonCodes"],
+        "properties": {
+          "status": { "type": "string" },
+          "reasonCodes": { "type": "array", "items": { "type": "string" } }
+        }
+      },
+      "AssuranceAssessment": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["acquisitionQuality", "appDeviceContext", "byteIntegrity", "physicalCorrespondence", "carrierContext", "businessLegalRelevance"],
+        "properties": {
+          "acquisitionQuality": { "$ref": "#/components/schemas/AssuranceDimension" },
+          "appDeviceContext": { "$ref": "#/components/schemas/AssuranceDimension" },
+          "byteIntegrity": { "$ref": "#/components/schemas/AssuranceDimension" },
+          "physicalCorrespondence": { "$ref": "#/components/schemas/AssuranceDimension" },
+          "carrierContext": { "$ref": "#/components/schemas/AssuranceDimension" },
+          "businessLegalRelevance": { "$ref": "#/components/schemas/AssuranceDimension" }
+        },
+        "description": "Layered observation metadata. physicalCorrespondence is always NOT_AVAILABLE and businessLegalRelevance is always REVIEW_REQUIRED in this release. These dimensions are not a MATCH/NON_MATCH verdict."
+      },
+      "EvidenceArtifact": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "object", "schemaVersion", "transactionId", "type", "status", "role", "contentType", "sizeBytes", "sha256", "manifestSha256", "evidenceBundleSha256", "manifestAuthenticationScope", "workflowReady", "assurance", "carrierTrackingMatchStatus", "finalizedAt", "createdAt", "updatedAt"],
+        "properties": {
+          "id": { "type": "string" },
+          "object": { "const": "evidence_artifact" },
+          "schemaVersion": { "const": 1 },
+          "transactionId": { "type": "string" },
+          "type": { "type": "string" },
+          "status": { "type": "string", "enum": ["RESERVED", "UPLOADED", "FINALIZED", "QUARANTINED", "FAILED"] },
+          "role": { "type": ["string", "null"], "enum": ["SELLER", "BUYER", "RECEIVER", "RETURN_SENDER", "RETURN_RECIPIENT", "WITNESS", null] },
+          "contentType": { "type": ["string", "null"] },
+          "sizeBytes": { "type": ["integer", "null"] },
+          "sha256": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$" },
+          "manifestSha256": { "type": ["string", "null"] },
+          "evidenceBundleSha256": { "type": ["string", "null"] },
+          "manifestAuthenticationScope": { "type": ["string", "null"], "enum": ["PACKPROOF_SERVICE_ONLY", null] },
+          "workflowReady": { "type": "boolean" },
+          "assurance": { "oneOf": [{ "$ref": "#/components/schemas/AssuranceAssessment" }, { "type": "null" }] },
+          "carrierTrackingMatchStatus": { "type": ["string", "null"] },
+          "finalizedAt": { "type": ["string", "null"], "format": "date-time" },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "TimelineEvent": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "object", "schemaVersion", "transactionId", "type", "summary", "occurredAt"],
+        "properties": {
+          "id": { "type": "string" },
+          "object": { "const": "timeline_event" },
+          "schemaVersion": { "const": 1 },
+          "transactionId": { "type": "string" },
+          "type": { "type": "string" },
+          "summary": { "type": "string" },
+          "occurredAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "Shipment": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "object", "schemaVersion", "transactionId", "carrier", "trackingNumber", "assertionSource", "status", "packingEvidenceId", "sealEvidenceId", "labelEvidenceMatchStatus", "shippedAt", "createdAt", "updatedAt"],
+        "properties": {
+          "id": { "type": "string" },
+          "object": { "const": "shipment" },
+          "schemaVersion": { "const": 1 },
+          "transactionId": { "type": "string" },
+          "carrier": { "type": "string" },
+          "trackingNumber": { "type": "string" },
+          "assertionSource": { "const": "MERCHANT" },
+          "status": { "type": "string", "enum": ["ASSOCIATED", "IN_TRANSIT"] },
+          "packingEvidenceId": { "type": ["string", "null"] },
+          "sealEvidenceId": { "type": ["string", "null"] },
+          "labelEvidenceMatchStatus": { "type": ["string", "null"], "enum": ["MATCHED", "MISMATCH", "NOT_SCANNED", null] },
+          "shippedAt": { "type": ["string", "null"], "format": "date-time" },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" }
+        },
+        "description": "Merchant-asserted tracking context. It is not carrier custody proof."
+      },
+      "ReturnPassport": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "object", "schemaVersion", "transactionId", "reason", "status", "originalEvidenceHashes", "shippingCarrier", "shippingTrackingNumber", "createdAt", "updatedAt"],
+        "properties": {
+          "id": { "type": "string" },
+          "object": { "const": "return_passport" },
+          "schemaVersion": { "const": 1 },
+          "transactionId": { "type": "string" },
+          "reason": { "type": "string" },
+          "status": { "type": "string" },
+          "originalEvidenceHashes": { "type": "array", "items": { "type": "string", "pattern": "^[a-f0-9]{64}$" } },
+          "shippingCarrier": { "type": ["string", "null"] },
+          "shippingTrackingNumber": { "type": ["string", "null"] },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "EvidenceReport": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "object", "schemaVersion", "transactionId", "status", "reportSha256", "evidenceCount", "presentationOnly", "generatedAt", "downloadUrl", "downloadUrlExpiresAt"],
+        "properties": {
+          "id": { "type": "string" },
+          "object": { "const": "evidence_report" },
+          "schemaVersion": { "const": 1 },
+          "transactionId": { "type": "string" },
+          "status": { "const": "AVAILABLE" },
+          "reportSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+          "evidenceCount": { "type": "integer", "minimum": 0 },
+          "presentationOnly": { "const": true },
+          "generatedAt": { "type": "string", "format": "date-time" },
+          "downloadUrl": { "type": ["string", "null"], "format": "uri" },
+          "downloadUrlExpiresAt": { "type": ["string", "null"], "format": "date-time" }
+        },
+        "description": "A presentation-only dossier. Native evidence and manifests remain the source records."
+      },
+      "ReviewPackage": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "object", "schemaVersion", "transactionId", "title", "merchantReference", "status", "amount", "terms", "protocolCompleteness", "documentationCategories", "evidence", "shipment", "returns", "latestReport", "timeline", "limitations", "createdAt", "updatedAt"],
+        "properties": {
+          "id": { "type": "string" },
+          "object": { "const": "review_package" },
+          "schemaVersion": { "const": 1 },
+          "transactionId": { "type": "string" },
+          "title": { "type": "string" },
+          "merchantReference": { "type": ["string", "null"] },
+          "status": { "type": "string" },
+          "amount": { "oneOf": [{ "$ref": "#/components/schemas/Amount" }, { "type": "null" }] },
+          "terms": { "type": ["object", "null"], "additionalProperties": false, "properties": {
+            "saleType": { "type": "string" },
+            "shippingResponsibility": { "type": "string" },
+            "returns": { "type": "string" },
+            "returnWindowDays": { "type": "integer" },
+            "customTerms": { "type": "string" }
+          }},
+          "protocolCompleteness": { "type": "object", "additionalProperties": false, "required": ["sellerPackingVideo", "sellerSealReference", "buyerArrivalObservation", "buyerUnboxing", "returnPackingVideo", "returnSealReference"], "properties": {
+            "sellerPackingVideo": { "type": "string", "enum": ["ABSENT", "PRESENT", "PRESENT_WITH_LIMITATIONS"] },
+            "sellerSealReference": { "type": "string", "enum": ["ABSENT", "PRESENT", "PRESENT_WITH_LIMITATIONS"] },
+            "buyerArrivalObservation": { "type": "string", "enum": ["ABSENT", "PRESENT", "PRESENT_WITH_LIMITATIONS"] },
+            "buyerUnboxing": { "type": "string", "enum": ["ABSENT", "PRESENT", "PRESENT_WITH_LIMITATIONS"] },
+            "returnPackingVideo": { "type": "string", "enum": ["ABSENT", "PRESENT", "PRESENT_WITH_LIMITATIONS"] },
+            "returnSealReference": { "type": "string", "enum": ["ABSENT", "PRESENT", "PRESENT_WITH_LIMITATIONS"] }
+          }},
+          "documentationCategories": { "type": "array", "items": { "type": "object", "additionalProperties": false, "required": ["category", "present", "artifactIds"], "properties": {
+            "category": { "type": "string", "enum": ["TERMS_AND_CONDITIONS", "ITEM_AND_ORDER_DESCRIPTION", "PACKING_AND_SEAL_REFERENCE", "ARRIVAL_OR_DELIVERY_OBSERVATION", "RETURN_DOCUMENTATION", "HASHED_EVIDENCE_INVENTORY", "AUDIT_TIMELINE"] },
+            "present": { "type": "boolean" },
+            "artifactIds": { "type": "array", "items": { "type": "string" } }
+          }}},
+          "evidence": { "type": "array", "items": { "$ref": "#/components/schemas/EvidenceArtifact" } },
+          "shipment": { "oneOf": [{ "$ref": "#/components/schemas/Shipment" }, { "type": "null" }] },
+          "returns": { "type": "array", "items": { "$ref": "#/components/schemas/ReturnPassport" } },
+          "latestReport": { "type": ["object", "null"] },
+          "timeline": { "type": "array", "items": { "$ref": "#/components/schemas/TimelineEvent" } },
+          "limitations": { "type": "object", "additionalProperties": false, "required": ["physicalCorrespondence", "businessLegalRelevance", "doesNotAuthenticateItem", "doesNotProveCustody", "doesNotDecideFraudOrFault", "doesNotGuaranteeDisputeOutcome", "dossierIsPresentationOnly", "manifestAuthenticationScope", "humanReviewDisclaimer"], "properties": {
+            "physicalCorrespondence": { "const": "NOT_AVAILABLE" },
+            "businessLegalRelevance": { "const": "REVIEW_REQUIRED" },
+            "doesNotAuthenticateItem": { "const": true },
+            "doesNotProveCustody": { "const": true },
+            "doesNotDecideFraudOrFault": { "const": true },
+            "doesNotGuaranteeDisputeOutcome": { "const": true },
+            "dossierIsPresentationOnly": { "const": true },
+            "manifestAuthenticationScope": { "const": "PACKPROOF_SERVICE_ONLY" },
+            "humanReviewDisclaimer": { "type": "string" }
+          }},
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "ConnectSession": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "object", "schemaVersion", "platform", "externalOrderId", "status", "transactionId", "commerceContextId", "itemTitle", "amount", "trackingNumber", "carrier", "expiresAt", "createdAt"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+          "object": { "const": "connect_session" },
+          "schemaVersion": { "const": 1 },
+          "platform": { "type": "string" },
+          "externalOrderId": { "type": "string" },
+          "status": { "type": "string" },
+          "transactionId": { "type": ["string", "null"] },
+          "commerceContextId": { "type": ["string", "null"] },
+          "itemTitle": { "type": "string" },
+          "amount": { "$ref": "#/components/schemas/Amount" },
+          "trackingNumber": { "type": ["string", "null"] },
+          "carrier": { "type": ["string", "null"] },
+          "expiresAt": { "type": "string", "format": "date-time" },
+          "createdAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "CreateConnectSessionRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["schemaVersion", "platform", "externalOrderId", "externalSellerId", "itemTitle", "amount", "callbackUrl"],
+        "properties": {
+          "schemaVersion": { "const": 1 },
+          "platform": { "type": "string", "minLength": 2, "maxLength": 80 },
+          "externalOrderId": { "type": "string", "minLength": 1, "maxLength": 200 },
+          "externalSellerId": { "type": "string", "minLength": 1, "maxLength": 200 },
+          "itemTitle": { "type": "string", "minLength": 1, "maxLength": 300 },
+          "itemDescription": { "type": "string", "maxLength": 3000 },
+          "amount": { "$ref": "#/components/schemas/Amount" },
+          "trackingNumber": { "type": "string", "minLength": 3, "maxLength": 160 },
+          "carrier": { "type": "string", "minLength": 1, "maxLength": 80 },
+          "declaredWeightGrams": { "type": "integer", "minimum": 0, "maximum": 2000000 },
+          "callbackUrl": { "type": "string", "format": "uri" }
+        }
+      },
+      "ConnectCaptureInstructions": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["state", "captureUrl", "token", "expiresAt"],
+        "properties": {
+          "state": { "const": "PENDING_REDEMPTION" },
+          "captureUrl": { "type": "string", "format": "uri" },
+          "token": { "type": "string", "writeOnly": true },
+          "expiresAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "CreateConnectSessionResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["data", "captureInstructions"],
+        "properties": {
+          "data": { "$ref": "#/components/schemas/ConnectSession" },
+          "captureInstructions": { "$ref": "#/components/schemas/ConnectCaptureInstructions" }
+        }
+      },
+      "AssociateShipmentRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["schemaVersion", "carrier", "trackingNumber"],
+        "properties": {
+          "schemaVersion": { "const": 1 },
+          "carrier": { "type": "string", "minLength": 1, "maxLength": 80 },
+          "trackingNumber": { "type": "string", "minLength": 3, "maxLength": 160 }
+        }
+      },
+      "CreateEvidenceReportRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["schemaVersion"],
+        "properties": { "schemaVersion": { "const": 1 } }
+      },
+      "EvidenceListResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["data"],
+        "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/EvidenceArtifact" } } }
+      },
+      "EvidenceResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["data"],
+        "properties": { "data": { "$ref": "#/components/schemas/EvidenceArtifact" } }
+      },
+      "TimelineResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["data"],
+        "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/TimelineEvent" } } }
+      },
+      "ReviewPackageResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["data"],
+        "properties": { "data": { "$ref": "#/components/schemas/ReviewPackage" } }
+      },
+      "EvidenceReportResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["data"],
+        "properties": { "data": { "$ref": "#/components/schemas/EvidenceReport" } }
+      },
+      "ShipmentResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["data"],
+        "properties": { "data": { "$ref": "#/components/schemas/Shipment" } }
+      },
+      "ReturnListResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["data"],
+        "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/ReturnPassport" } } }
+      },
+      "ReturnResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["data"],
+        "properties": { "data": { "$ref": "#/components/schemas/ReturnPassport" } }
+      },
+      "ConnectSessionResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["data"],
+        "properties": { "data": { "$ref": "#/components/schemas/ConnectSession" } }
+      },
       "ErrorDetail": {
         "type": "object",
         "additionalProperties": false,
@@ -1057,6 +1658,81 @@
           "RateLimit-Reset": { "$ref": "#/components/headers/RateLimitReset" }
         },
         "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EvidenceSessionResponse" } } }
+      },
+      "EvidenceListRetrieved": {
+        "description": "The organization-authorized evidence inventory.",
+        "headers": { "X-Request-Id": { "$ref": "#/components/headers/XRequestId" }, "RateLimit-Limit": { "$ref": "#/components/headers/RateLimitLimit" }, "RateLimit-Remaining": { "$ref": "#/components/headers/RateLimitRemaining" }, "RateLimit-Reset": { "$ref": "#/components/headers/RateLimitReset" } },
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EvidenceListResponse" } } }
+      },
+      "EvidenceRetrieved": {
+        "description": "The organization-authorized evidence artifact.",
+        "headers": { "X-Request-Id": { "$ref": "#/components/headers/XRequestId" }, "RateLimit-Limit": { "$ref": "#/components/headers/RateLimitLimit" }, "RateLimit-Remaining": { "$ref": "#/components/headers/RateLimitRemaining" }, "RateLimit-Reset": { "$ref": "#/components/headers/RateLimitReset" } },
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EvidenceResponse" } } }
+      },
+      "TimelineRetrieved": {
+        "description": "The public audit timeline.",
+        "headers": { "X-Request-Id": { "$ref": "#/components/headers/XRequestId" }, "RateLimit-Limit": { "$ref": "#/components/headers/RateLimitLimit" }, "RateLimit-Remaining": { "$ref": "#/components/headers/RateLimitRemaining" }, "RateLimit-Reset": { "$ref": "#/components/headers/RateLimitReset" } },
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TimelineResponse" } } }
+      },
+      "ReviewPackageRetrieved": {
+        "description": "The claims-review evidence package. It organizes documentation; it does not decide a claim.",
+        "headers": { "X-Request-Id": { "$ref": "#/components/headers/XRequestId" }, "RateLimit-Limit": { "$ref": "#/components/headers/RateLimitLimit" }, "RateLimit-Remaining": { "$ref": "#/components/headers/RateLimitRemaining" }, "RateLimit-Reset": { "$ref": "#/components/headers/RateLimitReset" } },
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ReviewPackageResponse" } } }
+      },
+      "EvidenceReportCreated": {
+        "description": "A presentation dossier was generated.",
+        "headers": { "X-Request-Id": { "$ref": "#/components/headers/XRequestId" }, "Idempotent-Replayed": { "$ref": "#/components/headers/IdempotentReplayed" }, "RateLimit-Limit": { "$ref": "#/components/headers/RateLimitLimit" }, "RateLimit-Remaining": { "$ref": "#/components/headers/RateLimitRemaining" }, "RateLimit-Reset": { "$ref": "#/components/headers/RateLimitReset" } },
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EvidenceReportResponse" } } }
+      },
+      "EvidenceReportReplayed": {
+        "description": "The original presentation dossier for an exact idempotent retry.",
+        "headers": { "X-Request-Id": { "$ref": "#/components/headers/XRequestId" }, "Idempotent-Replayed": { "$ref": "#/components/headers/IdempotentReplayed" }, "RateLimit-Limit": { "$ref": "#/components/headers/RateLimitLimit" }, "RateLimit-Remaining": { "$ref": "#/components/headers/RateLimitRemaining" }, "RateLimit-Reset": { "$ref": "#/components/headers/RateLimitReset" } },
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EvidenceReportResponse" } } }
+      },
+      "EvidenceReportRetrieved": {
+        "description": "The presentation dossier metadata and a freshly signed short-lived URL.",
+        "headers": { "X-Request-Id": { "$ref": "#/components/headers/XRequestId" }, "RateLimit-Limit": { "$ref": "#/components/headers/RateLimitLimit" }, "RateLimit-Remaining": { "$ref": "#/components/headers/RateLimitRemaining" }, "RateLimit-Reset": { "$ref": "#/components/headers/RateLimitReset" } },
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EvidenceReportResponse" } } }
+      },
+      "ShipmentRetrieved": {
+        "description": "The associated merchant-asserted shipment.",
+        "headers": { "X-Request-Id": { "$ref": "#/components/headers/XRequestId" }, "RateLimit-Limit": { "$ref": "#/components/headers/RateLimitLimit" }, "RateLimit-Remaining": { "$ref": "#/components/headers/RateLimitRemaining" }, "RateLimit-Reset": { "$ref": "#/components/headers/RateLimitReset" } },
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ShipmentResponse" } } }
+      },
+      "ShipmentCreated": {
+        "description": "Tracking was associated after packing and seal evidence.",
+        "headers": { "X-Request-Id": { "$ref": "#/components/headers/XRequestId" }, "Idempotent-Replayed": { "$ref": "#/components/headers/IdempotentReplayed" }, "RateLimit-Limit": { "$ref": "#/components/headers/RateLimitLimit" }, "RateLimit-Remaining": { "$ref": "#/components/headers/RateLimitRemaining" }, "RateLimit-Reset": { "$ref": "#/components/headers/RateLimitReset" } },
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ShipmentResponse" } } }
+      },
+      "ShipmentReplayed": {
+        "description": "The original shipment association for an exact idempotent retry.",
+        "headers": { "X-Request-Id": { "$ref": "#/components/headers/XRequestId" }, "Idempotent-Replayed": { "$ref": "#/components/headers/IdempotentReplayed" }, "RateLimit-Limit": { "$ref": "#/components/headers/RateLimitLimit" }, "RateLimit-Remaining": { "$ref": "#/components/headers/RateLimitRemaining" }, "RateLimit-Reset": { "$ref": "#/components/headers/RateLimitReset" } },
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ShipmentResponse" } } }
+      },
+      "ReturnListRetrieved": {
+        "description": "Return passports for the authorized transaction.",
+        "headers": { "X-Request-Id": { "$ref": "#/components/headers/XRequestId" }, "RateLimit-Limit": { "$ref": "#/components/headers/RateLimitLimit" }, "RateLimit-Remaining": { "$ref": "#/components/headers/RateLimitRemaining" }, "RateLimit-Reset": { "$ref": "#/components/headers/RateLimitReset" } },
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ReturnListResponse" } } }
+      },
+      "ReturnRetrieved": {
+        "description": "One return passport.",
+        "headers": { "X-Request-Id": { "$ref": "#/components/headers/XRequestId" }, "RateLimit-Limit": { "$ref": "#/components/headers/RateLimitLimit" }, "RateLimit-Remaining": { "$ref": "#/components/headers/RateLimitRemaining" }, "RateLimit-Reset": { "$ref": "#/components/headers/RateLimitReset" } },
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ReturnResponse" } } }
+      },
+      "ConnectSessionCreated": {
+        "description": "A new order-bound Connect session was created.",
+        "headers": { "X-Request-Id": { "$ref": "#/components/headers/XRequestId" }, "Idempotent-Replayed": { "$ref": "#/components/headers/IdempotentReplayed" }, "RateLimit-Limit": { "$ref": "#/components/headers/RateLimitLimit" }, "RateLimit-Remaining": { "$ref": "#/components/headers/RateLimitRemaining" }, "RateLimit-Reset": { "$ref": "#/components/headers/RateLimitReset" } },
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateConnectSessionResponse" } } }
+      },
+      "ConnectSessionReplayed": {
+        "description": "The original Connect session for an exact idempotent retry.",
+        "headers": { "X-Request-Id": { "$ref": "#/components/headers/XRequestId" }, "Idempotent-Replayed": { "$ref": "#/components/headers/IdempotentReplayed" }, "RateLimit-Limit": { "$ref": "#/components/headers/RateLimitLimit" }, "RateLimit-Remaining": { "$ref": "#/components/headers/RateLimitRemaining" }, "RateLimit-Reset": { "$ref": "#/components/headers/RateLimitReset" } },
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateConnectSessionResponse" } } }
+      },
+      "ConnectSessionRetrieved": {
+        "description": "The organization-authorized Connect session.",
+        "headers": { "X-Request-Id": { "$ref": "#/components/headers/XRequestId" }, "RateLimit-Limit": { "$ref": "#/components/headers/RateLimitLimit" }, "RateLimit-Remaining": { "$ref": "#/components/headers/RateLimitRemaining" }, "RateLimit-Reset": { "$ref": "#/components/headers/RateLimitReset" } },
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ConnectSessionResponse" } } }
       },
       "InvalidRequest": { "$ref": "#/components/responses/Error400" },
       "Unauthorized": { "$ref": "#/components/responses/Error401" },

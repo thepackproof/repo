@@ -8,14 +8,26 @@ import {
   db,
   participantHandoffSigningSecret,
   publicHandoffSigningSecret,
+  storage,
 } from '../../config';
+import { CommerceContextApplicationService } from '../../application/v1/commerce-context-service';
+import { MerchantConnectApplicationService } from '../../application/v1/merchant-connect-service';
+import { MerchantEvidenceApplicationService } from '../../application/v1/merchant-evidence-service';
 import { PublicCommerceHandoffApplicationService } from '../../application/v1/public-commerce-handoff-service';
 import { ParticipantCaptureApplicationService } from '../../application/v1/participant-capture-service';
+import { generateEvidencePacket } from '../../evidence';
+import { HmacConnectSessionTokenIssuer } from '../../infrastructure/crypto/connect-session-token-issuer';
 import { HmacParticipantHandoffTokenIssuer } from '../../infrastructure/crypto/participant-handoff-token-issuer';
 import { HmacPublicHandoffTokenIssuer } from '../../infrastructure/crypto/public-handoff-token-issuer';
 import { Sha256TokenVerifier } from '../../infrastructure/crypto/sha256-token-verifier';
+import { FirestoreCommerceContextRepository } from '../../infrastructure/firebase/v1/commerce-context-repository';
+import {
+  FirestoreMerchantConnectAdapter,
+  FirestoreMerchantEvidenceRepository,
+} from '../../infrastructure/firebase/v1/merchant-evidence-repository';
 import { FirestorePublicCommerceHandoffRepository } from '../../infrastructure/firebase/v1/public-commerce-handoff-repository';
 import { FirestoreParticipantCaptureRepository } from '../../infrastructure/firebase/v1/participant-capture-repository';
+import { DnsPublicHttpsCallbackValidator } from '../../infrastructure/net/public-https-callback';
 import { createApiV1App } from './app';
 import { FirestoreAuditWriter, FirestoreIdempotencyStore, FirestoreRateLimiter } from './controls';
 import type { ApiEnvironment } from './core';
@@ -72,6 +84,45 @@ function productionApp() {
       },
     },
   );
+  const runtimeConfig = {
+    get environment(): ApiEnvironment {
+      return configuredEnvironment();
+    },
+  };
+  const merchantEvidenceService = new MerchantEvidenceApplicationService(
+    new FirestoreMerchantEvidenceRepository(db),
+    new FirestoreIdempotencyStore(db),
+    new FirestoreAuditWriter(db),
+    new AuthorizationService(),
+    {
+      generate(transactionId, generatedBy) {
+        return generateEvidencePacket(transactionId, generatedBy);
+      },
+    },
+    {
+      async sign(storagePath, expiresAt) {
+        const [url] = await storage.bucket().file(storagePath).getSignedUrl({
+          action: 'read',
+          expires: expiresAt.getTime(),
+        });
+        return url;
+      },
+    },
+    runtimeConfig,
+  );
+  const connectAdapter = new FirestoreMerchantConnectAdapter(db);
+  const merchantConnectService = new MerchantConnectApplicationService(
+    new CommerceContextApplicationService(
+      new FirestoreCommerceContextRepository(db),
+      new HmacConnectSessionTokenIssuer(),
+    ),
+    connectAdapter,
+    connectAdapter,
+    new DnsPublicHttpsCallbackValidator(),
+    new AuthorizationService(),
+    runtimeConfig,
+    () => connectLinkBaseUrl.value(),
+  );
   return createApiV1App({
     authenticator,
     participantAuthenticator: new FirebaseParticipantAuthenticator(adminAuth, adminAppCheck, db),
@@ -80,6 +131,8 @@ function productionApp() {
     transactionService,
     participantCaptureService,
     publicCommerceHandoffService,
+    merchantEvidenceService,
+    merchantConnectService,
     publicHandoffReviewBaseUrl: () => connectLinkBaseUrl.value(),
     participantHandoffBaseUrl: () => connectLinkBaseUrl.value(),
   });

@@ -51,3 +51,29 @@ npm --prefix functions run provision:connect -- --project YOUR_FIREBASE_PROJECT 
 The CLI applies the same public-HTTPS and DNS restrictions, writes only the API-key hash, and prints the API key and callback-signing secret once.
 
 See `docs/openapi/packproof-connect.yaml` and `sdk/javascript/`.
+
+## Headless v1 merchant API
+
+Merchants, commerce platforms, and claims-review tools that already hold a PackProof merchant credential can use the versioned `/v1` contract instead of, or in addition to, the legacy `/api/connect/orders` route. The v1 routes are documented in `docs/openapi/packproof-api-v1.json`.
+
+### E-commerce platforms
+
+`POST /v1/connect/sessions` creates the same order-bound Connect session as the legacy route when the API client is bound to an active Connect integration (`integrationId` on the API client). The response is a v1 `connect_session` plus one-time `captureInstructions`. `GET /v1/connect/sessions/{sessionId}` returns status and the redeemed `transactionId` without the handoff token.
+
+Bind the client at provision time:
+
+```powershell
+npm.cmd --prefix functions run provision:api-client -- --organization-id org_example --organization-name 'Example Merchant' --client-id client_example_backend --client-name 'Example backend' --environment sandbox --scopes transactions:read,transactions:write,evidence:read,shipments:read,shipments:write --integration-id YOUR_CONNECT_INTEGRATION_ID
+```
+
+The public PackProof Button remains `PAGE_DECLARED` and cannot create these sessions.
+
+### Merchants
+
+After participants capture and the Storage trigger finalizes evidence, merchant credentials with `evidence:read` can list artifacts, read hashes and layered assurance, request a presentation dossier, and read return passports. `POST /v1/transactions/{transactionId}/shipment` records merchant-asserted tracking only after a server-finalized packing video and seal reference are present with no recorded byte-integrity mismatch.
+
+### Claims specialists
+
+`GET /v1/transactions/{transactionId}/review-package` organizes terms, protocol completeness, hashed evidence, shipment/return records, and the audit timeline for authorized human review. Documentation categories are filing labels only. The package always states `physicalCorrespondence: NOT_AVAILABLE` and `businessLegalRelevance: REVIEW_REQUIRED`. It does not decide fraud, fault, authenticity, custody, or a card-network, carrier, marketplace, or payment outcome.
+
+General merchant webhook registration remains feature-gated and is not part of this headless slice. Connect's existing bounded `packproof.evidence.finalized` callback is unchanged.

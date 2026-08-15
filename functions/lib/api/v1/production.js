@@ -3,13 +3,21 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.packproofApi = void 0;
 const https_1 = require("firebase-functions/v2/https");
 const config_1 = require("../../config");
+const commerce_context_service_1 = require("../../application/v1/commerce-context-service");
+const merchant_connect_service_1 = require("../../application/v1/merchant-connect-service");
+const merchant_evidence_service_1 = require("../../application/v1/merchant-evidence-service");
 const public_commerce_handoff_service_1 = require("../../application/v1/public-commerce-handoff-service");
 const participant_capture_service_1 = require("../../application/v1/participant-capture-service");
+const evidence_1 = require("../../evidence");
+const connect_session_token_issuer_1 = require("../../infrastructure/crypto/connect-session-token-issuer");
 const participant_handoff_token_issuer_1 = require("../../infrastructure/crypto/participant-handoff-token-issuer");
 const public_handoff_token_issuer_1 = require("../../infrastructure/crypto/public-handoff-token-issuer");
 const sha256_token_verifier_1 = require("../../infrastructure/crypto/sha256-token-verifier");
+const commerce_context_repository_1 = require("../../infrastructure/firebase/v1/commerce-context-repository");
+const merchant_evidence_repository_1 = require("../../infrastructure/firebase/v1/merchant-evidence-repository");
 const public_commerce_handoff_repository_1 = require("../../infrastructure/firebase/v1/public-commerce-handoff-repository");
 const participant_capture_repository_1 = require("../../infrastructure/firebase/v1/participant-capture-repository");
+const public_https_callback_1 = require("../../infrastructure/net/public-https-callback");
 const app_1 = require("./app");
 const controls_1 = require("./controls");
 const firestore_1 = require("./firestore");
@@ -50,6 +58,26 @@ function productionApp() {
             return configuredEnvironment();
         },
     });
+    const runtimeConfig = {
+        get environment() {
+            return configuredEnvironment();
+        },
+    };
+    const merchantEvidenceService = new merchant_evidence_service_1.MerchantEvidenceApplicationService(new merchant_evidence_repository_1.FirestoreMerchantEvidenceRepository(config_1.db), new controls_1.FirestoreIdempotencyStore(config_1.db), new controls_1.FirestoreAuditWriter(config_1.db), new security_1.AuthorizationService(), {
+        generate(transactionId, generatedBy) {
+            return (0, evidence_1.generateEvidencePacket)(transactionId, generatedBy);
+        },
+    }, {
+        async sign(storagePath, expiresAt) {
+            const [url] = await config_1.storage.bucket().file(storagePath).getSignedUrl({
+                action: 'read',
+                expires: expiresAt.getTime(),
+            });
+            return url;
+        },
+    }, runtimeConfig);
+    const connectAdapter = new merchant_evidence_repository_1.FirestoreMerchantConnectAdapter(config_1.db);
+    const merchantConnectService = new merchant_connect_service_1.MerchantConnectApplicationService(new commerce_context_service_1.CommerceContextApplicationService(new commerce_context_repository_1.FirestoreCommerceContextRepository(config_1.db), new connect_session_token_issuer_1.HmacConnectSessionTokenIssuer()), connectAdapter, connectAdapter, new public_https_callback_1.DnsPublicHttpsCallbackValidator(), new security_1.AuthorizationService(), runtimeConfig, () => config_1.connectLinkBaseUrl.value());
     return (0, app_1.createApiV1App)({
         authenticator,
         participantAuthenticator: new participant_security_1.FirebaseParticipantAuthenticator(config_1.adminAuth, config_1.adminAppCheck, config_1.db),
@@ -58,6 +86,8 @@ function productionApp() {
         transactionService,
         participantCaptureService,
         publicCommerceHandoffService,
+        merchantEvidenceService,
+        merchantConnectService,
         publicHandoffReviewBaseUrl: () => config_1.connectLinkBaseUrl.value(),
         participantHandoffBaseUrl: () => config_1.connectLinkBaseUrl.value(),
     });

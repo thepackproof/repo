@@ -21,7 +21,12 @@ const { PublicCommerceHandoffApplicationService } = require('../lib/application/
 const principals = {
   writeA: {
     type: 'MERCHANT_API_CLIENT', credentialId: 'credential-write-a', apiClientId: 'client-a',
-    organizationId: 'org-a', environment: 'sandbox', scopes: ['transactions:read', 'transactions:write', 'participant_claims:write', 'evidence:read', 'evidence:write'],
+    organizationId: 'org-a', environment: 'sandbox', integrationId: 'integration-a',
+    scopes: ['transactions:read', 'transactions:write', 'participant_claims:write', 'evidence:read', 'evidence:write', 'shipments:read', 'shipments:write'],
+  },
+  evidenceA: {
+    type: 'MERCHANT_API_CLIENT', credentialId: 'credential-evidence-a', apiClientId: 'client-a',
+    organizationId: 'org-a', environment: 'sandbox', scopes: ['evidence:read'],
   },
   readA: {
     type: 'MERCHANT_API_CLIENT', credentialId: 'credential-read-a', apiClientId: 'client-a',
@@ -40,7 +45,7 @@ const principals = {
 class FakeAuthenticator {
   async authenticate(authorization) {
     const token = authorization?.replace('Bearer ', '');
-    const principal = { 'write-a': principals.writeA, 'read-a': principals.readA, 'read-b': principals.readB, none: principals.noScope }[token];
+    const principal = { 'write-a': principals.writeA, 'evidence-a': principals.evidenceA, 'read-a': principals.readA, 'read-b': principals.readB, none: principals.noScope }[token];
     if (!principal) throw new ApiError(401, 'INVALID_API_CREDENTIAL', 'The merchant API credential is missing or invalid.');
     return principal;
   }
@@ -171,6 +176,146 @@ class FakeParticipantAuthenticator {
   }
 }
 
+class FakeMerchantEvidenceService {
+  artifacts = new Map();
+  timeline = new Map();
+  reports = new Map();
+  shipments = new Map();
+  returns = new Map();
+
+  seedArtifact(transactionId, artifact) {
+    const key = `${transactionId}:${artifact.id}`;
+    this.artifacts.set(key, artifact);
+    const list = this.artifacts.get(transactionId) ?? [];
+    list.push(artifact);
+    this.artifacts.set(transactionId, list);
+  }
+
+  requireScope(principal, scope) {
+    if (!principal.scopes.includes(scope)) throw new ApiError(403, 'INSUFFICIENT_SCOPE', 'The API credential does not grant this operation.');
+  }
+
+  async listEvidence(principal, transactionId) {
+    this.requireScope(principal, 'evidence:read');
+    if (transactionId.endsWith('missing')) throw new ApiError(404, 'TRANSACTION_NOT_FOUND', 'missing');
+    return this.artifacts.get(transactionId) ?? [];
+  }
+
+  async getEvidence(principal, transactionId, artifactId) {
+    this.requireScope(principal, 'evidence:read');
+    const artifact = this.artifacts.get(`${transactionId}:${artifactId}`);
+    if (!artifact) throw new ApiError(404, 'EVIDENCE_NOT_FOUND', 'missing');
+    return artifact;
+  }
+
+  async getTimeline(principal, transactionId) {
+    this.requireScope(principal, 'transactions:read');
+    return this.timeline.get(transactionId) ?? [];
+  }
+
+  async getReviewPackage(principal, transactionId) {
+    this.requireScope(principal, 'evidence:read');
+    return {
+      id: `review_${transactionId.slice(-8)}`, object: 'review_package', schemaVersion: 1, transactionId,
+      title: 'Review camera', merchantReference: 'order-1', status: 'CREATED', amount: null, terms: null,
+      protocolCompleteness: {
+        sellerPackingVideo: 'ABSENT', sellerSealReference: 'ABSENT', buyerArrivalObservation: 'ABSENT',
+        buyerUnboxing: 'ABSENT', returnPackingVideo: 'ABSENT', returnSealReference: 'ABSENT',
+      },
+      documentationCategories: [], evidence: this.artifacts.get(transactionId) ?? [], shipment: null,
+      returns: [], latestReport: null, timeline: [],
+      limitations: {
+        physicalCorrespondence: 'NOT_AVAILABLE', businessLegalRelevance: 'REVIEW_REQUIRED',
+        doesNotAuthenticateItem: true, doesNotProveCustody: true, doesNotDecideFraudOrFault: true,
+        doesNotGuaranteeDisputeOutcome: true, dossierIsPresentationOnly: true,
+        manifestAuthenticationScope: 'PACKPROOF_SERVICE_ONLY', humanReviewDisclaimer: 'Human review only.',
+      },
+      createdAt: '2026-08-11T12:00:00.000Z', updatedAt: '2026-08-11T12:00:00.000Z',
+    };
+  }
+
+  async createReport(principal, transactionId) {
+    this.requireScope(principal, 'evidence:read');
+    const report = {
+      id: 'report_http_1', object: 'evidence_report', schemaVersion: 1, transactionId, status: 'AVAILABLE',
+      reportSha256: 'a'.repeat(64), evidenceCount: 0, presentationOnly: true,
+      generatedAt: '2026-08-11T12:00:00.000Z', downloadUrl: 'https://files.example/report.pdf',
+      downloadUrlExpiresAt: '2026-08-11T12:15:00.000Z',
+    };
+    this.reports.set(`${transactionId}:${report.id}`, report);
+    return { report, replayed: false };
+  }
+
+  async getReport(principal, transactionId, reportId) {
+    this.requireScope(principal, 'evidence:read');
+    const report = this.reports.get(`${transactionId}:${reportId}`);
+    if (!report) throw new ApiError(404, 'EVIDENCE_REPORT_NOT_FOUND', 'missing');
+    return report;
+  }
+
+  async getShipment(principal, transactionId) {
+    this.requireScope(principal, 'shipments:read');
+    const shipment = this.shipments.get(transactionId);
+    if (!shipment) throw new ApiError(404, 'SHIPMENT_NOT_FOUND', 'missing');
+    return shipment;
+  }
+
+  async associateShipment(principal, transactionId, input) {
+    this.requireScope(principal, 'shipments:write');
+    const shipment = {
+      id: `shipment_${transactionId.slice(-8)}`, object: 'shipment', schemaVersion: 1, transactionId,
+      carrier: input.carrier, trackingNumber: input.trackingNumber, assertionSource: 'MERCHANT',
+      status: 'ASSOCIATED', packingEvidenceId: 'pack-1', sealEvidenceId: 'seal-1',
+      labelEvidenceMatchStatus: 'NOT_SCANNED', shippedAt: '2026-08-11T12:00:00.000Z',
+      createdAt: '2026-08-11T12:00:00.000Z', updatedAt: '2026-08-11T12:00:00.000Z',
+    };
+    this.shipments.set(transactionId, shipment);
+    return { shipment, replayed: false };
+  }
+
+  async listReturns(principal, transactionId) {
+    this.requireScope(principal, 'transactions:read');
+    return this.returns.get(transactionId) ?? [];
+  }
+
+  async getReturn(principal, transactionId, returnPassportId) {
+    this.requireScope(principal, 'transactions:read');
+    const item = (this.returns.get(transactionId) ?? []).find((entry) => entry.id === returnPassportId);
+    if (!item) throw new ApiError(404, 'RETURN_PASSPORT_NOT_FOUND', 'missing');
+    return item;
+  }
+}
+
+class FakeMerchantConnectService {
+  sessions = new Map();
+
+  async createSession(principal, input) {
+    if (!principal.scopes.includes('transactions:write')) throw new ApiError(403, 'INSUFFICIENT_SCOPE', 'missing scope');
+    if (!principal.integrationId) throw new ApiError(403, 'INTEGRATION_NOT_BOUND', 'unbound');
+    const session = {
+      id: 'a'.repeat(64), object: 'connect_session', schemaVersion: 1, platform: input.platform,
+      externalOrderId: input.externalOrderId, status: 'PENDING_REDEMPTION', transactionId: null,
+      commerceContextId: `ctx_${'d'.repeat(40)}`, itemTitle: input.itemTitle, amount: input.amount,
+      trackingNumber: input.trackingNumber ?? null, carrier: input.carrier ?? null,
+      expiresAt: '2026-08-18T12:00:00.000Z', createdAt: '2026-08-11T12:00:00.000Z',
+    };
+    this.sessions.set(session.id, session);
+    return {
+      session,
+      captureUrl: `https://packproof.example/connect/capture?session=${session.id}&token=connect-token`,
+      token: 'connect-token',
+      replayed: false,
+    };
+  }
+
+  async getSession(principal, sessionId) {
+    if (!principal.scopes.includes('transactions:read')) throw new ApiError(403, 'INSUFFICIENT_SCOPE', 'missing scope');
+    const session = this.sessions.get(sessionId);
+    if (!session) throw new ApiError(404, 'CONNECT_SESSION_NOT_FOUND', 'missing');
+    return session;
+  }
+}
+
 class FakeParticipantCaptureService {
   claims = new Map();
   sessions = new Map();
@@ -261,6 +406,8 @@ function buildApp() {
     () => new Date('2026-08-11T12:00:00.000Z'),
   );
   const participantCaptureService = new FakeParticipantCaptureService();
+  const merchantEvidenceService = new FakeMerchantEvidenceService();
+  const merchantConnectService = new FakeMerchantConnectService();
   const app = createApiV1App({
     authenticator: new FakeAuthenticator(),
     participantAuthenticator: new FakeParticipantAuthenticator(),
@@ -269,10 +416,12 @@ function buildApp() {
     transactionService: service,
     participantCaptureService,
     publicCommerceHandoffService,
+    merchantEvidenceService,
+    merchantConnectService,
     publicHandoffReviewBaseUrl: () => 'https://packproof.example',
     participantHandoffBaseUrl: () => 'https://packproof.example',
   });
-  return { app, repository, idempotency, audit, rateLimiter, publicRepository, participantCaptureService };
+  return { app, repository, idempotency, audit, rateLimiter, publicRepository, participantCaptureService, merchantEvidenceService, merchantConnectService };
 }
 
 const harness = buildApp();
@@ -603,6 +752,92 @@ describe('PackProof API v1 HTTP boundary', () => {
     assert.equal(limited.body.error.code, 'RATE_LIMIT_EXCEEDED');
     assert.equal(limited.response.headers.get('ratelimit-remaining'), '0');
     assert.ok(Number(limited.response.headers.get('retry-after')) >= 1);
+  });
+});
+
+describe('PackProof API v1 headless Connect and claims-review routes', () => {
+  test('lists evidence and returns a claims-review package without a verdict', async () => {
+    const created = await createRequest('headless-order-1', 'headless-create-1');
+    const transactionId = created.body.data.id;
+    harness.merchantEvidenceService.seedArtifact(transactionId, {
+      id: 'art_pack_1', object: 'evidence_artifact', schemaVersion: 1, transactionId, type: 'PACKING_VIDEO',
+      status: 'FINALIZED', role: 'SELLER', contentType: 'video/mp4', sizeBytes: 12, sha256: 'b'.repeat(64),
+      manifestSha256: 'c'.repeat(64), evidenceBundleSha256: 'd'.repeat(64),
+      manifestAuthenticationScope: 'PACKPROOF_SERVICE_ONLY', workflowReady: true, assurance: null,
+      carrierTrackingMatchStatus: null, finalizedAt: '2026-08-11T12:00:00.000Z',
+      createdAt: '2026-08-11T12:00:00.000Z', updatedAt: '2026-08-11T12:00:00.000Z',
+    });
+    const denied = await jsonRequest(`/v1/transactions/${transactionId}/evidence`, { headers: { authorization: 'Bearer read-a' } });
+    assert.equal(denied.response.status, 403);
+    const listed = await jsonRequest(`/v1/transactions/${transactionId}/evidence`, { headers: { authorization: 'Bearer evidence-a' } });
+    assert.equal(listed.response.status, 200);
+    assert.equal(listed.body.data[0].type, 'PACKING_VIDEO');
+    const review = await jsonRequest(`/v1/transactions/${transactionId}/review-package`, { headers: { authorization: 'Bearer evidence-a' } });
+    assert.equal(review.response.status, 200);
+    assert.equal(review.body.data.object, 'review_package');
+    assert.equal(review.body.data.limitations.physicalCorrespondence, 'NOT_AVAILABLE');
+    assert.equal(review.body.data.limitations.doesNotDecideFraudOrFault, true);
+    assert.equal(review.body.data.limitations.doesNotGuaranteeDisputeOutcome, true);
+  });
+
+  test('creates a presentation report and a Connect session through merchant credentials', async () => {
+    const created = await createRequest('headless-order-2', 'headless-create-2');
+    const transactionId = created.body.data.id;
+    const report = await jsonRequest(`/v1/transactions/${transactionId}/reports`, {
+      method: 'POST',
+      headers: { authorization: 'Bearer evidence-a', 'content-type': 'application/json', 'idempotency-key': 'report-key-1' },
+      body: JSON.stringify({ schemaVersion: 1 }),
+    });
+    assert.equal(report.response.status, 201);
+    assert.equal(report.body.data.presentationOnly, true);
+    assert.ok(report.body.data.downloadUrl);
+
+    const connect = await jsonRequest('/v1/connect/sessions', {
+      method: 'POST',
+      headers: { authorization: 'Bearer write-a', 'content-type': 'application/json', 'idempotency-key': 'connect-key-1' },
+      body: JSON.stringify({
+        schemaVersion: 1,
+        platform: 'custom',
+        externalOrderId: 'order-99',
+        externalSellerId: 'seller-99',
+        itemTitle: 'Imported camera',
+        amount: { currency: 'USD', minorUnits: 5000 },
+        callbackUrl: 'https://merchant.example/webhooks/packproof',
+      }),
+    });
+    assert.equal(connect.response.status, 201);
+    assert.equal(connect.body.data.object, 'connect_session');
+    assert.equal(connect.body.captureInstructions.state, 'PENDING_REDEMPTION');
+    const fetched = await jsonRequest(`/v1/connect/sessions/${connect.body.data.id}`, { headers: { authorization: 'Bearer write-a' } });
+    assert.equal(fetched.response.status, 200);
+    assert.equal(fetched.body.data.externalOrderId, 'order-99');
+
+    const shipment = await jsonRequest(`/v1/transactions/${transactionId}/shipment`, {
+      method: 'POST',
+      headers: { authorization: 'Bearer write-a', 'content-type': 'application/json', 'idempotency-key': 'ship-key-1' },
+      body: JSON.stringify({ schemaVersion: 1, carrier: 'UPS', trackingNumber: '1Z999AA10123456784' }),
+    });
+    assert.equal(shipment.response.status, 201);
+    assert.equal(shipment.body.data.assertionSource, 'MERCHANT');
+  });
+
+  test('rejects unknown Connect fields and unsupported evidence methods', async () => {
+    const created = await createRequest('headless-order-3', 'headless-create-3');
+    const unknown = await jsonRequest('/v1/connect/sessions', {
+      method: 'POST',
+      headers: { authorization: 'Bearer write-a', 'content-type': 'application/json', 'idempotency-key': 'connect-bad' },
+      body: JSON.stringify({
+        schemaVersion: 1, platform: 'custom', externalOrderId: 'order-1', externalSellerId: 'seller-1',
+        itemTitle: 'Camera', amount: { currency: 'USD', minorUnits: 1 }, callbackUrl: 'https://merchant.example/hook',
+        verdict: 'AUTHENTIC',
+      }),
+    });
+    assert.equal(unknown.response.status, 400);
+    assert.equal(unknown.body.error.details[0].code, 'UNKNOWN_FIELD');
+    const method = await jsonRequest(`/v1/transactions/${created.body.data.id}/evidence`, {
+      method: 'POST', headers: { authorization: 'Bearer write-a', 'content-type': 'application/json' }, body: '{}',
+    });
+    assert.equal(method.response.status, 405);
   });
 });
 

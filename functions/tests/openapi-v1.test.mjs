@@ -9,6 +9,8 @@ test('OpenAPI v1 contract is parseable, versioned, and operation-complete', asyn
   assert.equal(contract.openapi, '3.1.0');
   assert.equal(contract.info.version, '1.0.0');
   assert.deepEqual(Object.keys(contract.paths).sort(), [
+    '/v1/connect/sessions',
+    '/v1/connect/sessions/{sessionId}',
     '/v1/evidence-sessions/{evidenceSessionId}',
     '/v1/evidence-sessions/{evidenceSessionId}/cancel',
     '/v1/evidence-sessions/{evidenceSessionId}/redeem',
@@ -18,8 +20,17 @@ test('OpenAPI v1 contract is parseable, versioned, and operation-complete', asyn
     '/v1/ready',
     '/v1/transactions',
     '/v1/transactions/{transactionId}',
+    '/v1/transactions/{transactionId}/evidence',
     '/v1/transactions/{transactionId}/evidence-sessions',
+    '/v1/transactions/{transactionId}/evidence/{artifactId}',
     '/v1/transactions/{transactionId}/participant-invitations',
+    '/v1/transactions/{transactionId}/reports',
+    '/v1/transactions/{transactionId}/reports/{reportId}',
+    '/v1/transactions/{transactionId}/returns',
+    '/v1/transactions/{transactionId}/returns/{returnPassportId}',
+    '/v1/transactions/{transactionId}/review-package',
+    '/v1/transactions/{transactionId}/shipment',
+    '/v1/transactions/{transactionId}/timeline',
   ]);
   const operations = [];
   for (const [path, pathItem] of Object.entries(contract.paths)) {
@@ -32,16 +43,28 @@ test('OpenAPI v1 contract is parseable, versioned, and operation-complete', asyn
   }
   assert.equal(new Set(operations).size, operations.length, 'operationId values must be unique');
   assert.deepEqual(operations.sort(), [
+    'associateShipment',
     'cancelEvidenceSession',
     'claimParticipantInvitation',
+    'createConnectSession',
+    'createEvidenceReport',
     'createEvidenceSession',
     'createParticipantInvitation',
     'createPublicCommerceHandoff',
     'createTransaction',
+    'getConnectSession',
+    'getEvidence',
+    'getEvidenceReport',
     'getEvidenceSession',
     'getHealth',
     'getReadiness',
+    'getReturn',
+    'getReviewPackage',
+    'getShipment',
+    'getTimeline',
     'getTransaction',
+    'listEvidence',
+    'listReturns',
     'listTransactions',
     'redeemEvidenceSession',
   ]);

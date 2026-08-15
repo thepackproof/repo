@@ -95,6 +95,7 @@ export class FirestoreMerchantAuthenticator implements MerchantAuthenticator {
       organizationId,
       environment,
       scopes,
+      integrationId: typeof client.integrationId === 'string' && client.integrationId ? client.integrationId : null,
     };
 
     // Use append-only usage records instead of mutating one credential document

@@ -124,6 +124,7 @@ class CommerceContextApplicationService {
                 priceMinor: input.priceMinor,
                 currency: input.currency,
                 callbackUrl: input.callbackUrl,
+                organizationId: principal.organizationId ?? null,
                 status: 'PENDING_REDEMPTION',
                 expiresAt,
             },

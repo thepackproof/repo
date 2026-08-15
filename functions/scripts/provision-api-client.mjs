@@ -23,7 +23,7 @@ function parseArgs(argv) {
     if (values[name] !== undefined) return fail(`Duplicate argument: ${flag}.`);
     values[name] = value;
   }
-  const allowed = new Set(['organization-id', 'organization-name', 'client-id', 'client-name', 'environment', 'scopes']);
+  const allowed = new Set(['organization-id', 'organization-name', 'client-id', 'client-name', 'environment', 'scopes', 'integration-id']);
   const unknown = Object.keys(values).filter((key) => !allowed.has(key));
   if (unknown.length) return fail(`Unknown argument(s): ${unknown.map((key) => `--${key}`).join(', ')}.`);
   return values;
@@ -98,6 +98,7 @@ await db.runTransaction(async (tx) => {
       environment,
       scopes,
       status: 'ACTIVE',
+      integrationId: typeof args['integration-id'] === 'string' && args['integration-id'] ? args['integration-id'] : null,
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     });
