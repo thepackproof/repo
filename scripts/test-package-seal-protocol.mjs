@@ -3,6 +3,7 @@ import {
   HUMAN_REVIEW_DISCLAIMER,
   evidenceSupportsWorkflow,
   groupHumanReviewObservations,
+  nextParticipantAction,
   packageSealProtocolStatus,
 } from '../src/lib/package-seal-protocol.ts';
 
@@ -68,5 +69,11 @@ const grouped = groupHumanReviewObservations([
 ]);
 assert.deepEqual(grouped.sellerReference.map((item) => item.type), ['PACKING_VIDEO', 'SHIPPING_LABEL']);
 assert.deepEqual(grouped.buyerArrival.map((item) => item.type), ['DELIVERY_PHOTO', 'UNBOXING_VIDEO']);
+
+assert.equal(nextParticipantAction({ status: 'TERMS_LOCKED', role: 'SELLER' }), 'Record continuous packing');
+assert.equal(nextParticipantAction({ status: 'PACKED', role: 'SELLER' }), 'Record the high-resolution seal reference');
+assert.equal(nextParticipantAction({ status: 'PACKED', role: 'SELLER', protocol: complete }), 'Add shipment details');
+assert.equal(nextParticipantAction({ status: 'SHIPPED', role: 'BUYER' }), 'Record the arrival package observation');
+assert.equal(nextParticipantAction({ status: 'COMPLETED', role: 'SELLER' }), null);
 
 console.log('Package-seal protocol tests passed.');

@@ -6,6 +6,7 @@ import { Button, Card, EmptyState } from '@/components/ui';
 import { TransactionCard } from '@/components/transaction-card';
 import { colors } from '@/constants/brand';
 import { useTransactions } from '@/hooks/use-transactions';
+import { featureFlags } from '@/constants/features';
 import { useAuth } from '@/providers/auth-provider';
 
 export default function HomeScreen() {
@@ -24,15 +25,15 @@ export default function HomeScreen() {
 
       <Card style={styles.hero}>
         <View style={styles.heroIcon}><AppIcon name="shippingbox.and.arrow.backward.fill" size={28} tintColor={colors.teal} /></View>
-        <Text style={styles.heroTitle}>Create a transaction passport</Text>
-        <Text style={styles.heroBody}>Document the exact item, lock the terms with your buyer, and capture fulfillment evidence in one private record.</Text>
+        <Text style={styles.heroTitle}>Create a shared transaction record</Text>
+        <Text style={styles.heroBody}>Confirm terms with the other participant, capture the guided packing and arrival protocol, and keep a private review-ready record.</Text>
         <Button label="Start a PackProof" icon="plus" onPress={() => router.push('/transaction/new')} />
       </Card>
 
       <View style={styles.stats}>
         <Card style={styles.stat}><Text style={styles.statValue}>{active.length}</Text><Text style={styles.statLabel}>ACTIVE</Text></Card>
         <Card style={styles.stat}><Text style={styles.statValue}>{evidenceStage}</Text><Text style={styles.statLabel}>EVIDENCE STAGE</Text></Card>
-        <Card style={styles.stat}><Text style={styles.statValue}>{profile?.plan === 'PRO' ? 'PRO' : 'FREE'}</Text><Text style={styles.statLabel}>PLAN</Text></Card>
+        {featureFlags.billing ? <Card style={styles.stat}><Text style={styles.statValue}>{profile?.plan === 'PRO' ? 'PRO' : 'FREE'}</Text><Text style={styles.statLabel}>PLAN</Text></Card> : <Card style={styles.stat}><Text style={styles.statValue}>{items.length}</Text><Text style={styles.statLabel}>RECORDS</Text></Card>}
       </View>
 
       <View>

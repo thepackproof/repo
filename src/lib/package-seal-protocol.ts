@@ -85,3 +85,30 @@ export function groupHumanReviewObservations<T extends { type: EvidenceType; ret
     )),
   };
 }
+
+export function nextParticipantAction(input: {
+  status: string;
+  role: 'SELLER' | 'BUYER';
+  saleType?: 'SHIPPED' | 'LOCAL_HANDOFF';
+  protocol?: PackageSealProtocolStatus | null;
+}): string | null {
+  const saleType = input.saleType ?? 'SHIPPED';
+  if (['COMPLETED', 'CANCELLED', 'ARCHIVED'].includes(input.status)) return null;
+  if (input.status === 'DRAFT' || input.status === 'AWAITING_BUYER') {
+    return input.role === 'SELLER' ? 'Invite the buyer and confirm terms' : 'Open the invitation and review terms';
+  }
+  if (input.status === 'TERMS_REVIEW') return 'Confirm the exact terms';
+  if (input.status === 'TERMS_LOCKED' && saleType === 'LOCAL_HANDOFF') return 'Confirm the local handoff';
+  if (input.status === 'TERMS_LOCKED' && input.role === 'SELLER') {
+    return input.protocol?.hasPackingVideo ? 'Record the high-resolution seal reference' : 'Record continuous packing';
+  }
+  if (input.status === 'PACKED' && input.role === 'SELLER') {
+    return input.protocol?.sellerReferenceComplete ? 'Add shipment details' : 'Record the high-resolution seal reference';
+  }
+  if (input.status === 'SHIPPED' && input.role === 'BUYER') {
+    return input.protocol?.hasArrivalPhoto ? 'Record continuous unboxing' : 'Record the arrival package observation';
+  }
+  if (input.status === 'BUYER_REVIEW') return 'Review the shared record and complete';
+  if (input.status === 'DISPUTED') return 'A concern is open; review the shared record';
+  return 'Open the shared record';
+}

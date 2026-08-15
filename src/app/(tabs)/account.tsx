@@ -48,11 +48,11 @@ export default function AccountScreen() {
   );
 
   return <SafeAreaView style={styles.safe} edges={['top']}><ScrollView contentContainerStyle={styles.container}>
-    <ScreenTitle eyebrow="Security & access" title="Account" subtitle="Control linked sign-in methods, your subscription and your PackProof data." />
+    <ScreenTitle eyebrow="Security & access" title="Account" subtitle={featureFlags.billing ? 'Control linked sign-in methods, your subscription and your PackProof data.' : 'Control linked sign-in methods and your PackProof data.'} />
     <Card style={styles.identity}>
       <View style={styles.avatar}><Text style={styles.avatarText}>{(profile?.displayName ?? user?.displayName ?? 'P').slice(0, 1).toUpperCase()}</Text></View>
       <View style={{ flex: 1 }}><Text style={styles.name}>{profile?.displayName ?? user?.displayName ?? 'PackProof member'}</Text><Text style={styles.email}>{profile?.email ?? user?.email ?? 'Social sign-in account'}</Text></View>
-      <View style={styles.plan}><Text style={styles.planText}>{profile?.plan ?? 'FREE'}</Text></View>
+      {featureFlags.billing ? <View style={styles.plan}><Text style={styles.planText}>{profile?.plan ?? 'FREE'}</Text></View> : null}
     </Card>
     {profile?.deletionScheduledAt ? <Card style={styles.deletionNotice}>
       <Text style={styles.deletionTitle}>Account deletion is scheduled</Text>

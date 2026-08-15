@@ -19,6 +19,7 @@ import {
   randomToken,
   requireUid,
 } from './helpers';
+import { evidenceReadyForWorkflow, SHIPMENT_PRECONDITION_MESSAGES, shipmentEvidenceDecision } from './package-seal-protocol';
 import { inviteCodeSchema, reportSchema, shippingSchema, transactionDraftSchema, transactionIdSchema, uploadRequestSchema } from './validation';
 
 const callOptions = { enforceAppCheck: true } as const;
@@ -70,20 +71,6 @@ function normalizeTracking(value: unknown): string | null {
   if (typeof value !== 'string') return null;
   const normalized = value.toUpperCase().replace(/[^A-Z0-9]/g, '');
   return normalized.length >= 3 ? normalized : null;
-}
-
-function evidenceReadyForWorkflow(value: FirebaseFirestore.DocumentData | undefined): boolean {
-  if (!value) return false;
-  if (value.serverFinalized === true) {
-    return value.clientHashMatched !== false
-      && value.clientSizeMatched !== false
-      && value.contentTypeMatched !== false
-      && value.assurance?.byteIntegrity?.status !== 'MISMATCH';
-  }
-  // Historical v0.2.x records used serverVerified. Preserve those records as a
-  // labeled compatibility path, while still rejecting the mismatch state that
-  // the older schema could record.
-  return value.serverVerified === true && value.clientHashMatched !== false;
 }
 
 function privacySubnet(ip: string | undefined): string {
@@ -689,8 +676,10 @@ export const submitShipping = onCall(callOptions, async (request) => {
   const sealPhotos = await ref.collection('evidence').where('type', '==', 'SHIPPING_LABEL').get();
   const packingVideo = packingVideos.docs.find((item) => evidenceReadyForWorkflow(item.data()));
   const sealPhoto = sealPhotos.docs.find((item) => evidenceReadyForWorkflow(item.data()));
-  if (!packingVideo) throw new HttpsError('failed-precondition', 'A server-finalized packing video with no recorded byte-integrity mismatch is required before shipment can be recorded.');
-  if (!sealPhoto) throw new HttpsError('failed-precondition', 'A server-finalized high-resolution seal reference photograph with no recorded byte-integrity mismatch is required before shipment can be recorded.');
+  const shipmentDecision = shipmentEvidenceDecision({ packingReady: Boolean(packingVideo), sealReady: Boolean(sealPhoto) });
+  if (!shipmentDecision.ok || !packingVideo || !sealPhoto) {
+    throw new HttpsError('failed-precondition', SHIPMENT_PRECONDITION_MESSAGES[shipmentDecision.ok ? 'SEAL_REFERENCE' : shipmentDecision.missing]);
+  }
   if (!['PACKED', 'TERMS_LOCKED'].includes(data.status)) throw new HttpsError('failed-precondition', 'Shipping cannot be recorded in this state.');
 
   const packingEvidenceRef = packingVideo.ref;

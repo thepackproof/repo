@@ -5,6 +5,7 @@ const firestore_1 = require("firebase-admin/firestore");
 const https_1 = require("firebase-functions/v2/https");
 const config_1 = require("./config");
 const helpers_1 = require("./helpers");
+const package_seal_protocol_1 = require("./package-seal-protocol");
 const validation_1 = require("./validation");
 const callOptions = { enforceAppCheck: true };
 function normalizeTracking(value) {
@@ -12,17 +13,6 @@ function normalizeTracking(value) {
         return null;
     const normalized = value.toUpperCase().replace(/[^A-Z0-9]/g, '');
     return normalized.length >= 3 ? normalized : null;
-}
-function evidenceReadyForWorkflow(value) {
-    if (!value)
-        return false;
-    if (value.serverFinalized === true) {
-        return value.clientHashMatched !== false
-            && value.clientSizeMatched !== false
-            && value.contentTypeMatched !== false
-            && value.assurance?.byteIntegrity?.status !== 'MISMATCH';
-    }
-    return value.serverVerified === true && value.clientHashMatched !== false;
 }
 async function getReturnPassport(transactionId, returnPassportId) {
     const ref = config_1.db.collection('transactions').doc(transactionId).collection('returns').doc(returnPassportId);
@@ -105,12 +95,16 @@ exports.submitReturnShipping = (0, https_1.onCall)(callOptions, async (request) 
     const evidenceRef = config_1.db.collection('transactions').doc(input.transactionId).collection('evidence');
     const packingVideos = await evidenceRef.where('returnPassportId', '==', input.returnPassportId).where('type', '==', 'RETURN_PACKING_VIDEO').get();
     const sealPhotos = await evidenceRef.where('returnPassportId', '==', input.returnPassportId).where('type', '==', 'RETURN_SHIPPING_LABEL').get();
-    const packingVideo = packingVideos.docs.find((item) => evidenceReadyForWorkflow(item.data()));
-    const sealPhoto = sealPhotos.docs.find((item) => evidenceReadyForWorkflow(item.data()));
-    if (!packingVideo)
-        throw new https_1.HttpsError('failed-precondition', 'A server-finalized return repacking video with no recorded byte-integrity mismatch is required first.');
-    if (!sealPhoto)
-        throw new https_1.HttpsError('failed-precondition', 'A server-finalized high-resolution return seal reference photograph with no recorded byte-integrity mismatch is required first.');
+    const packingVideo = packingVideos.docs.find((item) => (0, package_seal_protocol_1.evidenceReadyForWorkflow)(item.data()));
+    const sealPhoto = sealPhotos.docs.find((item) => (0, package_seal_protocol_1.evidenceReadyForWorkflow)(item.data()));
+    const shipmentDecision = (0, package_seal_protocol_1.shipmentEvidenceDecision)({
+        packingReady: Boolean(packingVideo),
+        sealReady: Boolean(sealPhoto),
+        kind: 'return',
+    });
+    if (!shipmentDecision.ok || !packingVideo || !sealPhoto) {
+        throw new https_1.HttpsError('failed-precondition', package_seal_protocol_1.SHIPMENT_PRECONDITION_MESSAGES[shipmentDecision.ok ? 'RETURN_SEAL_REFERENCE' : shipmentDecision.missing]);
+    }
     const packingEvidenceRef = packingVideo.ref;
     const sealEvidenceRef = sealPhoto.ref;
     const packingEvidence = packingVideo.data();
@@ -131,9 +125,9 @@ exports.submitReturnShipping = (0, https_1.onCall)(callOptions, async (request) 
             throw new https_1.HttpsError('permission-denied', 'Only the returning participant can record return shipping.');
         if (!['PACKED', 'AUTHORIZED'].includes(freshReturnData.status))
             throw new https_1.HttpsError('failed-precondition', 'The return is not ready for shipping.');
-        if (!evidenceReadyForWorkflow(freshPacking.data()))
+        if (!(0, package_seal_protocol_1.evidenceReadyForWorkflow)(freshPacking.data()))
             throw new https_1.HttpsError('failed-precondition', 'The return packing evidence no longer satisfies byte-integrity workflow requirements.');
-        if (!evidenceReadyForWorkflow(freshSeal.data()))
+        if (!(0, package_seal_protocol_1.evidenceReadyForWorkflow)(freshSeal.data()))
             throw new https_1.HttpsError('failed-precondition', 'The return seal-reference evidence no longer satisfies byte-integrity workflow requirements.');
         tx.update(ref, {
             status: 'IN_TRANSIT',

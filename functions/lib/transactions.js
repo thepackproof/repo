@@ -10,6 +10,7 @@ const evidence_format_1 = require("./evidence-format");
 const callable_errors_1 = require("./infrastructure/firebase/v1/callable-errors");
 const consumer_transaction_repository_1 = require("./infrastructure/firebase/v1/consumer-transaction-repository");
 const helpers_1 = require("./helpers");
+const package_seal_protocol_1 = require("./package-seal-protocol");
 const validation_1 = require("./validation");
 const callOptions = { enforceAppCheck: true };
 const uploadCallOptions = { enforceAppCheck: true, secrets: [config_1.manifestSigningSecret] };
@@ -38,20 +39,6 @@ function normalizeTracking(value) {
         return null;
     const normalized = value.toUpperCase().replace(/[^A-Z0-9]/g, '');
     return normalized.length >= 3 ? normalized : null;
-}
-function evidenceReadyForWorkflow(value) {
-    if (!value)
-        return false;
-    if (value.serverFinalized === true) {
-        return value.clientHashMatched !== false
-            && value.clientSizeMatched !== false
-            && value.contentTypeMatched !== false
-            && value.assurance?.byteIntegrity?.status !== 'MISMATCH';
-    }
-    // Historical v0.2.x records used serverVerified. Preserve those records as a
-    // labeled compatibility path, while still rejecting the mismatch state that
-    // the older schema could record.
-    return value.serverVerified === true && value.clientHashMatched !== false;
 }
 function privacySubnet(ip) {
     const raw = (ip ?? 'unavailable').split(',')[0].trim().replace(/^::ffff:/, '');
@@ -656,12 +643,12 @@ exports.submitShipping = (0, https_1.onCall)(callOptions, async (request) => {
     (0, helpers_1.assertSeller)(data, uid);
     const packingVideos = await ref.collection('evidence').where('type', '==', 'PACKING_VIDEO').get();
     const sealPhotos = await ref.collection('evidence').where('type', '==', 'SHIPPING_LABEL').get();
-    const packingVideo = packingVideos.docs.find((item) => evidenceReadyForWorkflow(item.data()));
-    const sealPhoto = sealPhotos.docs.find((item) => evidenceReadyForWorkflow(item.data()));
-    if (!packingVideo)
-        throw new https_1.HttpsError('failed-precondition', 'A server-finalized packing video with no recorded byte-integrity mismatch is required before shipment can be recorded.');
-    if (!sealPhoto)
-        throw new https_1.HttpsError('failed-precondition', 'A server-finalized high-resolution seal reference photograph with no recorded byte-integrity mismatch is required before shipment can be recorded.');
+    const packingVideo = packingVideos.docs.find((item) => (0, package_seal_protocol_1.evidenceReadyForWorkflow)(item.data()));
+    const sealPhoto = sealPhotos.docs.find((item) => (0, package_seal_protocol_1.evidenceReadyForWorkflow)(item.data()));
+    const shipmentDecision = (0, package_seal_protocol_1.shipmentEvidenceDecision)({ packingReady: Boolean(packingVideo), sealReady: Boolean(sealPhoto) });
+    if (!shipmentDecision.ok || !packingVideo || !sealPhoto) {
+        throw new https_1.HttpsError('failed-precondition', package_seal_protocol_1.SHIPMENT_PRECONDITION_MESSAGES[shipmentDecision.ok ? 'SEAL_REFERENCE' : shipmentDecision.missing]);
+    }
     if (!['PACKED', 'TERMS_LOCKED'].includes(data.status))
         throw new https_1.HttpsError('failed-precondition', 'Shipping cannot be recorded in this state.');
     const packingEvidenceRef = packingVideo.ref;
@@ -683,9 +670,9 @@ exports.submitShipping = (0, https_1.onCall)(callOptions, async (request) => {
         (0, helpers_1.assertSeller)(freshData, uid);
         if (!['PACKED', 'TERMS_LOCKED'].includes(String(freshData.status)))
             throw new https_1.HttpsError('failed-precondition', 'Shipping cannot be recorded in this state.');
-        if (!evidenceReadyForWorkflow(freshPacking.data()))
+        if (!(0, package_seal_protocol_1.evidenceReadyForWorkflow)(freshPacking.data()))
             throw new https_1.HttpsError('failed-precondition', 'The packing evidence no longer satisfies byte-integrity workflow requirements.');
-        if (!evidenceReadyForWorkflow(freshSeal.data()))
+        if (!(0, package_seal_protocol_1.evidenceReadyForWorkflow)(freshSeal.data()))
             throw new https_1.HttpsError('failed-precondition', 'The seal-reference evidence no longer satisfies byte-integrity workflow requirements.');
         tx.update(ref, {
             status: 'SHIPPED',

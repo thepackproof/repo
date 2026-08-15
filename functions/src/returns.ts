@@ -2,6 +2,7 @@ import { FieldValue } from 'firebase-admin/firestore';
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import { db } from './config';
 import { appendEvent, assertParticipant, getTransaction, notifyOtherParticipants, requireUid } from './helpers';
+import { evidenceReadyForWorkflow, SHIPMENT_PRECONDITION_MESSAGES, shipmentEvidenceDecision } from './package-seal-protocol';
 import type { ReturnPassportRecord } from './types';
 import { returnPassportIdSchema, returnPassportSchema, returnShippingSchema } from './validation';
 
@@ -13,16 +14,6 @@ function normalizeTracking(value: unknown): string | null {
   return normalized.length >= 3 ? normalized : null;
 }
 
-function evidenceReadyForWorkflow(value: FirebaseFirestore.DocumentData | undefined): boolean {
-  if (!value) return false;
-  if (value.serverFinalized === true) {
-    return value.clientHashMatched !== false
-      && value.clientSizeMatched !== false
-      && value.contentTypeMatched !== false
-      && value.assurance?.byteIntegrity?.status !== 'MISMATCH';
-  }
-  return value.serverVerified === true && value.clientHashMatched !== false;
-}
 
 async function getReturnPassport(transactionId: string, returnPassportId: string): Promise<{
   ref: FirebaseFirestore.DocumentReference;
@@ -107,8 +98,14 @@ export const submitReturnShipping = onCall(callOptions, async (request) => {
   const sealPhotos = await evidenceRef.where('returnPassportId', '==', input.returnPassportId).where('type', '==', 'RETURN_SHIPPING_LABEL').get();
   const packingVideo = packingVideos.docs.find((item) => evidenceReadyForWorkflow(item.data()));
   const sealPhoto = sealPhotos.docs.find((item) => evidenceReadyForWorkflow(item.data()));
-  if (!packingVideo) throw new HttpsError('failed-precondition', 'A server-finalized return repacking video with no recorded byte-integrity mismatch is required first.');
-  if (!sealPhoto) throw new HttpsError('failed-precondition', 'A server-finalized high-resolution return seal reference photograph with no recorded byte-integrity mismatch is required first.');
+  const shipmentDecision = shipmentEvidenceDecision({
+    packingReady: Boolean(packingVideo),
+    sealReady: Boolean(sealPhoto),
+    kind: 'return',
+  });
+  if (!shipmentDecision.ok || !packingVideo || !sealPhoto) {
+    throw new HttpsError('failed-precondition', SHIPMENT_PRECONDITION_MESSAGES[shipmentDecision.ok ? 'RETURN_SEAL_REFERENCE' : shipmentDecision.missing]);
+  }
 
   const packingEvidenceRef = packingVideo.ref;
   const sealEvidenceRef = sealPhoto.ref;

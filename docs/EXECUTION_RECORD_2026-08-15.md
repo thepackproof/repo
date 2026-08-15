@@ -90,3 +90,13 @@ This remains the RC.2 binary recorded in [`RELEASE_PROGRESS_CLOSING_RECORD_2026-
 6. When a second device exists, complete buyer arrival/unboxing, dossier pairing, verifier, return path, and required negatives.
 
 Working tree at close: dirty, uncommitted protocol and CI changes on `master`. No Firebase, EAS, Play, secret, or device-data mutation was performed.
+
+## Continuation on `cursor/package-seal-protocol`
+
+After the protocol commit `71f00de`, a second source increment aligned launch surfaces with the billing-gated 1.0 contract:
+
+- Welcome, home, and account copy no longer advertise a timestamped-proof slogan or a visible Pro/plan state while RevenueCat is disabled.
+- Transaction cards show the next human-reviewable protocol step from status and role.
+- Shipping fail-closed rules now share one tested helper for workflow-ready packing and seal evidence.
+
+Source gates rerun: typecheck, claims, package-seal protocol, and 10 application tests passed. Live sandbox, APK, and device capture remain `NOT_YET_TESTED` for this branch.
