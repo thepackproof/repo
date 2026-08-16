@@ -1,7 +1,7 @@
 import type { ExpoConfig } from 'expo/config';
 
 const value = (name: string, fallback = '') => process.env[name]?.trim() || fallback;
-const productVersion = '0.8.5.0';
+const productVersion = '0.9.0';
 const facebookEnabled = process.env.EXPO_PUBLIC_ENABLE_FACEBOOK_AUTH?.trim().toLowerCase() === 'true';
 const facebookAppId = value('FACEBOOK_APP_ID');
 const facebookClientToken = value('FACEBOOK_CLIENT_TOKEN');
@@ -53,7 +53,7 @@ const config: ExpoConfig = {
   updates: { fallbackToCacheTimeout: 0 },
   android: {
     package: value('ANDROID_PACKAGE_NAME', 'com.packproof.app'),
-    versionCode: 5,
+    versionCode: 6,
     // Queue ciphertext is intentionally device-bound to Android Keystore keys.
     // Restoring it onto another install would create undecryptable evidence, so
     // application-data backup is disabled and sync remains the recovery path.

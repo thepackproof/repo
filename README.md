@@ -1,4 +1,4 @@
-# PackProof 0.8.5.0
+# PackProof 0.9.0
 
 PackProof is an Android application and Firebase backend for documenting high-value private and platform-originated transactions. It connects mutually confirmed terms, native packing/unboxing capture, return evidence, shipping-label context, exact-byte fingerprints, private evidence manifests, and presentation dossiers in one participant-restricted record.
 
@@ -8,7 +8,7 @@ The release strategy is evidence-vault first: shared terms, guided seller packin
 
 ## Scientific and claim boundary
 
-Version 0.8.5.0 implements the digital-evidence path described below. It deliberately reports physical correspondence as `NOT_AVAILABLE` because this repository contains no validated physical feature extractor, matcher, calibrated thresholds, or PackProof-specific blind validation corpus. Acquisition quality is `NOT_EVALUATED` until a versioned, calibrated quality gate exists.
+Version 0.9.0 implements the digital-evidence path described below. It deliberately reports physical correspondence as `NOT_AVAILABLE` because this repository contains no validated physical feature extractor, matcher, calibrated thresholds, or PackProof-specific blind validation corpus. Acquisition quality is `NOT_EVALUATED` until a versioned, calibrated quality gate exists.
 
 The source includes:
 
@@ -20,7 +20,7 @@ The source includes:
 
 These controls are not certification, scientific validation, a penetration test, laboratory accreditation, or a legal opinion.
 
-## Current 0.8.5.0 candidate scope
+## Current 0.9.0 candidate scope
 
 - Removed the disabled Facebook integration's eager native import, which previously prevented the supplied Android build from reaching its startup UI.
 - Added an explicit encrypted-queue state machine and retry-stable client evidence identity. Ciphertext is retained until the Firestore evidence record confirms server finalization.
@@ -94,4 +94,4 @@ The verifier checks canonical bytes, required format profiles, exact original-fi
 
 Source code cannot embed or prove owner credentials, approved OAuth applications, Play signing, App Check enforcement, deployed secrets, alerting, retention and legal-hold policy, regional controls, support/moderation operations, public DNS, marketplace/carrier agreements, independent security review, or scientific validation. Clear every launch placeholder and attach current deployment/runtime evidence before onboarding real customer evidence.
 
-The supplied [`BUILD_REPORT.md`](BUILD_REPORT.md) and [`REMEDIATION_REPORT.md`](REMEDIATION_REPORT.md) are historical 0.2.1 records. They are not evidence that 0.8.5.0 is deployed or runtime-accepted. The current source-gate attestation for the Connect API SHA `a8a1db1` and the follow-on fail-closed grant/lease work is [`docs/releases/BUILD_REPORT_2026-08-15.md`](docs/releases/BUILD_REPORT_2026-08-15.md). That file is also not live-backend, APK, or two-device evidence.
+The supplied [`BUILD_REPORT.md`](BUILD_REPORT.md) and [`REMEDIATION_REPORT.md`](REMEDIATION_REPORT.md) are historical 0.2.1 records. They are not evidence that 0.9.0 is deployed or runtime-accepted. The current source-gate attestation for the Connect API SHA `a8a1db1` and the follow-on fail-closed grant/lease work is [`docs/releases/BUILD_REPORT_2026-08-15.md`](docs/releases/BUILD_REPORT_2026-08-15.md). That file is also not live-backend, APK, or two-device evidence.

@@ -1,4 +1,4 @@
-# PackProof 0.8.5.0 verification and release plan
+# PackProof 0.9.0 verification and release plan
 
 This plan distinguishes automated source checks, emulator checks, native build evidence, real-device behavior, live-backend behavior, and controls that require independent or operational evidence. No single passing layer authorizes a broader claim.
 
@@ -197,7 +197,7 @@ Several of these are deployment/organizational controls and are not satisfied by
 
 ## Physical/scientific release gate
 
-Version 0.8.5.0 must show:
+Version 0.9.0 must show:
 
 - `physicalCorrespondence.status = NOT_AVAILABLE`;
 - `acquisitionQuality.status = NOT_EVALUATED`;

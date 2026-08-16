@@ -1,4 +1,4 @@
-# PackProof 0.8.5.0 digital-evidence demonstration runbook
+# PackProof 0.9.0 digital-evidence demonstration runbook
 
 This runbook targets a real PackProof environment: a signed native Android app using live Firebase Authentication, Firestore, Storage, Cloud Functions, App Check, Hosting, evidence processing, PDF dossier generation, account export, and the two-party transaction state machine. Nothing in the acceptance path should mock uploads, hashes, server receipt/finalization times, invitations, callbacks, or account operations.
 
