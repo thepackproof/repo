@@ -25,11 +25,17 @@ The canonical API contract is [`openapi/packproof-api-v1.json`](openapi/packproo
 - `GET /v1/transactions/{transactionId}/shipment`
 - `POST /v1/transactions/{transactionId}/shipment`
 - `GET /v1/transactions/{transactionId}/returns`
+- `POST /v1/transactions/{transactionId}/returns`
 - `GET /v1/transactions/{transactionId}/returns/{returnPassportId}`
+- `POST /v1/transactions/{transactionId}/returns/{returnPassportId}/shipment`
+- `GET /v1/transactions/{transactionId}/delivery`
+- `POST /v1/transactions/{transactionId}/delivery`
 - `POST /v1/connect/sessions`
+- `GET /v1/connect/sessions`
 - `GET /v1/connect/sessions/{sessionId}`
+- `POST /v1/connect/sessions/{sessionId}/cancel`
 
-The public operation produces only a page-declared editable passport-draft handoff; it is not merchant authentication or order binding. Participant claims and evidence-session redemption bridge merchant transactions into the existing native capture-session path, but they do not prove that a capture was completed, uploaded, or server-finalized. Evidence list/read, review-package, presentation-dossier, shipment association, return-passport read, and v1 Connect session routes are now implemented as organization-isolated merchant projections. They reuse the existing ports, package-seal fail-closed rule, and layered-assurance fields. They do not authenticate items, prove custody, decide fraud or fault, or enable the general webhook dispatcher. Receiver write, return write, verification, general webhooks, and support-export routes remain subsequent milestones.
+The public operation produces only a page-declared editable passport-draft handoff; it is not merchant authentication or order binding. Participant claims and evidence-session redemption bridge merchant transactions into the existing native capture-session path, but they do not prove that a capture was completed, uploaded, or server-finalized. Evidence list/read, review-package, presentation-dossier, shipment association, receiver-arrival association, return-passport request and return-shipment association, and v1 Connect session routes are now implemented as organization-isolated merchant projections. They reuse the existing ports, package-seal fail-closed rule, and layered-assurance fields. They do not authenticate items, prove custody, decide fraud or fault, or enable the general webhook dispatcher. Verification verdict APIs and general merchant webhook registration remain subsequent milestones. The Connect callback remains the bounded `packproof.evidence.finalized` event documented as an OpenAPI webhook.
 
 ## Boundaries
 
@@ -48,8 +54,8 @@ The implementation lives under `functions/src/api/v1`:
 - `application/v1/public-commerce-handoff-service.ts` owns public-origin authorization, trust, lifecycle, replay, claim, quota, and draft-prefill rules without Express or Firestore dependencies.
 - `infrastructure/firebase/v1/public-commerce-handoff-repository.ts` owns atomic context/draft/handoff/outbox persistence and one-user redemption.
 - `application/v1/participant-capture-service.ts` owns declared-reference claims, role/purpose/artifact bounds, expiry, cancellation, one-time redemption, and native capture-session issuance.
-- `application/v1/merchant-evidence-service.ts` owns tenant-isolated evidence inventory, timeline, claims-review package, presentation-dossier request, shipment association, and return-passport read projections.
-- `application/v1/merchant-connect-service.ts` owns v1 Connect session create/get for API clients bound to an active integration.
+- `application/v1/merchant-evidence-service.ts` owns tenant-isolated evidence inventory, timeline, claims-review package, presentation-dossier request, shipment association, receiver-arrival association, return-passport request, and return-shipment association.
+- `application/v1/merchant-connect-service.ts` owns v1 Connect session create/get/list/cancel for API clients bound to an active integration.
 - `infrastructure/firebase/v1/participant-capture-repository.ts` owns atomic claim/session/capture/timeline/outbox persistence and explicit public projections.
 - `infrastructure/crypto/participant-handoff-token-issuer.ts` creates deterministic, purpose-separated claim and redemption tokens while persisting only SHA-256 digests.
 
@@ -80,7 +86,13 @@ Authentication attempts are rate-controlled by a one-way hash of the request net
 
 `POST /v1/transactions` requires `Idempotency-Key`. The record is bound to principal, operation, key hash, and a canonical request fingerprint. The first reservation creates a stable PackProof transaction ID. Exact replays return the stored response. Reuse with different input is rejected. In-flight concurrent retries return a retryable conflict. A failed attempt retains its stable operation ID so a later retry cannot create a second transaction.
 
-The processing lease is 30 seconds. Completed transaction idempotency records currently have no time-based expiry: they must remain at least as long as the linked transaction so a delayed offline retry cannot create a duplicate. A future cleanup job may remove a record only under the same resource-aware retention/legal-hold policy as its transaction and audit history.
+Idempotency reservations use an ownership/fencing token and an operation-specific processing lease. Ordinary writes default to 120 seconds. Evidence-report construction uses a 900-second lease because dossier generation can exceed a short window. The owner renews the lease while the operation is running. Completion is transactional and succeeds only if the completing invocation still owns the fence. An expired processing lease can be reclaimed only after that fence is no longer live; a stale owner cannot publish a late result. Completed transaction idempotency records currently have no time-based expiry: they must remain at least as long as the linked transaction so a delayed offline retry cannot create a duplicate. A future cleanup job may remove a record only under the same resource-aware retention/legal-hold policy as its transaction and audit history.
+
+Credential last-used bookkeeping is best-effort and must not fail a request after authorization has already succeeded. Authorization itself remains fail-closed.
+
+Connect handoff redemption is a one-time grant exchange: non-destructive lookup, client and exact-redirect checks, PKCE when a challenge is bound, token verification, then transactional compare-and-set consumption. A request that possesses a valid code but supplies the wrong client, redirect, PKCE verifier, or token must not burn the grant.
+
+Sliding-window rate counters and the per-organization audit-chain head remain single Firestore documents at today's volume. The partition strategy for later enterprise bursts is in [`architecture/FIRESTORE_PARTITIONING_V1.md`](architecture/FIRESTORE_PARTITIONING_V1.md). Do not weaken canonical payload hashing or previous-hash linkage when that strategy is activated.
 
 Participant invitation and evidence-session creation derive stable resource IDs and purpose-separated tokens from the merchant operation identity. An exact retry returns the original resource and token; reuse with different input is rejected. Participant claim is replay-safe only for the actor who completed it. Evidence-session redemption derives a stable legacy capture-session ID from session, actor, and operation key; an exact retry returns the same nonce, while a different actor or exhausted/cancelled/expired capability is rejected.
 

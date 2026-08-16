@@ -12,7 +12,17 @@ export type ReturnPassport = {
     originalEvidenceHashes: Array<string>;
     shippingCarrier: string | null;
     shippingTrackingNumber: string | null;
+    packingEvidenceId: string | null;
+    sealEvidenceId: string | null;
+    labelEvidenceMatchStatus: ReturnPassport.labelEvidenceMatchStatus;
     createdAt: string;
     updatedAt: string;
 };
+export namespace ReturnPassport {
+    export enum labelEvidenceMatchStatus {
+        MATCHED = 'MATCHED',
+        MISMATCH = 'MISMATCH',
+        NOT_SCANNED = 'NOT_SCANNED',
+    }
+}
 

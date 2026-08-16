@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.FirestoreConnectHandoffRepository = void 0;
 const firestore_1 = require("firebase-admin/firestore");
+const errors_1 = require("../../../application/v1/errors");
 const outbox_1 = require("./outbox");
 function requiredString(value, field) {
     if (typeof value !== 'string' || !value)
@@ -39,6 +40,7 @@ function toSession(id, data) {
         currency: requiredString(data.currency ?? 'USD', 'currency'),
         callbackUrl: requiredString(data.callbackUrl, 'callbackUrl'),
         tokenHash: optionalString(data.tokenHash),
+        codeChallenge: optionalString(data.codeChallenge),
         status: requiredString(data.status, 'status'),
         transactionId: optionalString(data.transactionId),
         claimedBy: optionalString(data.claimedBy),
@@ -83,6 +85,13 @@ class FirestoreConnectHandoffRepository {
             const decision = decide(session, transactionRef.id);
             if (decision.type === 'REPLAY')
                 return decision.result;
+            if (!session?.tokenHash || session.status !== 'PENDING_REDEMPTION') {
+                throw new errors_1.ApplicationError('RETRYABLE_CONFLICT', 'CONNECT_GRANT_CONSUME_CONFLICT', 'The Connect grant changed before it could be consumed.', [], 1);
+            }
+            const current = sessionDocument.data();
+            if (!current || current.status !== 'PENDING_REDEMPTION' || optionalString(current.tokenHash) !== session.tokenHash) {
+                throw new errors_1.ApplicationError('RETRYABLE_CONFLICT', 'CONNECT_GRANT_CONSUME_CONFLICT', 'The Connect grant changed before it could be consumed.', [], 1);
+            }
             const eventRef = transactionRef.collection('events').doc(decision.event.id);
             const outboxRef = this.firestore.collection('domainOutbox').doc(decision.event.id);
             const [existingEvent, existingOutbox] = await Promise.all([tx.get(eventRef), tx.get(outboxRef)]);
@@ -93,6 +102,7 @@ class FirestoreConnectHandoffRepository {
                 status: 'READY_FOR_CAPTURE',
                 claimedAt: firestore_1.Timestamp.fromDate(decision.event.occurredAt),
                 tokenHash: firestore_1.FieldValue.delete(),
+                codeChallenge: firestore_1.FieldValue.delete(),
             });
             if (!existingEvent.exists) {
                 tx.create(eventRef, {

@@ -18,7 +18,7 @@ async function buildTikTokAuthorization(targetUid, purpose) {
     const challenge = (0, node_crypto_1.createHash)('sha256').update(verifier).digest('base64url');
     const state = (0, helpers_1.randomToken)(32);
     await config_1.db.collection('oauthStates').doc((0, helpers_1.hash)(state)).set({
-        provider: 'tiktok', purpose, targetUid, verifier,
+        provider: 'tiktok', purpose, targetUid, verifier, used: false,
         expiresAt: (0, helpers_1.expiresIn)(600), createdAt: firestore_1.FieldValue.serverTimestamp(),
     });
     const params = new URLSearchParams({
@@ -51,7 +51,8 @@ exports.tiktokAuthCallback = (0, https_1.onRequest)({ secrets }, async (request,
     const stateRef = config_1.db.collection('oauthStates').doc((0, helpers_1.hash)(state));
     const stateSnap = state ? await stateRef.get() : null;
     const stateData = stateSnap?.data();
-    if (!code || !state || !stateSnap?.exists || (stateData?.expiresAt).toMillis() < Date.now()) {
+    if (!code || !state || !stateSnap?.exists || stateData?.used
+        || (stateData?.expiresAt).toMillis() < Date.now()) {
         response.status(400).send('This TikTok sign-in attempt is invalid or expired. Return to PackProof and try again.');
         return;
     }
@@ -88,7 +89,7 @@ exports.tiktokAuthCallback = (0, https_1.onRequest)({ secrets }, async (request,
                 const scheduledAt = firestore_1.Timestamp.fromMillis(Date.now() + 7 * 86400_000);
                 await config_1.db.collection('users').doc(existingUid).set({ deletionRequestedAt: firestore_1.FieldValue.serverTimestamp(), deletionScheduledAt: scheduledAt }, { merge: true });
             }
-            await stateRef.delete();
+            await consumeOauthState(stateRef);
             response.redirect(302, `${config_1.publicAppUrl.value().replace(/\/$/, '')}/deletion-confirmed.html`);
             return;
         }
@@ -116,14 +117,26 @@ exports.tiktokAuthCallback = (0, https_1.onRequest)({ secrets }, async (request,
         const customToken = await config_1.adminAuth.createCustomToken(uid, { tiktok: true });
         const grant = (0, helpers_1.randomToken)(32);
         await config_1.db.collection('authGrants').doc((0, helpers_1.hash)(grant)).set({ uid, customToken, used: false, expiresAt: (0, helpers_1.expiresIn)(300), createdAt: firestore_1.FieldValue.serverTimestamp() });
-        await stateRef.delete();
+        await consumeOauthState(stateRef);
         response.redirect(302, `packproof://auth/tiktok?grant=${encodeURIComponent(grant)}`);
     }
     catch (error) {
-        await stateRef.delete();
         response.status(400).send(`TikTok sign-in could not be completed. ${error instanceof Error ? error.message : ''}`);
     }
 });
+async function consumeOauthState(stateRef) {
+    await config_1.db.runTransaction(async (tx) => {
+        const snap = await tx.get(stateRef);
+        const data = snap.data();
+        if (!snap.exists || data?.used)
+            throw new Error('This TikTok sign-in attempt is no longer usable.');
+        tx.update(stateRef, {
+            used: true,
+            usedAt: firestore_1.FieldValue.serverTimestamp(),
+            verifier: firestore_1.FieldValue.delete(),
+        });
+    });
+}
 exports.redeemTikTokGrant = (0, https_1.onCall)({ enforceAppCheck: true }, async (request) => {
     requireTikTokEnabled();
     const grant = String(request.data?.grant ?? '');

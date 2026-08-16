@@ -66,8 +66,28 @@ export class PackProofConnect {
     return this.request(`/v1/connect/sessions/${encodeURIComponent(sessionId)}`, options);
   }
 
+  async listConnectSessions(externalOrderId, options = {}) {
+    if (!externalOrderId) throw new TypeError('externalOrderId is required to list Connect sessions.');
+    return this.request(`/v1/connect/sessions?externalOrderId=${encodeURIComponent(externalOrderId)}`, options);
+  }
+
+  async cancelConnectSession(sessionId, { signal } = {}) {
+    return this.request(`/v1/connect/sessions/${encodeURIComponent(sessionId)}/cancel`, {
+      method: 'POST',
+      body: { schemaVersion: 1 },
+      signal,
+    });
+  }
+
   async listEvidence(transactionId, options = {}) {
     return this.request(`/v1/transactions/${encodeURIComponent(transactionId)}/evidence`, options);
+  }
+
+  async getEvidence(transactionId, artifactId, options = {}) {
+    return this.request(
+      `/v1/transactions/${encodeURIComponent(transactionId)}/evidence/${encodeURIComponent(artifactId)}`,
+      options,
+    );
   }
 
   async getReviewPackage(transactionId, options = {}) {
@@ -110,6 +130,50 @@ export class PackProofConnect {
     return this.request(`/v1/transactions/${encodeURIComponent(transactionId)}/returns`, options);
   }
 
+  async createReturn(transactionId, input, { idempotencyKey, signal } = {}) {
+    if (!idempotencyKey) throw new TypeError('idempotencyKey is required to request a return passport.');
+    return this.request(`/v1/transactions/${encodeURIComponent(transactionId)}/returns`, {
+      method: 'POST',
+      body: { schemaVersion: 1, ...input },
+      idempotencyKey,
+      signal,
+    });
+  }
+
+  async getReturn(transactionId, returnPassportId, options = {}) {
+    return this.request(
+      `/v1/transactions/${encodeURIComponent(transactionId)}/returns/${encodeURIComponent(returnPassportId)}`,
+      options,
+    );
+  }
+
+  async associateReturnShipment(transactionId, returnPassportId, input, { idempotencyKey, signal } = {}) {
+    if (!idempotencyKey) throw new TypeError('idempotencyKey is required for return shipment association.');
+    return this.request(
+      `/v1/transactions/${encodeURIComponent(transactionId)}/returns/${encodeURIComponent(returnPassportId)}/shipment`,
+      {
+        method: 'POST',
+        body: { schemaVersion: 1, ...input },
+        idempotencyKey,
+        signal,
+      },
+    );
+  }
+
+  async getDelivery(transactionId, options = {}) {
+    return this.request(`/v1/transactions/${encodeURIComponent(transactionId)}/delivery`, options);
+  }
+
+  async associateDelivery(transactionId, input, { idempotencyKey, signal } = {}) {
+    if (!idempotencyKey) throw new TypeError('idempotencyKey is required for delivery association.');
+    return this.request(`/v1/transactions/${encodeURIComponent(transactionId)}/delivery`, {
+      method: 'POST',
+      body: { schemaVersion: 1, ...input },
+      idempotencyKey,
+      signal,
+    });
+  }
+
   // Backward-compatible alias for v0.2 clients. The response is an evidence
   // capture handoff, not a product-authenticity or legal verification result.
   async createVerification(input, options = {}) {
@@ -128,4 +192,30 @@ export function verifyPackProofWebhook({ rawBody, timestamp, signature, secret, 
   const actualBuffer = Buffer.from(received, 'hex');
   const expectedBuffer = Buffer.from(expected, 'hex');
   return actualBuffer.length === expectedBuffer.length && timingSafeEqual(actualBuffer, expectedBuffer);
+}
+
+export function parsePackProofWebhook(input) {
+  if (!verifyPackProofWebhook(input)) {
+    throw new PackProofConnectError('PackProof webhook signature verification failed.', {
+      status: 400,
+      code: 'INVALID_WEBHOOK_SIGNATURE',
+    });
+  }
+  const text = typeof input.rawBody === 'string' ? input.rawBody : input.rawBody.toString('utf8');
+  let payload;
+  try {
+    payload = JSON.parse(text);
+  } catch {
+    throw new PackProofConnectError('PackProof webhook body is not valid JSON.', {
+      status: 400,
+      code: 'INVALID_WEBHOOK_JSON',
+    });
+  }
+  if (!payload || payload.event !== 'packproof.evidence.finalized') {
+    throw new PackProofConnectError('Unsupported PackProof webhook event.', {
+      status: 400,
+      code: 'UNSUPPORTED_WEBHOOK_EVENT',
+    });
+  }
+  return payload;
 }

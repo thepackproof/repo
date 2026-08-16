@@ -1,29 +1,82 @@
 # PackProof Connect JavaScript SDK
 
-Server-side helper for creating PackProof evidence-capture sessions and validating callback signatures.
+Server-side helper for PackProof Connect v1 and the legacy `/api/connect/orders` route.
+
+New partners should use merchant credentials (`pp_sandbox_` / `pp_live_`) bound to a Connect integration. See [`docs/PACKPROOF_CONNECT.md`](../../docs/PACKPROOF_CONNECT.md) and the copyable server in [`examples/partner-server.mjs`](examples/partner-server.mjs).
 
 ```js
-import { PackProofConnect, verifyPackProofWebhook } from '@packproof/connect';
+import { PackProofConnect, parsePackProofWebhook } from '@packproof/connect';
 
 const client = new PackProofConnect({
   apiKey: process.env.PACKPROOF_API_KEY,
-  baseUrl: 'https://YOUR_FIREBASE_PROJECT.web.app',
+  baseUrl: 'https://YOUR_PACKPROOF_DOMAIN.example',
 });
 
+const session = await client.createConnectSession({
+  platform: 'custom',
+  externalOrderId: 'order-123',
+  externalSellerId: 'merchant-42',
+  itemTitle: 'Vintage camera',
+  amount: { currency: 'USD', minorUnits: 129900 },
+  callbackUrl: 'https://merchant.example/webhooks/packproof',
+  idempotencyKey: 'fulfillment-123-v1',
+});
+
+// Give the seller only session.captureInstructions.captureUrl.
+const current = await client.getConnectSession(session.data.id);
+const byOrder = await client.listConnectSessions('order-123');
+```
+
+After `transactionId` is present:
+
+```js
+const review = await client.getReviewPackage(current.data.transactionId);
+await client.associateShipment(current.data.transactionId, {
+  carrier: 'UPS',
+  trackingNumber: '1Z999AA10123456784',
+}, { idempotencyKey: 'ship-order-123-v1' });
+await client.associateDelivery(current.data.transactionId, {
+  carrier: 'UPS',
+  trackingNumber: '1Z999AA10123456784',
+}, { idempotencyKey: 'delivery-order-123-v1' });
+const requested = await client.createReturn(current.data.transactionId, {
+  reason: 'Item differs from the locked terms.',
+}, { idempotencyKey: 'return-order-123-v1' });
+```
+
+`getReviewPackage` organizes hashes, protocol completeness, and limitations for human review. Shipment, delivery, and return writes are merchant assertions linked to server-finalized evidence. They do not decide fraud, fault, custody, or a dispute outcome.
+
+## Webhooks
+
+Pass the exact raw HTTP body plus `X-PackProof-Timestamp`, `X-PackProof-Signature`, and the integration webhook secret. Do not parse and re-serialize the body before verification.
+
+```js
+const event = parsePackProofWebhook({
+  rawBody,
+  timestamp: request.headers['x-packproof-timestamp'],
+  signature: request.headers['x-packproof-signature'],
+  secret: process.env.PACKPROOF_WEBHOOK_SECRET,
+});
+```
+
+`verifyPackProofWebhook` returns a boolean. `parsePackProofWebhook` verifies, then returns the `packproof.evidence.finalized` payload or throws `PackProofConnectError`. Deduplicate `X-PackProof-Delivery`. Download `dossierUrl` before `dossierUrlExpiresAt`.
+
+Treat `evidenceStatus`, `statusReasonCodes`, and `assurance` as structured evidence metadata, not item authentication or a guaranteed dispute outcome.
+
+## Legacy v0.2
+
+```js
 const session = await client.createEvidenceSession({
   platform: 'shopify',
   orderId: 'gid://shopify/Order/123',
   sellerId: 'merchant-42',
-  trackingNumber: '1Z999AA10123456784',
-  carrier: 'UPS',
   itemTitle: 'Vintage camera',
-  declaredWeightGrams: 1650,
-  priceMinor: 129900,
-  currency: 'USD',
   callbackUrl: 'https://merchant.example/webhooks/packproof',
   idempotencyKey: 'fulfillment-123-v1',
 });
 ```
+
+`createVerification` remains as a deprecated alias of `createEvidenceSession`.
 
 ## Browser button
 
@@ -40,26 +93,4 @@ The browser entry point uses a publishable installation key and exact-origin all
 </script>
 ```
 
-The SDK prefers explicit `data` passed to `mountPackProofButton`, then reads Schema.org `Product` JSON-LD, and finally falls back to a narrow set of Open Graph product metadata. It does not scrape arbitrary page text. The resulting passport draft is labeled `PAGE_DECLARED` and must be reviewed in the PackProof app. Server-to-server Connect remains the authoritative path for binding an external order.
-
-The same client can call the versioned merchant API when the credential is a `pp_sandbox_` / `pp_live_` merchant key bound to a Connect integration:
-
-```js
-const session = await client.createConnectSession({
-  platform: 'custom',
-  externalOrderId: 'order-123',
-  externalSellerId: 'merchant-42',
-  itemTitle: 'Vintage camera',
-  amount: { currency: 'USD', minorUnits: 129900 },
-  callbackUrl: 'https://merchant.example/webhooks/packproof',
-  idempotencyKey: 'fulfillment-123-v1',
-});
-
-const review = await client.getReviewPackage(session.data.transactionId ?? 'txn_after_seller_redemption');
-```
-
-`getReviewPackage` organizes hashes, protocol completeness, and limitations for human review. It does not decide fraud, fault, or a dispute outcome.
-
-For callbacks, pass the exact raw HTTP body plus `X-PackProof-Timestamp`, `X-PackProof-Signature`, and the integration webhook secret to `verifyPackProofWebhook`. Do not parse and re-serialize the body before verification.
-
-The callback event is `packproof.evidence.finalized`. Treat `evidenceStatus`, `statusReasonCodes`, and the layered `assurance` object as structured evidence metadata, not as item authentication or a guaranteed dispute outcome. `createVerification` remains as a deprecated v0.2 compatibility alias.
+The resulting passport draft is labeled `PAGE_DECLARED`. Server-to-server Connect remains the authoritative path for binding an external order.

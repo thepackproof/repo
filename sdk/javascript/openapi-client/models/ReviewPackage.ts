@@ -3,6 +3,7 @@
 /* tslint:disable */
 /* eslint-disable */
 import type { Amount } from './Amount';
+import type { Delivery } from './Delivery';
 import type { EvidenceArtifact } from './EvidenceArtifact';
 import type { ReturnPassport } from './ReturnPassport';
 import type { Shipment } from './Shipment';
@@ -32,6 +33,7 @@ export type ReviewPackage = {
     }>;
     evidence: Array<EvidenceArtifact>;
     shipment: (Shipment | null);
+    delivery: (Delivery | null);
     returns: Array<ReturnPassport>;
     latestReport: any | null;
     timeline: Array<TimelineEvent>;

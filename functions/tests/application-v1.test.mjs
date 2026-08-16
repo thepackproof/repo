@@ -197,12 +197,18 @@ test('commerce-context ingestion produces an order-bound provenance snapshot and
 class MemoryConnectRepository {
   constructor(session) { this.session = session; }
   decision = null;
+  consumeCount = 0;
 
   async redeem(sessionId, decide) {
-    const decision = decide(this.session?.id === sessionId ? this.session : null, 'legacyTransactionConnect1');
+    const snapshot = this.session?.id === sessionId ? { ...this.session } : null;
+    const decision = decide(snapshot, 'legacyTransactionConnect1');
     if (decision.type === 'REPLAY') return decision.result;
+    if (!snapshot?.tokenHash || snapshot.status !== 'PENDING_REDEMPTION' || this.session.tokenHash !== snapshot.tokenHash) {
+      throw new ApplicationError('RETRYABLE_CONFLICT', 'CONNECT_GRANT_CONSUME_CONFLICT', 'The Connect grant changed before it could be consumed.');
+    }
     this.decision = decision;
-    this.session = { ...this.session, claimedBy: decision.transaction.sellerId, transactionId: 'legacyTransactionConnect1', status: 'READY_FOR_CAPTURE', tokenHash: null };
+    this.consumeCount += 1;
+    this.session = { ...this.session, claimedBy: decision.transaction.sellerId, transactionId: 'legacyTransactionConnect1', status: 'READY_FOR_CAPTURE', tokenHash: null, codeChallenge: null };
     return { transactionId: 'legacyTransactionConnect1', connectSessionId: sessionId };
   }
 }
@@ -213,6 +219,7 @@ function connectSession(overrides = {}) {
     externalOrderId: 'order-42', externalSellerId: 'seller-ext', trackingNumber: '1Z999', carrier: 'UPS',
     itemTitle: 'Imported collectible', itemDescription: 'The complete merchant description.', declaredWeightGrams: 500,
     priceMinor: 4200, currency: 'USD', callbackUrl: 'https://merchant.example/callback', tokenHash: 'expected-token',
+    codeChallenge: null,
     status: 'PENDING_REDEMPTION', transactionId: null, claimedBy: null, expiresAt: new Date('2026-08-12T12:00:00.000Z'),
     ...overrides,
   };
@@ -231,11 +238,14 @@ test('Connect redemption is atomic, idempotent, actor-bound, token-bound, and ca
   const replay = await service.redeem({ actorId: 'seller-user', sessionId: 'connectSession12345', token: 'not-needed-after-claim', requestId: 'request-redeem-2' });
   assert.deepEqual(replay, first);
 
-  const invalidTokenService = new ConnectHandoffApplicationService(new MemoryConnectRepository(connectSession()), verifier, () => now);
+  const invalidTokenRepo = new MemoryConnectRepository(connectSession());
+  const invalidTokenService = new ConnectHandoffApplicationService(invalidTokenRepo, verifier, () => now);
   await assert.rejects(
     () => invalidTokenService.redeem({ actorId: 'seller-user', sessionId: 'connectSession12345', token: 'wrong', requestId: 'request-redeem-3' }),
     (error) => error instanceof ApplicationError && error.code === 'INVALID_HANDOFF_TOKEN',
   );
+  assert.equal(invalidTokenRepo.consumeCount, 0);
+  assert.equal(invalidTokenRepo.session.tokenHash, 'expected-token');
   const claimedService = new ConnectHandoffApplicationService(new MemoryConnectRepository(connectSession({ claimedBy: 'other-user' })), verifier, () => now);
   await assert.rejects(
     () => claimedService.redeem({ actorId: 'seller-user', sessionId: 'connectSession12345', token: 'expected-token', requestId: 'request-redeem-4' }),
@@ -246,6 +256,75 @@ test('Connect redemption is atomic, idempotent, actor-bound, token-bound, and ca
     () => expiredService.redeem({ actorId: 'seller-user', sessionId: 'connectSession12345', token: 'expected-token', requestId: 'request-redeem-5' }),
     (error) => error instanceof ApplicationError && error.code === 'CONNECT_SESSION_EXPIRED',
   );
+});
+
+test('Connect grant exchange rejects wrong client, redirect, or PKCE without consuming the code', async () => {
+  const { createHash } = await import('node:crypto');
+  const verifierValue = 'a'.repeat(43);
+  const challenge = createHash('sha256').update(verifierValue).digest('base64url');
+
+  async function rejectWithoutConsume(overrides, command, code) {
+    const repository = new MemoryConnectRepository(connectSession(overrides));
+    const service = new ConnectHandoffApplicationService(repository, verifier, () => now);
+    await assert.rejects(
+      () => service.redeem({ actorId: 'seller-user', sessionId: 'connectSession12345', token: 'expected-token', requestId: 'request-grant', ...command }),
+      (error) => error instanceof ApplicationError && error.code === code,
+    );
+    assert.equal(repository.consumeCount, 0);
+    assert.equal(repository.session.tokenHash, 'expected-token');
+  }
+
+  await rejectWithoutConsume({}, { clientId: 'other-integration' }, 'CONNECT_CLIENT_MISMATCH');
+  await rejectWithoutConsume({}, { redirectUri: 'https://attacker.example/callback' }, 'CONNECT_REDIRECT_MISMATCH');
+  await rejectWithoutConsume({ codeChallenge: challenge }, { codeVerifier: 'b'.repeat(43) }, 'CONNECT_PKCE_MISMATCH');
+  await rejectWithoutConsume({}, { codeVerifier: verifierValue }, 'CONNECT_PKCE_MISMATCH');
+
+  const successRepo = new MemoryConnectRepository(connectSession({ codeChallenge: challenge }));
+  const success = await new ConnectHandoffApplicationService(successRepo, verifier, () => now).redeem({
+    actorId: 'seller-user',
+    sessionId: 'connectSession12345',
+    token: 'expected-token',
+    clientId: 'legacyIntegration001',
+    redirectUri: 'https://merchant.example/callback',
+    codeVerifier: verifierValue,
+    requestId: 'request-grant-ok',
+  });
+  assert.equal(success.transactionId, 'legacyTransactionConnect1');
+  assert.equal(successRepo.consumeCount, 1);
+  assert.equal(successRepo.session.tokenHash, null);
+});
+
+test('Connect grant compare-and-set allows only one consumer under concurrency', async () => {
+  const session = connectSession();
+  const repository = {
+    consumeCount: 0,
+    session,
+    async redeem(sessionId, decide) {
+      const snapshot = this.session?.id === sessionId ? { ...this.session } : null;
+      const decision = decide(snapshot, 'legacyTransactionConnect1');
+      if (decision.type === 'REPLAY') return decision.result;
+      await new Promise((resolve) => setImmediate(resolve));
+      if (!snapshot?.tokenHash || this.session.tokenHash !== snapshot.tokenHash || this.session.status !== 'PENDING_REDEMPTION') {
+        throw new ApplicationError('RETRYABLE_CONFLICT', 'CONNECT_GRANT_CONSUME_CONFLICT', 'The Connect grant changed before it could be consumed.');
+      }
+      this.consumeCount += 1;
+      this.session = { ...this.session, claimedBy: decision.transaction.sellerId, transactionId: 'legacyTransactionConnect1', status: 'READY_FOR_CAPTURE', tokenHash: null };
+      return { transactionId: 'legacyTransactionConnect1', connectSessionId: sessionId };
+    },
+  };
+  const service = new ConnectHandoffApplicationService(repository, verifier, () => now);
+  const results = await Promise.allSettled([
+    service.redeem({ actorId: 'seller-user', sessionId: 'connectSession12345', token: 'expected-token', requestId: 'request-cas-1' }),
+    service.redeem({ actorId: 'seller-user', sessionId: 'connectSession12345', token: 'expected-token', requestId: 'request-cas-2' }),
+  ]);
+  const accepted = results.filter((result) => result.status === 'fulfilled');
+  const rejected = results.filter((result) => result.status === 'rejected');
+  assert.equal(accepted.length, 1);
+  assert.equal(rejected.length, 1);
+  assert.equal(rejected[0].reason.code, 'CONNECT_GRANT_CONSUME_CONFLICT');
+  assert.equal(repository.consumeCount, 1);
+  const replay = await service.redeem({ actorId: 'seller-user', sessionId: 'connectSession12345', token: 'already-consumed', requestId: 'request-cas-replay' });
+  assert.deepEqual(replay, accepted[0].value);
 });
 
 class MemoryPublicCommerceRepository {
@@ -364,6 +443,7 @@ test('public commerce handoff is origin-bound, retry-stable, page-declared, edit
   assert.ok(repository.decision.transaction.identifiers.some(({ label, value }) => label === 'Option: Finish' && value === 'Black'));
   assert.equal(repository.decision.transaction.source.type, 'PACKPROOF_BUTTON');
   assert.equal(repository.decision.transaction.source.trustLevel, 'PAGE_DECLARED');
+  assert.equal(repository.decision.transaction.listingImageReferences[0].url, publicPageContext.item.imageReferences[0].url);
   assert.deepEqual(repository.decision.events.map(({ type }) => type), ['TRANSACTION_CREATED', 'COMMERCE_CONTEXT_CLAIMED']);
   repository.active = true;
   const claimReplay = await service.redeem({ actorId: 'seller-user', plan: 'FREE', handoffId: issued.handoffId, token: 'consumed', requestId: 'request-public-replay' });

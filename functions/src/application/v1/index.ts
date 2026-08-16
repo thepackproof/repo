@@ -1,4 +1,5 @@
 export * from './commerce-context-service';
+export * from './connect-callback';
 export * from './connect-handoff-service';
 export * from './consumer-transaction-service';
 export * from './errors';

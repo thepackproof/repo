@@ -1,5 +1,7 @@
 import type { ApplicationEvent } from './events';
 import type {
+  MerchantConnectSessionStatus,
+  MerchantDeliveryDto,
   MerchantEvidenceArtifactDto,
   MerchantReturnPassportDto,
   MerchantShipmentDto,
@@ -25,7 +27,11 @@ export type AccessibleMerchantTransaction = {
     returnWindowDays: number;
     customTerms: string;
   } | null;
+  sellerId: string | null;
+  buyerId: string | null;
+  participantIds: string[];
   shipment: MerchantShipmentDto | null;
+  delivery: MerchantDeliveryDto | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -75,6 +81,36 @@ export type AssociateShipmentRecord = {
   occurredAt: Date;
 };
 
+export type CreateReturnRecord = {
+  id: string;
+  reason: string;
+  initiatedBy: string;
+  returningParticipantId: string;
+  recipientId: string;
+  participantIds: string[];
+  originalEvidenceHashes: string[];
+  occurredAt: Date;
+};
+
+export type AssociateReturnShipmentRecord = {
+  carrier: string;
+  trackingNumber: string;
+  packingEvidenceId: string;
+  sealEvidenceId: string;
+  scannedTrackingNumber: string | null;
+  labelEvidenceMatchStatus: 'MATCHED' | 'MISMATCH' | 'NOT_SCANNED';
+  occurredAt: Date;
+};
+
+export type AssociateDeliveryRecord = {
+  arrivalEvidenceId: string;
+  carrier: string | null;
+  trackingNumber: string | null;
+  scannedTrackingNumber: string | null;
+  labelEvidenceMatchStatus: 'MATCHED' | 'MISMATCH' | 'NOT_SCANNED' | null;
+  occurredAt: Date;
+};
+
 export interface MerchantEvidenceRepository {
   findAccessibleTransaction(transactionId: string, principal: MerchantPrincipal): Promise<AccessibleMerchantTransaction | null>;
   listEvidence(transactionId: string): Promise<StoredEvidenceRecord[]>;
@@ -89,10 +125,26 @@ export interface MerchantEvidenceRepository {
     record: AssociateShipmentRecord,
     event: ApplicationEvent,
   ): Promise<MerchantShipmentDto>;
+  createReturn(
+    transactionId: string,
+    record: CreateReturnRecord,
+    event: ApplicationEvent,
+  ): Promise<MerchantReturnPassportDto>;
+  associateReturnShipment(
+    transactionId: string,
+    returnPassportId: string,
+    record: AssociateReturnShipmentRecord,
+    event: ApplicationEvent,
+  ): Promise<MerchantReturnPassportDto>;
+  associateDelivery(
+    transactionId: string,
+    record: AssociateDeliveryRecord,
+    event: ApplicationEvent,
+  ): Promise<MerchantDeliveryDto>;
 }
 
 export interface EvidenceReportGenerator {
-  generate(transactionId: string, generatedBy: string): Promise<{
+  generate(transactionId: string, generatedBy: string, options?: { reportId?: string }): Promise<{
     reportId: string;
     storagePath: string;
     sha256: string;
@@ -129,12 +181,35 @@ export type StoredConnectSession = {
   createdAt: Date;
 };
 
+export type ConnectSessionCancelDecision =
+  | { type: 'REPLAY'; session: StoredConnectSession }
+  | { type: 'CANCEL'; session: StoredConnectSession; event: ApplicationEvent };
+
+export function publicConnectSessionStatus(
+  status: string,
+  expiresAt: Date,
+  now: Date,
+): MerchantConnectSessionStatus {
+  if (status === 'CANCELLED') return 'CANCELLED';
+  if (status === 'READY_FOR_CAPTURE') return 'READY_FOR_CAPTURE';
+  if (status === 'EXPIRED' || (status === 'PENDING_REDEMPTION' && expiresAt.getTime() < now.getTime())) {
+    return 'EXPIRED';
+  }
+  return 'PENDING_REDEMPTION';
+}
+
 export interface MerchantConnectIntegrationLookup {
   findBoundIntegration(principal: MerchantPrincipal): Promise<BoundConnectIntegration | null>;
 }
 
 export interface MerchantConnectSessionReader {
   findAccessibleSession(sessionId: string, principal: MerchantPrincipal): Promise<StoredConnectSession | null>;
+  listAccessibleSessions(principal: MerchantPrincipal, externalOrderId: string): Promise<StoredConnectSession[]>;
+  cancelAccessibleSession(
+    sessionId: string,
+    principal: MerchantPrincipal,
+    decide: (session: StoredConnectSession | null) => ConnectSessionCancelDecision,
+  ): Promise<StoredConnectSession>;
 }
 
 export interface PublicCallbackUrlValidator {

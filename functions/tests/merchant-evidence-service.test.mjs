@@ -71,6 +71,36 @@ class MemoryEvidenceRepo {
       createdAt: record.occurredAt.toISOString(), updatedAt: record.occurredAt.toISOString(),
     };
   }
+  async createReturn(transactionId, record) {
+    const item = {
+      id: record.id, object: 'return_passport', schemaVersion: 1, transactionId, reason: record.reason,
+      status: 'REQUESTED', originalEvidenceHashes: record.originalEvidenceHashes, shippingCarrier: null,
+      shippingTrackingNumber: null, packingEvidenceId: null, sealEvidenceId: null, labelEvidenceMatchStatus: null,
+      createdAt: record.occurredAt.toISOString(), updatedAt: record.occurredAt.toISOString(),
+    };
+    const list = this.returns.get(transactionId) ?? [];
+    list.push(item);
+    this.returns.set(transactionId, list);
+    return item;
+  }
+  async associateReturnShipment(transactionId, returnPassportId, record) {
+    const item = (this.returns.get(transactionId) ?? []).find((entry) => entry.id === returnPassportId);
+    Object.assign(item, {
+      status: 'IN_TRANSIT', shippingCarrier: record.carrier, shippingTrackingNumber: record.trackingNumber,
+      packingEvidenceId: record.packingEvidenceId, sealEvidenceId: record.sealEvidenceId,
+      labelEvidenceMatchStatus: record.labelEvidenceMatchStatus, updatedAt: record.occurredAt.toISOString(),
+    });
+    return item;
+  }
+  async associateDelivery(transactionId, record) {
+    return {
+      id: `delivery_${transactionId.slice(-8)}`, object: 'delivery', schemaVersion: 1, transactionId,
+      assertionSource: 'MERCHANT', status: 'ASSOCIATED', arrivalEvidenceId: record.arrivalEvidenceId,
+      carrier: record.carrier, trackingNumber: record.trackingNumber,
+      labelEvidenceMatchStatus: record.labelEvidenceMatchStatus, receivedAt: record.occurredAt.toISOString(),
+      createdAt: record.occurredAt.toISOString(), updatedAt: record.occurredAt.toISOString(),
+    };
+  }
 }
 
 function finalized(type, id = `${type.toLowerCase()}-1`) {
@@ -100,7 +130,8 @@ test('merchant evidence service isolates tenants and never emits a claims verdic
     merchantReference: 'order-1', title: 'Camera', description: '', category: null, status: 'CREATED',
     consumerStatus: 'DRAFT', amount: { currency: 'USD', minorUnits: 1000 }, terms: {
       saleType: 'SHIPPED', shippingResponsibility: 'SELLER', returns: 'PLATFORM_POLICY', returnWindowDays: 0, customTerms: '',
-    }, shipment: null, createdAt: now, updatedAt: now,
+    }, shipment: null, delivery: null, sellerId: 'seller-1', buyerId: 'buyer-1',
+    participantIds: ['seller-1', 'buyer-1'], createdAt: now, updatedAt: now,
   });
   repository.seedEvidence(finalized('PACKING_VIDEO'));
   repository.seedEvidence(finalized('SHIPPING_LABEL', 'seal-1'));
@@ -122,6 +153,7 @@ test('merchant evidence service isolates tenants and never emits a claims verdic
   const review = await service.getReviewPackage(orgA, 'txn_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
   assert.equal(review.protocolCompleteness.sellerPackingVideo, 'PRESENT');
   assert.equal(review.protocolCompleteness.sellerSealReference, 'PRESENT');
+  assert.equal(review.delivery, null);
   assert.equal(review.limitations.doesNotDecideFraudOrFault, true);
   assert.equal(review.documentationCategories.some((entry) => entry.category === 'PACKING_AND_SEAL_REFERENCE' && entry.present), true);
 
@@ -141,7 +173,8 @@ test('shipment association fails closed without packing and seal evidence', asyn
   repository.seedTransaction({
     id: 'txn_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', organizationId: 'org-a', integrationId: null,
     merchantReference: null, title: 'Empty', description: '', category: null, status: 'CREATED',
-    consumerStatus: 'DRAFT', amount: null, terms: null, shipment: null, createdAt: now, updatedAt: now,
+    consumerStatus: 'DRAFT', amount: null, terms: null, shipment: null, delivery: null,
+    sellerId: null, buyerId: null, participantIds: [], createdAt: now, updatedAt: now,
   });
   const service = new MerchantEvidenceApplicationService(
     repository, new MemoryIdempotency(), { append: async () => undefined }, new MerchantAuthorizationPolicy(),
@@ -154,8 +187,53 @@ test('shipment association fails closed without packing and seal evidence', asyn
   }, 'ship-empty', 'req-3'), (error) => error instanceof ApplicationError && error.category === 'FAILED_PRECONDITION');
 });
 
+test('merchant return and delivery writes fail closed without protocol evidence', async () => {
+  const repository = new MemoryEvidenceRepo();
+  const shipped = {
+    id: 'txn_cccccccccccccccccccccccccccccccc', organizationId: 'org-a', integrationId: null,
+    merchantReference: 'order-2', title: 'Camera', description: '', category: null, status: 'CREATED',
+    consumerStatus: 'SHIPPED', amount: null, terms: {
+      saleType: 'SHIPPED', shippingResponsibility: 'SELLER', returns: 'AS_AGREED', returnWindowDays: 14, customTerms: '',
+    },
+    sellerId: 'seller-1', buyerId: 'buyer-1', participantIds: ['seller-1', 'buyer-1'],
+    shipment: { id: 'shipment_c', object: 'shipment', schemaVersion: 1, transactionId: 'txn_cccccccccccccccccccccccccccccccc', carrier: 'UPS', trackingNumber: '1Z999', assertionSource: 'MERCHANT', status: 'ASSOCIATED', packingEvidenceId: 'p1', sealEvidenceId: 's1', labelEvidenceMatchStatus: 'NOT_SCANNED', shippedAt: now.toISOString(), createdAt: now.toISOString(), updatedAt: now.toISOString() },
+    delivery: null, createdAt: now, updatedAt: now,
+  };
+  repository.seedTransaction(shipped);
+  const service = new MerchantEvidenceApplicationService(
+    repository, new MemoryIdempotency(), { append: async () => undefined }, new MerchantAuthorizationPolicy(),
+    { generate: async () => { throw new Error('unused'); } },
+    { sign: async () => 'https://files.example/x.pdf' },
+    { environment: 'sandbox' }, () => now,
+  );
+  const created = await service.createReturn(orgA, shipped.id, { reason: 'Item differs from locked terms.' }, 'return-key', 'req-4');
+  assert.equal(created.returnPassport.status, 'REQUESTED');
+  await assert.rejects(() => service.associateDelivery(orgA, shipped.id, { carrier: 'UPS', trackingNumber: '1Z999AA10123456784' }, 'del-empty', 'req-5'), (error) => (
+    error instanceof ApplicationError && error.code === 'ARRIVAL_OBSERVATION_REQUIRED'
+  ));
+  repository.seedEvidence({ ...finalized('DELIVERY_PHOTO', 'arrive-1'), transactionId: shipped.id, role: 'BUYER' });
+  const delivery = await service.associateDelivery(orgA, shipped.id, { carrier: 'UPS', trackingNumber: '1Z999AA10123456784' }, 'del-key', 'req-6');
+  assert.equal(delivery.delivery.assertionSource, 'MERCHANT');
+  assert.equal(delivery.delivery.arrivalEvidenceId, 'arrive-1');
+
+  created.returnPassport.status = 'AUTHORIZED';
+  const storedReturn = (repository.returns.get(shipped.id) ?? []).find((item) => item.id === created.returnPassport.id);
+  storedReturn.status = 'AUTHORIZED';
+  await assert.rejects(() => service.associateReturnShipment(orgA, shipped.id, created.returnPassport.id, {
+    carrier: 'USPS', trackingNumber: '940011189922',
+  }, 'ret-ship-empty', 'req-7'), (error) => error instanceof ApplicationError && error.category === 'FAILED_PRECONDITION');
+  repository.seedEvidence({ ...finalized('RETURN_PACKING_VIDEO', 'ret-pack'), transactionId: shipped.id, returnPassportId: created.returnPassport.id });
+  repository.seedEvidence({ ...finalized('RETURN_SHIPPING_LABEL', 'ret-seal'), transactionId: shipped.id, returnPassportId: created.returnPassport.id });
+  const shippedReturn = await service.associateReturnShipment(orgA, shipped.id, created.returnPassport.id, {
+    carrier: 'USPS', trackingNumber: '940011189922',
+  }, 'ret-ship-key', 'req-8');
+  assert.equal(shippedReturn.returnPassport.status, 'IN_TRANSIT');
+  assert.equal(shippedReturn.returnPassport.shippingCarrier, 'USPS');
+});
+
 test('Connect v1 create requires a bound integration and hides tokens on get', async () => {
   const ingested = [];
+  let cancelled = false;
   const commerceContext = {
     async ingestConnectOrder(principal, input) {
       ingested.push({ principal, input });
@@ -175,7 +253,24 @@ test('Connect v1 create requires a bound integration and hides tokens on get', a
       status: 'PENDING_REDEMPTION', transactionId: null, commerceContextId: `ctx_${'f'.repeat(40)}`,
       itemTitle: 'Camera', currency: 'USD', priceMinor: 1000, trackingNumber: null, carrier: null,
       expiresAt: new Date('2026-08-18T12:00:00.000Z'), createdAt: now,
-    } : null },
+    } : null,
+    listAccessibleSessions: async (principal, externalOrderId) => principal.organizationId === 'org-a' && externalOrderId === 'order-1' ? [{
+      id: 'e'.repeat(64), organizationId: 'org-a', integrationId: 'int-a', platform: 'custom', externalOrderId: 'order-1',
+      status: 'PENDING_REDEMPTION', transactionId: null, commerceContextId: `ctx_${'f'.repeat(40)}`,
+      itemTitle: 'Camera', currency: 'USD', priceMinor: 1000, trackingNumber: null, carrier: null,
+      expiresAt: new Date('2026-08-18T12:00:00.000Z'), createdAt: now,
+    }] : [],
+    cancelAccessibleSession: async (sessionId, principal, decide) => {
+      const current = sessionId === 'e'.repeat(64) && principal.organizationId === 'org-a' ? {
+        id: sessionId, organizationId: 'org-a', integrationId: 'int-a', platform: 'custom', externalOrderId: 'order-1',
+        status: cancelled ? 'CANCELLED' : 'PENDING_REDEMPTION', transactionId: null, commerceContextId: `ctx_${'f'.repeat(40)}`,
+        itemTitle: 'Camera', currency: 'USD', priceMinor: 1000, trackingNumber: null, carrier: null,
+        expiresAt: new Date('2026-08-18T12:00:00.000Z'), createdAt: now,
+      } : null;
+      const decision = decide(current);
+      if (decision.type === 'CANCEL') cancelled = true;
+      return decision.session;
+    } },
     { validate: async () => undefined },
     new MerchantAuthorizationPolicy(),
     { environment: 'sandbox' },
@@ -197,6 +292,38 @@ test('Connect v1 create requires a bound integration and hides tokens on get', a
 
   const fetched = await service.getSession(orgA, 'e'.repeat(64));
   assert.equal(fetched.externalOrderId, 'order-1');
+  assert.equal(fetched.status, 'PENDING_REDEMPTION');
   assert.equal('token' in fetched, false);
   await assert.rejects(() => service.getSession(orgB, 'e'.repeat(64)), (error) => error.code === 'CONNECT_SESSION_NOT_FOUND');
+
+  const listed = await service.listSessions(orgA, 'order-1');
+  assert.equal(listed.length, 1);
+  assert.equal(listed[0].id, 'e'.repeat(64));
+
+  const cancelledSession = await service.cancelSession(orgA, 'e'.repeat(64), 'req-6');
+  assert.equal(cancelledSession.session.status, 'CANCELLED');
+  assert.equal(cancelledSession.replayed, false);
+  const replayed = await service.cancelSession(orgA, 'e'.repeat(64), 'req-7');
+  assert.equal(replayed.replayed, true);
+});
+
+test('Connect v1 get reports EXPIRED for unredeemed past-due sessions', async () => {
+  const expiredAt = new Date('2026-08-10T12:00:00.000Z');
+  const service = new MerchantConnectApplicationService(
+    { ingestConnectOrder: async () => { throw new Error('unused'); } },
+    { findBoundIntegration: async () => null },
+    { findAccessibleSession: async () => ({
+      id: 'e'.repeat(64), organizationId: 'org-a', integrationId: 'int-a', platform: 'custom', externalOrderId: 'order-1',
+      status: 'PENDING_REDEMPTION', transactionId: null, commerceContextId: `ctx_${'f'.repeat(40)}`,
+      itemTitle: 'Camera', currency: 'USD', priceMinor: 1000, trackingNumber: null, carrier: null,
+      expiresAt: expiredAt, createdAt: new Date('2026-08-03T12:00:00.000Z'),
+    }), listAccessibleSessions: async () => [], cancelAccessibleSession: async () => { throw new Error('unused'); } },
+    { validate: async () => undefined },
+    new MerchantAuthorizationPolicy(),
+    { environment: 'sandbox' },
+    () => 'https://packproof.example',
+    () => now,
+  );
+  const fetched = await service.getSession(orgA, 'e'.repeat(64));
+  assert.equal(fetched.status, 'EXPIRED');
 });

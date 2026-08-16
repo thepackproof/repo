@@ -1,4 +1,5 @@
 import { FieldValue, Timestamp, type DocumentData, type Firestore } from 'firebase-admin/firestore';
+import { ApplicationError } from '../../../application/v1/errors';
 import type {
   ConnectHandoffRepository,
   ConnectRedemptionDecision,
@@ -41,6 +42,7 @@ function toSession(id: string, data: DocumentData): ConnectSessionSnapshot {
     currency: requiredString(data.currency ?? 'USD', 'currency'),
     callbackUrl: requiredString(data.callbackUrl, 'callbackUrl'),
     tokenHash: optionalString(data.tokenHash),
+    codeChallenge: optionalString(data.codeChallenge),
     status: requiredString(data.status, 'status'),
     transactionId: optionalString(data.transactionId),
     claimedBy: optionalString(data.claimedBy),
@@ -87,6 +89,13 @@ export class FirestoreConnectHandoffRepository implements ConnectHandoffReposito
       const session = sessionDocument.exists ? toSession(sessionDocument.id, sessionDocument.data()!) : null;
       const decision = decide(session, transactionRef.id);
       if (decision.type === 'REPLAY') return decision.result;
+      if (!session?.tokenHash || session.status !== 'PENDING_REDEMPTION') {
+        throw new ApplicationError('RETRYABLE_CONFLICT', 'CONNECT_GRANT_CONSUME_CONFLICT', 'The Connect grant changed before it could be consumed.', [], 1);
+      }
+      const current = sessionDocument.data();
+      if (!current || current.status !== 'PENDING_REDEMPTION' || optionalString(current.tokenHash) !== session.tokenHash) {
+        throw new ApplicationError('RETRYABLE_CONFLICT', 'CONNECT_GRANT_CONSUME_CONFLICT', 'The Connect grant changed before it could be consumed.', [], 1);
+      }
 
       const eventRef = transactionRef.collection('events').doc(decision.event.id);
       const outboxRef = this.firestore.collection('domainOutbox').doc(decision.event.id);
@@ -98,6 +107,7 @@ export class FirestoreConnectHandoffRepository implements ConnectHandoffReposito
         status: 'READY_FOR_CAPTURE',
         claimedAt: Timestamp.fromDate(decision.event.occurredAt),
         tokenHash: FieldValue.delete(),
+        codeChallenge: FieldValue.delete(),
       });
       if (!existingEvent.exists) {
         tx.create(eventRef, {

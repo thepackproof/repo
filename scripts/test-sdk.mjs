@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHmac } from 'node:crypto';
-import { PackProofConnect, PackProofConnectError, verifyPackProofWebhook } from '../sdk/javascript/index.js';
+import { PackProofConnect, PackProofConnectError, verifyPackProofWebhook, parsePackProofWebhook } from '../sdk/javascript/index.js';
 import { buildCommerceContext, createCommerceHandoff, extractStructuredProduct } from '../sdk/javascript/browser.js';
 
 const request = {
@@ -78,6 +78,67 @@ assert.equal(v1Observed.init.headers['Idempotency-Key'], 'fulfillment-order-123-
 assert.equal(JSON.parse(v1Observed.init.body).schemaVersion, 1);
 assert.equal(JSON.parse(v1Observed.init.body).idempotencyKey, undefined);
 
+let listedObserved;
+v1Client.fetch = async (url, init) => {
+  listedObserved = { url, init };
+  return new Response(JSON.stringify({ data: [{ id: 'a'.repeat(64), object: 'connect_session', externalOrderId: 'order-123' }] }), {
+    status: 200, headers: { 'Content-Type': 'application/json' },
+  });
+};
+const listed = await v1Client.listConnectSessions('order-123');
+assert.equal(listed.data[0].externalOrderId, 'order-123');
+assert.equal(listedObserved.url, 'https://packproof.example/v1/connect/sessions?externalOrderId=order-123');
+
+let cancelledObserved;
+v1Client.fetch = async (url, init) => {
+  cancelledObserved = { url, init };
+  return new Response(JSON.stringify({ data: { id: 'a'.repeat(64), status: 'CANCELLED' } }), {
+    status: 200, headers: { 'Content-Type': 'application/json' },
+  });
+};
+const cancelled = await v1Client.cancelConnectSession('a'.repeat(64));
+assert.equal(cancelled.data.status, 'CANCELLED');
+assert.equal(cancelledObserved.url, `https://packproof.example/v1/connect/sessions/${'a'.repeat(64)}/cancel`);
+assert.equal(JSON.parse(cancelledObserved.init.body).schemaVersion, 1);
+
+const artifact = await v1Client.getEvidence('txn_1', 'artifact-1');
+assert.ok(artifact);
+const returned = await v1Client.getReturn('txn_1', 'return-1');
+assert.ok(returned);
+
+v1Client.fetch = async (url, init) => {
+  observed = { url, init };
+  return new Response(JSON.stringify({ data: { object: 'return_passport', status: 'REQUESTED' } }), {
+    status: 201, headers: { 'Content-Type': 'application/json' },
+  });
+};
+const requestedReturn = await v1Client.createReturn('txn_1', { reason: 'Item differs from locked terms.' }, { idempotencyKey: 'return-1' });
+assert.equal(requestedReturn.data.object, 'return_passport');
+assert.equal(observed.url, 'https://packproof.example/v1/transactions/txn_1/returns');
+assert.equal(observed.init.headers['Idempotency-Key'], 'return-1');
+
+v1Client.fetch = async (url) => {
+  observed = { url };
+  return new Response(JSON.stringify({ data: { object: 'return_passport', status: 'IN_TRANSIT' } }), {
+    status: 201, headers: { 'Content-Type': 'application/json' },
+  });
+};
+const returnShipment = await v1Client.associateReturnShipment('txn_1', 'return-1', {
+  carrier: 'USPS', trackingNumber: '9400111899223198765432',
+}, { idempotencyKey: 'return-ship-1' });
+assert.equal(returnShipment.data.status, 'IN_TRANSIT');
+assert.equal(observed.url, 'https://packproof.example/v1/transactions/txn_1/returns/return-1/shipment');
+
+v1Client.fetch = async (url) => {
+  observed = { url };
+  return new Response(JSON.stringify({ data: { object: 'delivery', assertionSource: 'MERCHANT' } }), {
+    status: 201, headers: { 'Content-Type': 'application/json' },
+  });
+};
+const delivery = await v1Client.associateDelivery('txn_1', { carrier: 'UPS', trackingNumber: '1Z999AA10123456784' }, { idempotencyKey: 'delivery-1' });
+assert.equal(delivery.data.object, 'delivery');
+assert.equal(observed.url, 'https://packproof.example/v1/transactions/txn_1/delivery');
+
 const rawBody = JSON.stringify({ event: 'packproof.evidence.finalized', orderId: 'order-123', evidenceStatus: 'DIGITAL_EVIDENCE_WITH_LIMITATIONS' });
 const secret = 'whsec_validation_secret';
 const timestamp = '1786039200';
@@ -88,6 +149,13 @@ assert.equal(verifyPackProofWebhook({ rawBody: `${rawBody} `, timestamp, signatu
 assert.equal(verifyPackProofWebhook({ rawBody, timestamp, signature, secret, now: now + 301_000 }), false);
 const tamperedSignature = `${signature.slice(0, -1)}${signature.endsWith('0') ? '1' : '0'}`;
 assert.equal(verifyPackProofWebhook({ rawBody, timestamp, signature: tamperedSignature, secret, now }), false);
+const parsed = parsePackProofWebhook({ rawBody, timestamp, signature, secret, now });
+assert.equal(parsed.event, 'packproof.evidence.finalized');
+assert.equal(parsed.orderId, 'order-123');
+assert.throws(
+  () => parsePackProofWebhook({ rawBody, timestamp, signature: tamperedSignature, secret, now }),
+  (error) => error instanceof PackProofConnectError && error.code === 'INVALID_WEBHOOK_SIGNATURE',
+);
 
 const jsonLd = {
   '@context': 'https://schema.org',

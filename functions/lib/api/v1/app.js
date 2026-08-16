@@ -27,8 +27,12 @@ const ratePolicies = {
     evidenceReportCreate: { name: 'evidence-report-create', limit: 10, windowSeconds: 60 },
     shipmentRead: { name: 'shipment-read', limit: 120, windowSeconds: 60 },
     shipmentWrite: { name: 'shipment-write', limit: 30, windowSeconds: 60 },
+    returnWrite: { name: 'return-write', limit: 30, windowSeconds: 60 },
+    deliveryRead: { name: 'delivery-read', limit: 120, windowSeconds: 60 },
+    deliveryWrite: { name: 'delivery-write', limit: 30, windowSeconds: 60 },
     connectCreate: { name: 'connect-session-create', limit: 30, windowSeconds: 60 },
     connectRead: { name: 'connect-session-read', limit: 120, windowSeconds: 60 },
+    connectCancel: { name: 'connect-session-cancel', limit: 30, windowSeconds: 60 },
 };
 function asyncHandler(handler) {
     return (req, res, next) => { void handler(req, res, next).catch(next); };
@@ -403,6 +407,22 @@ function createApiV1App(dependencies) {
         res.setHeader('Idempotent-Replayed', String(result.replayed));
         res.status(result.replayed ? 200 : 201).json({ data: result.shipment });
     }));
+    merchantRouter.get('/transactions/:transactionId/delivery', asyncHandler(async (req, res) => {
+        res.locals.operation = 'getDelivery';
+        const principal = res.locals.principal;
+        await enforcePrincipalRateLimit(dependencies.rateLimiter, principal, ratePolicies.deliveryRead, res);
+        const delivery = await dependencies.merchantEvidenceService.getDelivery(principal, (0, validation_1.parseAccessibleTransactionId)(req.params.transactionId));
+        res.status(200).json({ data: delivery });
+    }));
+    merchantRouter.post('/transactions/:transactionId/delivery', asyncHandler(async (req, res) => {
+        res.locals.operation = 'associateDelivery';
+        requireJson(req);
+        const principal = res.locals.principal;
+        await enforcePrincipalRateLimit(dependencies.rateLimiter, principal, ratePolicies.deliveryWrite, res);
+        const result = await dependencies.merchantEvidenceService.associateDelivery(principal, (0, validation_1.parseAccessibleTransactionId)(req.params.transactionId), (0, validation_1.parseAssociateDelivery)(req.body), (0, validation_1.parseIdempotencyKey)(req.get('idempotency-key')), res.locals.requestId);
+        res.setHeader('Idempotent-Replayed', String(result.replayed));
+        res.status(result.replayed ? 200 : 201).json({ data: result.delivery });
+    }));
     merchantRouter.get('/transactions/:transactionId/returns', asyncHandler(async (req, res) => {
         res.locals.operation = 'listReturns';
         const principal = res.locals.principal;
@@ -410,12 +430,30 @@ function createApiV1App(dependencies) {
         const returns = await dependencies.merchantEvidenceService.listReturns(principal, (0, validation_1.parseAccessibleTransactionId)(req.params.transactionId));
         res.status(200).json({ data: returns });
     }));
+    merchantRouter.post('/transactions/:transactionId/returns', asyncHandler(async (req, res) => {
+        res.locals.operation = 'createReturnPassport';
+        requireJson(req);
+        const principal = res.locals.principal;
+        await enforcePrincipalRateLimit(dependencies.rateLimiter, principal, ratePolicies.returnWrite, res);
+        const result = await dependencies.merchantEvidenceService.createReturn(principal, (0, validation_1.parseAccessibleTransactionId)(req.params.transactionId), (0, validation_1.parseCreateReturn)(req.body), (0, validation_1.parseIdempotencyKey)(req.get('idempotency-key')), res.locals.requestId);
+        res.setHeader('Idempotent-Replayed', String(result.replayed));
+        res.status(result.replayed ? 200 : 201).json({ data: result.returnPassport });
+    }));
     merchantRouter.get('/transactions/:transactionId/returns/:returnPassportId', asyncHandler(async (req, res) => {
         res.locals.operation = 'getReturn';
         const principal = res.locals.principal;
         await enforcePrincipalRateLimit(dependencies.rateLimiter, principal, ratePolicies.transactionRead, res);
         const returnPassport = await dependencies.merchantEvidenceService.getReturn(principal, (0, validation_1.parseAccessibleTransactionId)(req.params.transactionId), (0, validation_1.parseReturnPassportId)(req.params.returnPassportId));
         res.status(200).json({ data: returnPassport });
+    }));
+    merchantRouter.post('/transactions/:transactionId/returns/:returnPassportId/shipment', asyncHandler(async (req, res) => {
+        res.locals.operation = 'associateReturnShipment';
+        requireJson(req);
+        const principal = res.locals.principal;
+        await enforcePrincipalRateLimit(dependencies.rateLimiter, principal, ratePolicies.shipmentWrite, res);
+        const result = await dependencies.merchantEvidenceService.associateReturnShipment(principal, (0, validation_1.parseAccessibleTransactionId)(req.params.transactionId), (0, validation_1.parseReturnPassportId)(req.params.returnPassportId), (0, validation_1.parseAssociateReturnShipment)(req.body), (0, validation_1.parseIdempotencyKey)(req.get('idempotency-key')), res.locals.requestId);
+        res.setHeader('Idempotent-Replayed', String(result.replayed));
+        res.status(result.replayed ? 200 : 201).json({ data: result.returnPassport });
     }));
     merchantRouter.post('/connect/sessions', asyncHandler(async (req, res) => {
         res.locals.operation = 'createConnectSession';
@@ -434,12 +472,30 @@ function createApiV1App(dependencies) {
             },
         });
     }));
+    merchantRouter.get('/connect/sessions', asyncHandler(async (req, res) => {
+        res.locals.operation = 'listConnectSessions';
+        const principal = res.locals.principal;
+        await enforcePrincipalRateLimit(dependencies.rateLimiter, principal, ratePolicies.connectRead, res);
+        const { externalOrderId } = (0, validation_1.parseListConnectSessions)(req.query);
+        const sessions = await dependencies.merchantConnectService.listSessions(principal, externalOrderId);
+        res.status(200).json({ data: sessions });
+    }));
     merchantRouter.get('/connect/sessions/:sessionId', asyncHandler(async (req, res) => {
         res.locals.operation = 'getConnectSession';
         const principal = res.locals.principal;
         await enforcePrincipalRateLimit(dependencies.rateLimiter, principal, ratePolicies.connectRead, res);
         const session = await dependencies.merchantConnectService.getSession(principal, (0, validation_1.parseConnectSessionId)(req.params.sessionId));
         res.status(200).json({ data: session });
+    }));
+    merchantRouter.post('/connect/sessions/:sessionId/cancel', asyncHandler(async (req, res) => {
+        res.locals.operation = 'cancelConnectSession';
+        requireJson(req);
+        const principal = res.locals.principal;
+        await enforcePrincipalRateLimit(dependencies.rateLimiter, principal, ratePolicies.connectCancel, res);
+        (0, validation_1.parseCancelConnectSession)(req.body);
+        const result = await dependencies.merchantConnectService.cancelSession(principal, (0, validation_1.parseConnectSessionId)(req.params.sessionId), res.locals.requestId);
+        res.setHeader('Idempotent-Replayed', String(result.replayed));
+        res.status(200).json({ data: result.session });
     }));
     merchantRouter.all('/transactions', (req, _res, next) => {
         next(new core_1.ApiError(405, 'METHOD_NOT_ALLOWED', 'This HTTP method is not supported for the resource.', [], { Allow: 'GET, POST' }));
@@ -480,17 +536,26 @@ function createApiV1App(dependencies) {
     merchantRouter.all('/transactions/:transactionId/shipment', (req, _res, next) => {
         next(new core_1.ApiError(405, 'METHOD_NOT_ALLOWED', 'This HTTP method is not supported for the resource.', [], { Allow: 'GET, POST' }));
     });
+    merchantRouter.all('/transactions/:transactionId/delivery', (req, _res, next) => {
+        next(new core_1.ApiError(405, 'METHOD_NOT_ALLOWED', 'This HTTP method is not supported for the resource.', [], { Allow: 'GET, POST' }));
+    });
     merchantRouter.all('/transactions/:transactionId/returns', (req, _res, next) => {
-        next(new core_1.ApiError(405, 'METHOD_NOT_ALLOWED', 'This HTTP method is not supported for the resource.', [], { Allow: 'GET' }));
+        next(new core_1.ApiError(405, 'METHOD_NOT_ALLOWED', 'This HTTP method is not supported for the resource.', [], { Allow: 'GET, POST' }));
     });
     merchantRouter.all('/transactions/:transactionId/returns/:returnPassportId', (req, _res, next) => {
         next(new core_1.ApiError(405, 'METHOD_NOT_ALLOWED', 'This HTTP method is not supported for the resource.', [], { Allow: 'GET' }));
     });
-    merchantRouter.all('/connect/sessions', (req, _res, next) => {
+    merchantRouter.all('/transactions/:transactionId/returns/:returnPassportId/shipment', (req, _res, next) => {
         next(new core_1.ApiError(405, 'METHOD_NOT_ALLOWED', 'This HTTP method is not supported for the resource.', [], { Allow: 'POST' }));
+    });
+    merchantRouter.all('/connect/sessions', (req, _res, next) => {
+        next(new core_1.ApiError(405, 'METHOD_NOT_ALLOWED', 'This HTTP method is not supported for the resource.', [], { Allow: 'GET, POST' }));
     });
     merchantRouter.all('/connect/sessions/:sessionId', (req, _res, next) => {
         next(new core_1.ApiError(405, 'METHOD_NOT_ALLOWED', 'This HTTP method is not supported for the resource.', [], { Allow: 'GET' }));
+    });
+    merchantRouter.all('/connect/sessions/:sessionId/cancel', (req, _res, next) => {
+        next(new core_1.ApiError(405, 'METHOD_NOT_ALLOWED', 'This HTTP method is not supported for the resource.', [], { Allow: 'POST' }));
     });
     app.use('/v1', merchantRouter);
     app.use((req, _res, next) => {

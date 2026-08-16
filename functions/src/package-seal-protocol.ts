@@ -6,6 +6,7 @@ export const SHIPMENT_PRECONDITION_MESSAGES = {
   SEAL_REFERENCE: 'A server-finalized high-resolution seal reference photograph with no recorded byte-integrity mismatch is required before shipment can be recorded.',
   RETURN_PACKING_VIDEO: 'A server-finalized return repacking video with no recorded byte-integrity mismatch is required first.',
   RETURN_SEAL_REFERENCE: 'A server-finalized high-resolution return seal reference photograph with no recorded byte-integrity mismatch is required first.',
+  ARRIVAL_OBSERVATION: 'A server-finalized arrival photograph with no recorded byte-integrity mismatch is required before delivery can be associated.',
 } as const;
 
 export type WorkflowEvidenceRecord = {

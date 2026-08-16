@@ -512,7 +512,13 @@ export const connectOrderSchema = schema((value) => {
 
 export const redeemConnectSchema = schema((value) => {
   const input = object(value);
-  return { sessionId: text(input.sessionId, 'sessionId', 8, 160) as string, token: text(input.token, 'token', 20, 300) as string };
+  return {
+    sessionId: text(input.sessionId, 'sessionId', 8, 160) as string,
+    token: text(input.token, 'token', 20, 300) as string,
+    clientId: text(input.clientId, 'clientId', 8, 160, { optional: true }) as string | undefined,
+    redirectUri: input.redirectUri === undefined ? undefined : urlText(input.redirectUri, 'redirectUri'),
+    codeVerifier: text(input.codeVerifier, 'codeVerifier', 43, 128, { optional: true }) as string | undefined,
+  };
 });
 
 export const redeemPublicCommerceHandoffSchema = schema((value) => {

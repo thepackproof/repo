@@ -19,8 +19,13 @@ exports.parseEvidenceArtifactId = parseEvidenceArtifactId;
 exports.parseEvidenceReportId = parseEvidenceReportId;
 exports.parseReturnPassportId = parseReturnPassportId;
 exports.parseConnectSessionId = parseConnectSessionId;
+exports.parseListConnectSessions = parseListConnectSessions;
+exports.parseCancelConnectSession = parseCancelConnectSession;
 exports.parseCreateConnectSession = parseCreateConnectSession;
 exports.parseAssociateShipment = parseAssociateShipment;
+exports.parseCreateReturn = parseCreateReturn;
+exports.parseAssociateReturnShipment = parseAssociateReturnShipment;
+exports.parseAssociateDelivery = parseAssociateDelivery;
 exports.parseCreateEvidenceReport = parseCreateEvidenceReport;
 exports.asApiError = asApiError;
 const core_1 = require("./core");
@@ -374,6 +379,22 @@ function parseConnectSessionId(value) {
     }
     return value;
 }
+function parseListConnectSessions(query) {
+    rejectUnknown(query, ['externalOrderId'], 'query');
+    const externalOrderId = oneQueryValue(query.externalOrderId, 'externalOrderId');
+    if (!externalOrderId) {
+        throw new core_1.InputValidationError([{ field: 'externalOrderId', code: 'REQUIRED', message: 'externalOrderId is required to list Connect sessions.' }]);
+    }
+    return { externalOrderId: string(externalOrderId, 'externalOrderId', 1, 200) };
+}
+function parseCancelConnectSession(value) {
+    const input = object(value, 'body');
+    rejectUnknown(input, ['schemaVersion']);
+    if (input.schemaVersion !== 1) {
+        throw new core_1.InputValidationError([{ field: 'schemaVersion', code: 'UNSUPPORTED_SCHEMA_VERSION', message: 'schemaVersion must equal 1.' }]);
+    }
+    return { schemaVersion: 1 };
+}
 function parseHttpsCallbackUrl(value, field) {
     const raw = string(value, field, 12, 2_000);
     let parsed;
@@ -427,6 +448,28 @@ function parseAssociateShipment(value) {
     return {
         carrier: string(input.carrier, 'carrier', 1, 80),
         trackingNumber: string(input.trackingNumber, 'trackingNumber', 3, 160),
+    };
+}
+function parseCreateReturn(value) {
+    const input = object(value, 'body');
+    rejectUnknown(input, ['schemaVersion', 'reason']);
+    if (input.schemaVersion !== 1) {
+        throw new core_1.InputValidationError([{ field: 'schemaVersion', code: 'UNSUPPORTED_SCHEMA_VERSION', message: 'schemaVersion must equal 1.' }]);
+    }
+    return { reason: string(input.reason, 'reason', 5, 5000) };
+}
+function parseAssociateReturnShipment(value) {
+    return parseAssociateShipment(value);
+}
+function parseAssociateDelivery(value) {
+    const input = object(value, 'body');
+    rejectUnknown(input, ['schemaVersion', 'carrier', 'trackingNumber']);
+    if (input.schemaVersion !== 1) {
+        throw new core_1.InputValidationError([{ field: 'schemaVersion', code: 'UNSUPPORTED_SCHEMA_VERSION', message: 'schemaVersion must equal 1.' }]);
+    }
+    return {
+        carrier: string(input.carrier, 'carrier', 1, 80, false),
+        trackingNumber: string(input.trackingNumber, 'trackingNumber', 3, 160, false),
     };
 }
 function parseCreateEvidenceReport(value) {

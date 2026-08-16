@@ -270,6 +270,7 @@ class PublicCommerceHandoffApplicationService {
                     origin: snapshot.origin,
                     productUrl: snapshot.context.source.productUrl,
                 },
+                listingImageReferences: item.imageReferences.map((image) => ({ url: image.url, altText: image.altText })),
             };
             transactions_1.transactionDtoSchema.parse((0, compatibility_1.mapLegacyConsumerTransaction)({ id: transactionId, ...transaction }));
             const events = [

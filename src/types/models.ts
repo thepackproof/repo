@@ -99,6 +99,7 @@ export type PackProofTransaction = {
       origin: string;
       productUrl: string;
     };
+  listingImageReferences?: { url: string; altText?: string | null }[];
 };
 
 export type EvidenceRecord = {

@@ -97,15 +97,16 @@ class FirestoreMerchantAuthenticator {
             scopes,
             integrationId: typeof client.integrationId === 'string' && client.integrationId ? client.integrationId : null,
         };
-        // Use append-only usage records instead of mutating one credential document
-        // on every request; the latter becomes a per-credential write hotspot.
-        await credentialRef.collection('usage').add({
-            apiClientId,
-            organizationId,
-            environment,
-            usedAt: firestore_1.FieldValue.serverTimestamp(),
-        });
+        this.recordUsageBestEffort(credentialRef, { apiClientId, organizationId, environment });
         return principal;
+    }
+    recordUsageBestEffort(credentialRef, payload) {
+        void credentialRef.collection('usage').add({
+            ...payload,
+            usedAt: firestore_1.FieldValue.serverTimestamp(),
+        }).catch((error) => {
+            console.warn('api_credential_usage_record_failed', error);
+        });
     }
 }
 exports.FirestoreMerchantAuthenticator = FirestoreMerchantAuthenticator;

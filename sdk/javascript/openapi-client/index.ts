@@ -12,9 +12,11 @@ export type { OpenAPIConfig } from './core/OpenAPI';
 
 export type { AccessibleTransactionId as AccessibleTransactionIdModel } from './models/AccessibleTransactionId';
 export type { Amount as AmountModel } from './models/Amount';
+export type { AssociateDeliveryRequest as AssociateDeliveryRequestModel } from './models/AssociateDeliveryRequest';
 export type { AssociateShipmentRequest as AssociateShipmentRequestModel } from './models/AssociateShipmentRequest';
 export type { AssuranceAssessment as AssuranceAssessmentModel } from './models/AssuranceAssessment';
 export type { AssuranceDimension as AssuranceDimensionModel } from './models/AssuranceDimension';
+export type { CancelConnectSessionRequest as CancelConnectSessionRequestModel } from './models/CancelConnectSessionRequest';
 export type { CancelEvidenceSessionRequest as CancelEvidenceSessionRequestModel } from './models/CancelEvidenceSessionRequest';
 export { CaptureAttestation as CaptureAttestationModel } from './models/CaptureAttestation';
 export type { CaptureInstructions as CaptureInstructionsModel } from './models/CaptureInstructions';
@@ -22,9 +24,12 @@ export type { CaptureRequirements as CaptureRequirementsModel } from './models/C
 export type { ClaimParticipantRequest as ClaimParticipantRequestModel } from './models/ClaimParticipantRequest';
 export type { CommerceItemDescriptor as CommerceItemDescriptorModel } from './models/CommerceItemDescriptor';
 export type { ConnectCaptureInstructions as ConnectCaptureInstructionsModel } from './models/ConnectCaptureInstructions';
+export { ConnectManifestAuthentication as ConnectManifestAuthenticationModel } from './models/ConnectManifestAuthentication';
 export type { ConnectSession as ConnectSessionModel } from './models/ConnectSession';
 export type { ConnectSessionId as ConnectSessionIdModel } from './models/ConnectSessionId';
+export type { ConnectSessionListResponse as ConnectSessionListResponseModel } from './models/ConnectSessionListResponse';
 export type { ConnectSessionResponse as ConnectSessionResponseModel } from './models/ConnectSessionResponse';
+export { ConnectSessionStatus as ConnectSessionStatusModel } from './models/ConnectSessionStatus';
 export type { CreateConnectSessionRequest as CreateConnectSessionRequestModel } from './models/CreateConnectSessionRequest';
 export type { CreateConnectSessionResponse as CreateConnectSessionResponseModel } from './models/CreateConnectSessionResponse';
 export type { CreateEvidenceReportRequest as CreateEvidenceReportRequestModel } from './models/CreateEvidenceReportRequest';
@@ -32,13 +37,17 @@ export type { CreateEvidenceSessionRequest as CreateEvidenceSessionRequestModel 
 export type { CreateEvidenceSessionResponse as CreateEvidenceSessionResponseModel } from './models/CreateEvidenceSessionResponse';
 export type { CreateParticipantInvitationRequest as CreateParticipantInvitationRequestModel } from './models/CreateParticipantInvitationRequest';
 export type { CreatePublicCommerceHandoffRequest as CreatePublicCommerceHandoffRequestModel } from './models/CreatePublicCommerceHandoffRequest';
+export type { CreateReturnRequest as CreateReturnRequestModel } from './models/CreateReturnRequest';
 export type { CreateTransactionRequest as CreateTransactionRequestModel } from './models/CreateTransactionRequest';
 export type { CreateTransactionResponse as CreateTransactionResponseModel } from './models/CreateTransactionResponse';
+export { Delivery as DeliveryModel } from './models/Delivery';
+export type { DeliveryResponse as DeliveryResponseModel } from './models/DeliveryResponse';
 export type { ErrorDetail as ErrorDetailModel } from './models/ErrorDetail';
 export type { ErrorEnvelope as ErrorEnvelopeModel } from './models/ErrorEnvelope';
 export { EvidenceArtifact as EvidenceArtifactModel } from './models/EvidenceArtifact';
 export type { EvidenceArtifactId as EvidenceArtifactIdModel } from './models/EvidenceArtifactId';
 export { EvidenceArtifactType as EvidenceArtifactTypeModel } from './models/EvidenceArtifactType';
+export { EvidenceFinalizedCallback as EvidenceFinalizedCallbackModel } from './models/EvidenceFinalizedCallback';
 export type { EvidenceListResponse as EvidenceListResponseModel } from './models/EvidenceListResponse';
 export type { EvidenceReport as EvidenceReportModel } from './models/EvidenceReport';
 export type { EvidenceReportId as EvidenceReportIdModel } from './models/EvidenceReportId';
@@ -50,6 +59,7 @@ export type { EvidenceSessionRedemptionInstructions as EvidenceSessionRedemption
 export type { EvidenceSessionResponse as EvidenceSessionResponseModel } from './models/EvidenceSessionResponse';
 export { EvidenceSessionStatus as EvidenceSessionStatusModel } from './models/EvidenceSessionStatus';
 export { EvidenceSessionType as EvidenceSessionTypeModel } from './models/EvidenceSessionType';
+export type { ExternalOrderIdQuery as ExternalOrderIdQueryModel } from './models/ExternalOrderIdQuery';
 export type { GetTransactionResponse as GetTransactionResponseModel } from './models/GetTransactionResponse';
 export type { HealthResponse as HealthResponseModel } from './models/HealthResponse';
 export type { IdempotencyKey as IdempotencyKeyModel } from './models/IdempotencyKey';
@@ -73,7 +83,7 @@ export type { ReadinessResponse as ReadinessResponseModel } from './models/Readi
 export type { RedeemEvidenceSessionRequest as RedeemEvidenceSessionRequestModel } from './models/RedeemEvidenceSessionRequest';
 export type { RedeemEvidenceSessionResponse as RedeemEvidenceSessionResponseModel } from './models/RedeemEvidenceSessionResponse';
 export type { ReturnListResponse as ReturnListResponseModel } from './models/ReturnListResponse';
-export type { ReturnPassport as ReturnPassportModel } from './models/ReturnPassport';
+export { ReturnPassport as ReturnPassportModel } from './models/ReturnPassport';
 export type { ReturnPassportId as ReturnPassportIdModel } from './models/ReturnPassportId';
 export type { ReturnResponse as ReturnResponseModel } from './models/ReturnResponse';
 export { ReviewPackage as ReviewPackageModel } from './models/ReviewPackage';
@@ -89,6 +99,7 @@ export { TransactionStatus as TransactionStatusModel } from './models/Transactio
 export { ClaimsReviewService } from './services/ClaimsReviewService';
 export { CommerceHandoffsService } from './services/CommerceHandoffsService';
 export { ConnectSessionsService } from './services/ConnectSessionsService';
+export { DeliveryService } from './services/DeliveryService';
 export { EvidenceService } from './services/EvidenceService';
 export { EvidenceSessionsService } from './services/EvidenceSessionsService';
 export { ParticipantClaimsService } from './services/ParticipantClaimsService';

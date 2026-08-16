@@ -84,6 +84,7 @@ function storedTransaction(decision) {
         completedBy: record.completedBy,
         lockedAt: null,
         source: record.source,
+        listingImageReferences: record.listingImageReferences,
         createdAt: firestore_1.Timestamp.fromDate(record.createdAt),
         updatedAt: firestore_1.Timestamp.fromDate(record.updatedAt),
     };

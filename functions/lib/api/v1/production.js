@@ -64,8 +64,8 @@ function productionApp() {
         },
     };
     const merchantEvidenceService = new merchant_evidence_service_1.MerchantEvidenceApplicationService(new merchant_evidence_repository_1.FirestoreMerchantEvidenceRepository(config_1.db), new controls_1.FirestoreIdempotencyStore(config_1.db), new controls_1.FirestoreAuditWriter(config_1.db), new security_1.AuthorizationService(), {
-        generate(transactionId, generatedBy) {
-            return (0, evidence_1.generateEvidencePacket)(transactionId, generatedBy);
+        generate(transactionId, generatedBy, options) {
+            return (0, evidence_1.generateEvidencePacket)(transactionId, generatedBy, options);
         },
     }, {
         async sign(storagePath, expiresAt) {

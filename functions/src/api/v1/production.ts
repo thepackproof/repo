@@ -95,8 +95,8 @@ function productionApp() {
     new FirestoreAuditWriter(db),
     new AuthorizationService(),
     {
-      generate(transactionId, generatedBy) {
-        return generateEvidencePacket(transactionId, generatedBy);
+      generate(transactionId, generatedBy, options) {
+        return generateEvidencePacket(transactionId, generatedBy, options);
       },
     },
     {
