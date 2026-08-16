@@ -5,6 +5,7 @@ import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
 const { createApiV1App } = require('../lib/api/v1/app.js');
+const { passThroughIdempotencyFence } = require('../lib/application/v1/merchant-ports.js');
 const {
   ApiError,
   canonicalize,
@@ -65,7 +66,7 @@ class InMemoryIdempotencyStore {
     const operationId = existing?.operationId ?? createTransactionId();
     this.records.set(id, { state: 'PROCESSING', fingerprint: context.requestFingerprint, operationId });
     try {
-      const value = await operation(operationId);
+      const value = await operation(operationId, passThroughIdempotencyFence(operationId));
       this.records.set(id, { state: 'COMPLETE', fingerprint: context.requestFingerprint, operationId, value });
       return { value, replayed: false, operationId };
     } catch (error) {

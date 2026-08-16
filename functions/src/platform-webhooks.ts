@@ -1,13 +1,14 @@
 import { createHash, createHmac, randomUUID } from 'node:crypto';
 import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
-import { FieldValue, Timestamp } from 'firebase-admin/firestore';
+import { FieldValue } from 'firebase-admin/firestore';
 import { HttpsError, onCall, onRequest } from 'firebase-functions/v2/https';
 import { onDocumentCreated } from 'firebase-functions/v2/firestore';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { buildConnectEvidenceFinalizedCallback } from './application/v1/connect-callback';
 import { CommerceContextApplicationService } from './application/v1/commerce-context-service';
 import { ConnectHandoffApplicationService } from './application/v1/connect-handoff-service';
+import { processDueConnectCallbacks } from './infrastructure/firebase/v1/connect-callback-retry';
 import { PublicCommerceHandoffApplicationService } from './application/v1/public-commerce-handoff-service';
 import { ApplicationError } from './application/v1/errors';
 import { apiEnvironment, connectLinkBaseUrl, db, publicHandoffSigningSecret, storage } from './config';
@@ -287,30 +288,8 @@ export const onConnectEvidenceVerified = onDocumentCreated('transactions/{transa
 });
 
 export const retryConnectCallbacks = onSchedule('every 5 minutes', async () => {
-  const due = await db.collection('webhookDeliveries').where('status', 'in', ['FAILED', 'PENDING']).limit(20).get();
-  for (const doc of due.docs) {
-    const delivery = await db.runTransaction(async (tx) => {
-      const fresh = await tx.get(doc.ref);
-      const data = fresh.data();
-      if (!fresh.exists || !data || !['FAILED', 'PENDING'].includes(String(data.status))) return null;
-      const nextAttemptAt = data.nextAttemptAt as Timestamp | undefined;
-      if (nextAttemptAt && nextAttemptAt.toMillis() > Date.now()) return null;
-      tx.set(doc.ref, {
-        status: 'PENDING',
-        attempts: FieldValue.increment(1),
-        // Lease the delivery so overlapping scheduler runs cannot double-send it.
-        nextAttemptAt: expiresIn(120),
-        updatedAt: FieldValue.serverTimestamp(),
-      }, { merge: true });
-      return data;
-    });
-    if (!delivery) continue;
-    try {
-      await deliverCallback(doc.ref, delivery);
-    } catch (error) {
-      const attempts = Number(delivery.attempts ?? 1) + 1;
-      const delaySeconds = Math.min(6 * 3600, 300 * 2 ** Math.min(attempts, 6));
-      await doc.ref.set({ status: 'FAILED', lastError: error instanceof Error ? error.message.slice(0, 500) : 'Unknown callback error.', nextAttemptAt: expiresIn(delaySeconds), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
-    }
-  }
+  await processDueConnectCallbacks({
+    firestore: db,
+    deliver: deliverCallback,
+  });
 });

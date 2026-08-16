@@ -22,10 +22,26 @@ export type IdempotencyExecution<T> = {
   operationId: string;
 };
 
+export type IdempotencyFence = {
+  operationId: string;
+  fenceToken: number;
+  assertOwned: () => Promise<void>;
+  runSideEffect: <R>(name: string, effect: () => Promise<R>) => Promise<R>;
+};
+
+export function passThroughIdempotencyFence(operationId: string, fenceToken = 1): IdempotencyFence {
+  return {
+    operationId,
+    fenceToken,
+    assertOwned: async () => undefined,
+    runSideEffect: async (_name, effect) => effect(),
+  };
+}
+
 export interface IdempotencyStore {
   execute<T extends object>(
     context: IdempotencyContext,
-    operation: (operationId: string) => Promise<T>,
+    operation: (operationId: string, fence: IdempotencyFence) => Promise<T>,
   ): Promise<IdempotencyExecution<T>>;
 }
 

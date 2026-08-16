@@ -101,6 +101,8 @@
     "test:queue-attention": "node --experimental-strip-types scripts/test-queue-attention.mjs",
     "test:runtime-display": "node --experimental-strip-types scripts/test-runtime-display.mjs",
     "test:package-seal-protocol": "node --experimental-strip-types scripts/test-package-seal-protocol.mjs",
+    "test:capture-workflow": "node --experimental-strip-types scripts/test-capture-workflow.mjs",
+    "test:dependency-advisories": "node scripts/check-dependency-advisories.mjs",
     "validate:physical": "node scripts/analyze-physical-validation.mjs",
     "verify:manifest": "node tools/verify-evidence.mjs",
     "test:manifest-verifier": "node scripts/test-evidence-verifier.mjs",

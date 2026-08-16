@@ -7,6 +7,7 @@ import type {
   AuditWriter,
   IdempotencyContext,
   IdempotencyExecution,
+  IdempotencyFence,
   IdempotencyStore,
   RateLimitDecision,
   RateLimiter,
@@ -75,7 +76,7 @@ export class FirestoreIdempotencyStore implements IdempotencyStore {
 
   async execute<T extends object>(
     context: IdempotencyContext,
-    operation: (operationId: string) => Promise<T>,
+    operation: (operationId: string, fence: IdempotencyFence) => Promise<T>,
   ): Promise<IdempotencyExecution<T>> {
     const recordId = sha256(canonicalize({
       principalId: context.principalId,
@@ -126,7 +127,7 @@ export class FirestoreIdempotencyStore implements IdempotencyStore {
         updatedAt: FieldValue.serverTimestamp(),
         ...(snap.exists ? {} : { createdAt: FieldValue.serverTimestamp() }),
       }, { merge: true });
-      return { replayed: false as const, operationId };
+      return { replayed: false as const, operationId, fenceToken };
     });
     if (reservation.replayed) {
       return { value: reservation.result, replayed: true, operationId: reservation.operationId };
@@ -138,12 +139,29 @@ export class FirestoreIdempotencyStore implements IdempotencyStore {
     }, renewEveryMs);
     renewTimer.unref?.();
 
+    const assertOwned = async (): Promise<void> => {
+      const snap = await ref.get();
+      const record = snap.data() as StoredIdempotencyRecord<T> | undefined;
+      if (!record || record.ownerToken !== ownerToken || record.state !== 'PROCESSING' || record.fenceToken !== reservation.fenceToken) {
+        throw new ApplicationError('RETRYABLE_CONFLICT', 'IDEMPOTENCY_LEASE_LOST', 'The idempotent operation lease is no longer owned by this invocation.', [], 1);
+      }
+    };
+    const fence: IdempotencyFence = {
+      operationId: reservation.operationId,
+      fenceToken: reservation.fenceToken,
+      assertOwned,
+      runSideEffect: async (_name, effect) => {
+        await assertOwned();
+        return effect();
+      },
+    };
+
     try {
-      const value = await operation(reservation.operationId);
+      const value = await operation(reservation.operationId, fence);
       await this.firestore.runTransaction(async (tx) => {
         const snap = await tx.get(ref);
         const record = snap.data() as StoredIdempotencyRecord<T> | undefined;
-        if (!record || record.ownerToken !== ownerToken || record.state !== 'PROCESSING') {
+        if (!record || record.ownerToken !== ownerToken || record.state !== 'PROCESSING' || record.fenceToken !== reservation.fenceToken) {
           throw new ApplicationError('RETRYABLE_CONFLICT', 'IDEMPOTENCY_LEASE_LOST', 'The idempotent operation lease is no longer owned by this invocation.', [], 1);
         }
         tx.update(ref, {

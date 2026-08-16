@@ -85,7 +85,7 @@ class FirestoreIdempotencyStore {
                 updatedAt: firestore_1.FieldValue.serverTimestamp(),
                 ...(snap.exists ? {} : { createdAt: firestore_1.FieldValue.serverTimestamp() }),
             }, { merge: true });
-            return { replayed: false, operationId };
+            return { replayed: false, operationId, fenceToken };
         });
         if (reservation.replayed) {
             return { value: reservation.result, replayed: true, operationId: reservation.operationId };
@@ -95,12 +95,28 @@ class FirestoreIdempotencyStore {
             void this.renewLease(ref, ownerToken, leaseSeconds);
         }, renewEveryMs);
         renewTimer.unref?.();
+        const assertOwned = async () => {
+            const snap = await ref.get();
+            const record = snap.data();
+            if (!record || record.ownerToken !== ownerToken || record.state !== 'PROCESSING' || record.fenceToken !== reservation.fenceToken) {
+                throw new errors_1.ApplicationError('RETRYABLE_CONFLICT', 'IDEMPOTENCY_LEASE_LOST', 'The idempotent operation lease is no longer owned by this invocation.', [], 1);
+            }
+        };
+        const fence = {
+            operationId: reservation.operationId,
+            fenceToken: reservation.fenceToken,
+            assertOwned,
+            runSideEffect: async (_name, effect) => {
+                await assertOwned();
+                return effect();
+            },
+        };
         try {
-            const value = await operation(reservation.operationId);
+            const value = await operation(reservation.operationId, fence);
             await this.firestore.runTransaction(async (tx) => {
                 const snap = await tx.get(ref);
                 const record = snap.data();
-                if (!record || record.ownerToken !== ownerToken || record.state !== 'PROCESSING') {
+                if (!record || record.ownerToken !== ownerToken || record.state !== 'PROCESSING' || record.fenceToken !== reservation.fenceToken) {
                     throw new errors_1.ApplicationError('RETRYABLE_CONFLICT', 'IDEMPOTENCY_LEASE_LOST', 'The idempotent operation lease is no longer owned by this invocation.', [], 1);
                 }
                 tx.update(ref, {

@@ -59,3 +59,7 @@ packproof-*.zip
 /.firebase/
 /firestore-debug.log
 /ui-debug.log
+
+# Document-extraction debris
+.attachments/
+

@@ -14,3 +14,4 @@ Architecture decisions are immutable records. If a decision changes, add a new A
 | [0008](0008-manifest-authentication-evolution.md) | Explicit HMAC boundary and versioned asymmetric evolution | Accepted |
 | [0009](0009-neutral-sisv-observation-boundary.md) | SISV is neutral observation infrastructure, never an adjudication or fault engine | Accepted |
 | [0010](0010-evidence-vault-launch-before-sisv.md) | Launch the two-device evidence vault before consent-governed SISV research | Accepted |
+| [0011](0011-idempotency-side-effect-fencing.md) | Idempotency fencing for external side effects | Accepted |
