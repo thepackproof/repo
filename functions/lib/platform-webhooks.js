@@ -171,6 +171,9 @@ exports.redeemConnectSession = (0, https_1.onCall)({ enforceAppCheck: true }, as
             actorId: uid,
             sessionId: input.sessionId,
             token: input.token,
+            clientId: input.clientId,
+            redirectUri: input.redirectUri,
+            codeVerifier: input.codeVerifier,
             requestId: request.rawRequest.get('x-request-id') ?? (0, node_crypto_1.randomUUID)(),
         });
     }

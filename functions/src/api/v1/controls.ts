@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { FieldValue, Timestamp, type Firestore } from 'firebase-admin/firestore';
+import { FieldValue, Timestamp, type DocumentReference, type Firestore } from 'firebase-admin/firestore';
 import { ApplicationError } from '../../application/v1/errors';
 import { canonicalize, createTransactionId, sha256 } from './core';
 import type {
@@ -18,14 +18,59 @@ type StoredIdempotencyRecord<T> = {
   state: 'PROCESSING' | 'COMPLETE' | 'FAILED_RETRYABLE';
   operationId: string;
   ownerToken?: string;
+  fenceToken?: number;
   leaseExpiresAt?: Timestamp;
   result?: T;
 };
 
+export const DEFAULT_IDEMPOTENCY_LEASE_SECONDS = 120;
+export const EVIDENCE_REPORT_IDEMPOTENCY_LEASE_SECONDS = 900;
+
+export function leaseSecondsForOperation(
+  operation: string,
+  override?: number,
+  fallback = DEFAULT_IDEMPOTENCY_LEASE_SECONDS,
+): number {
+  if (override && Number.isSafeInteger(override) && override > 0) return override;
+  if (operation.includes('/reports') || operation.toLowerCase().includes('evidence-report')) {
+    return EVIDENCE_REPORT_IDEMPOTENCY_LEASE_SECONDS;
+  }
+  return fallback;
+}
+
+export type IdempotencyAcquirePlan =
+  | { type: 'REPLAY'; operationId: string; result: unknown }
+  | { type: 'IN_PROGRESS' }
+  | { type: 'KEY_REUSED' }
+  | { type: 'ACQUIRE'; operationId: string | null; reclaimExpired: boolean };
+
+export function planIdempotencyAcquire(
+  existing: {
+    requestFingerprint: string;
+    state: string;
+    operationId: string;
+    leaseExpiresAtMs?: number;
+    result?: unknown;
+  } | undefined,
+  requestFingerprint: string,
+  nowMs: number,
+): IdempotencyAcquirePlan {
+  if (existing && existing.requestFingerprint !== requestFingerprint) return { type: 'KEY_REUSED' };
+  if (existing?.state === 'COMPLETE' && existing.result) {
+    return { type: 'REPLAY', operationId: existing.operationId, result: existing.result };
+  }
+  if (existing?.state === 'PROCESSING') {
+    if (existing.leaseExpiresAtMs && existing.leaseExpiresAtMs > nowMs) return { type: 'IN_PROGRESS' };
+    return { type: 'ACQUIRE', operationId: existing.operationId, reclaimExpired: true };
+  }
+  return { type: 'ACQUIRE', operationId: existing?.operationId ?? null, reclaimExpired: false };
+}
+
 export class FirestoreIdempotencyStore implements IdempotencyStore {
   constructor(
     private readonly firestore: Firestore,
-    private readonly leaseSeconds = 30,
+    private readonly defaultLeaseSeconds = DEFAULT_IDEMPOTENCY_LEASE_SECONDS,
+    private readonly now: () => number = () => Date.now(),
   ) {}
 
   async execute<T extends object>(
@@ -39,20 +84,34 @@ export class FirestoreIdempotencyStore implements IdempotencyStore {
     }));
     const ref = this.firestore.collection('apiIdempotencyRecords').doc(recordId);
     const ownerToken = randomUUID();
-    const now = Date.now();
+    const leaseSeconds = leaseSecondsForOperation(context.operation, context.leaseSeconds, this.defaultLeaseSeconds);
     const reservation = await this.firestore.runTransaction(async (tx) => {
       const snap = await tx.get(ref);
       const existing = snap.data() as StoredIdempotencyRecord<T> | undefined;
-      if (existing && existing.requestFingerprint !== context.requestFingerprint) {
+      const plan = planIdempotencyAcquire(
+        existing
+          ? {
+            requestFingerprint: existing.requestFingerprint,
+            state: existing.state,
+            operationId: existing.operationId,
+            leaseExpiresAtMs: existing.leaseExpiresAt?.toMillis(),
+            result: existing.result,
+          }
+          : undefined,
+        context.requestFingerprint,
+        this.now(),
+      );
+      if (plan.type === 'KEY_REUSED') {
         throw new ApplicationError('CONFLICT', 'IDEMPOTENCY_KEY_REUSED', 'This Idempotency-Key was already used with a materially different request.');
       }
-      if (existing?.state === 'COMPLETE' && existing.result) {
-        return { replayed: true as const, operationId: existing.operationId, result: existing.result };
+      if (plan.type === 'REPLAY') {
+        return { replayed: true as const, operationId: plan.operationId, result: plan.result as T };
       }
-      if (existing?.state === 'PROCESSING' && existing.leaseExpiresAt && existing.leaseExpiresAt.toMillis() > now) {
+      if (plan.type === 'IN_PROGRESS') {
         throw new ApplicationError('RETRYABLE_CONFLICT', 'IDEMPOTENCY_REQUEST_IN_PROGRESS', 'An equivalent request is still being processed.', [], 1);
       }
-      const operationId = existing?.operationId ?? createTransactionId();
+      const operationId = plan.operationId ?? createTransactionId();
+      const fenceToken = (existing?.fenceToken ?? 0) + 1;
       tx.set(ref, {
         principalId: context.principalId,
         operation: context.operation,
@@ -61,7 +120,9 @@ export class FirestoreIdempotencyStore implements IdempotencyStore {
         state: 'PROCESSING',
         operationId,
         ownerToken,
-        leaseExpiresAt: Timestamp.fromMillis(now + this.leaseSeconds * 1_000),
+        fenceToken,
+        leaseSeconds,
+        leaseExpiresAt: Timestamp.fromMillis(this.now() + leaseSeconds * 1_000),
         updatedAt: FieldValue.serverTimestamp(),
         ...(snap.exists ? {} : { createdAt: FieldValue.serverTimestamp() }),
       }, { merge: true });
@@ -71,13 +132,19 @@ export class FirestoreIdempotencyStore implements IdempotencyStore {
       return { value: reservation.result, replayed: true, operationId: reservation.operationId };
     }
 
+    const renewEveryMs = Math.max(1_000, Math.floor(leaseSeconds * 1_000 / 3));
+    const renewTimer = setInterval(() => {
+      void this.renewLease(ref, ownerToken, leaseSeconds);
+    }, renewEveryMs);
+    renewTimer.unref?.();
+
     try {
       const value = await operation(reservation.operationId);
       await this.firestore.runTransaction(async (tx) => {
         const snap = await tx.get(ref);
         const record = snap.data() as StoredIdempotencyRecord<T> | undefined;
         if (!record || record.ownerToken !== ownerToken || record.state !== 'PROCESSING') {
-          throw new ApplicationError('RETRYABLE_CONFLICT', 'IDEMPOTENCY_LEASE_LOST', 'The idempotent operation lease expired before completion.', [], 1);
+          throw new ApplicationError('RETRYABLE_CONFLICT', 'IDEMPOTENCY_LEASE_LOST', 'The idempotent operation lease is no longer owned by this invocation.', [], 1);
         }
         tx.update(ref, {
           state: 'COMPLETE',
@@ -105,12 +172,33 @@ export class FirestoreIdempotencyStore implements IdempotencyStore {
         }
       }).catch(() => undefined);
       throw error;
+    } finally {
+      clearInterval(renewTimer);
     }
+  }
+
+  private async renewLease(
+    ref: DocumentReference,
+    ownerToken: string,
+    leaseSeconds: number,
+  ): Promise<void> {
+    await this.firestore.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      const record = snap.data() as StoredIdempotencyRecord<unknown> | undefined;
+      if (record?.state !== 'PROCESSING' || record.ownerToken !== ownerToken) return;
+      tx.update(ref, {
+        leaseExpiresAt: Timestamp.fromMillis(this.now() + leaseSeconds * 1_000),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    }).catch(() => undefined);
   }
 }
 
 export class FirestoreRateLimiter implements RateLimiter {
   constructor(private readonly firestore: Firestore) {}
+
+  // Single-document windows are acceptable at current merchant volume.
+  // Partition before enterprise burst scale; see docs/architecture/FIRESTORE_PARTITIONING_V1.md.
 
   async consume(principalId: string, policy: RateLimitPolicy): Promise<RateLimitDecision> {
     const now = Date.now();
@@ -140,6 +228,9 @@ export class FirestoreRateLimiter implements RateLimiter {
 
 export class FirestoreAuditWriter implements AuditWriter {
   constructor(private readonly firestore: Firestore) {}
+
+  // One hash-chain head per organization is the integrity primitive.
+  // Time-partition the head before high-volume integrations; see docs/architecture/FIRESTORE_PARTITIONING_V1.md.
 
   async append(event: AuditEventInput): Promise<void> {
     const streamRef = this.firestore.collection('apiAuditStreams').doc(event.organizationId);

@@ -131,6 +131,84 @@ test('commerce ingestion and Connect redemption retain compatibility while atomi
   );
 });
 
+test('Connect grant exchange does not consume a valid code when exchange parameters are wrong', { skip: !emulatorAvailable }, async () => {
+  const issuer = new HmacConnectSessionTokenIssuer();
+  const commerceService = new CommerceContextApplicationService(
+    new FirestoreCommerceContextRepository(firestore),
+    issuer,
+    () => now,
+  );
+  const principal = { integrationId: 'legacyIntegrationGrant', platform: 'marketplace', webhookSigningSecret: 'grant-secret' };
+  const ingested = await commerceService.ingestConnectOrder(principal, {
+    ...connectOrder,
+    orderId: 'order-grant-1',
+    idempotencyKey: 'idempotency-grant-1',
+  }, 'request-emulator-grant');
+  const handoffService = new ConnectHandoffApplicationService(
+    new FirestoreConnectHandoffRepository(firestore),
+    new Sha256TokenVerifier(),
+    () => now,
+  );
+  await assert.rejects(
+    () => handoffService.redeem({
+      actorId: 'packproof-seller',
+      sessionId: ingested.sessionId,
+      token: ingested.sessionToken,
+      clientId: 'wrong-client',
+      requestId: 'request-emulator-grant-client',
+    }),
+    (error) => error instanceof ApplicationError && error.code === 'CONNECT_CLIENT_MISMATCH',
+  );
+  await assert.rejects(
+    () => handoffService.redeem({
+      actorId: 'packproof-seller',
+      sessionId: ingested.sessionId,
+      token: ingested.sessionToken,
+      redirectUri: 'https://attacker.example/callback',
+      requestId: 'request-emulator-grant-redirect',
+    }),
+    (error) => error instanceof ApplicationError && error.code === 'CONNECT_REDIRECT_MISMATCH',
+  );
+  await assert.rejects(
+    () => handoffService.redeem({
+      actorId: 'packproof-seller',
+      sessionId: ingested.sessionId,
+      token: 'wrong-token-value-that-is-long-enough',
+      requestId: 'request-emulator-grant-token',
+    }),
+    (error) => error instanceof ApplicationError && error.code === 'INVALID_HANDOFF_TOKEN',
+  );
+  const stillLive = await firestore.collection('connectSessions').doc(ingested.sessionId).get();
+  assert.equal(stillLive.data().status, 'PENDING_REDEMPTION');
+  assert.equal(stillLive.data().tokenHash, issuer.digest(ingested.sessionToken));
+
+  const [first, second] = await Promise.all([
+    handoffService.redeem({
+      actorId: 'packproof-seller',
+      sessionId: ingested.sessionId,
+      token: ingested.sessionToken,
+      clientId: 'legacyIntegrationGrant',
+      redirectUri: connectOrder.callbackUrl,
+      requestId: 'request-emulator-grant-cas-1',
+    }),
+    handoffService.redeem({
+      actorId: 'packproof-seller',
+      sessionId: ingested.sessionId,
+      token: ingested.sessionToken,
+      clientId: 'legacyIntegrationGrant',
+      redirectUri: connectOrder.callbackUrl,
+      requestId: 'request-emulator-grant-cas-2',
+    }),
+  ]);
+  assert.equal(first.transactionId, second.transactionId);
+  const consumed = await firestore.collection('connectSessions').doc(ingested.sessionId).get();
+  assert.equal(consumed.data().status, 'READY_FOR_CAPTURE');
+  assert.equal(consumed.data().tokenHash, undefined);
+  assert.equal(consumed.data().transactionId, first.transactionId);
+  const created = await firestore.collection('transactions').doc(first.transactionId).get();
+  assert.equal(created.exists, true);
+});
+
 test('public button issue and redemption atomically retain page provenance, bind a draft, and consume the bearer token', { skip: !emulatorAvailable }, async () => {
   const publishableKey = `pp_pub_sandbox_${'A'.repeat(24)}`;
   await firestore.collection('platformIntegrations').doc('integrationButton001').set({

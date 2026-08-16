@@ -280,9 +280,10 @@ export class MerchantEvidenceApplicationService {
         operation: 'POST /v1/transactions/{transactionId}/reports',
         key: idempotencyKey,
         requestFingerprint: sha256(canonicalize({ transactionId })),
+        leaseSeconds: 900,
       },
-      async () => {
-        const generated = await this.reports.generate(transactionId, `merchant:${principal.apiClientId}`);
+      async (operationId) => {
+        const generated = await this.reports.generate(transactionId, `merchant:${principal.apiClientId}`, { reportId: operationId });
         const createdAt = this.now();
         const stored: StoredReportRecord = {
           id: generated.reportId,

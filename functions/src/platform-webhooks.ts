@@ -164,6 +164,9 @@ export const redeemConnectSession = onCall({ enforceAppCheck: true }, async (req
       actorId: uid,
       sessionId: input.sessionId,
       token: input.token,
+      clientId: input.clientId,
+      redirectUri: input.redirectUri,
+      codeVerifier: input.codeVerifier,
       requestId: request.rawRequest.get('x-request-id') ?? randomUUID(),
     });
   } catch (error) {

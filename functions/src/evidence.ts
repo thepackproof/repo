@@ -458,12 +458,24 @@ function wrapText(text: string, maxChars = 84): string[] {
   return lines.length ? lines : [''];
 }
 
-export async function generateEvidencePacket(transactionId: string, generatedBy: string): Promise<{
+export async function generateEvidencePacket(transactionId: string, generatedBy: string, options?: { reportId?: string }): Promise<{
   reportId: string;
   storagePath: string;
   sha256: string;
   evidenceCount: number;
 }> {
+  if (options?.reportId) {
+    const existing = await db.collection('transactions').doc(transactionId).collection('packets').doc(options.reportId).get();
+    const stored = existing.data();
+    if (existing.exists && stored && typeof stored.storagePath === 'string' && typeof stored.sha256 === 'string') {
+      return {
+        reportId: options.reportId,
+        storagePath: stored.storagePath,
+        sha256: stored.sha256,
+        evidenceCount: Number(stored.evidenceCount ?? 0),
+      };
+    }
+  }
   const { data } = await getTransaction(transactionId);
   const [evidenceSnap, eventsSnap, returnsSnap] = await Promise.all([
     db.collection('transactions').doc(transactionId).collection('evidence').orderBy('createdAt', 'asc').get(),
@@ -574,7 +586,7 @@ export async function generateEvidencePacket(transactionId: string, generatedBy:
   pdf.setSubject('Transaction evidence inventory, service-authenticated manifests, layered assurance and audit timeline');
   pdf.setCreator('PackProof');
   const bytes = await pdf.save();
-  const reportId = db.collection('transactions').doc(transactionId).collection('packets').doc().id;
+  const reportId = options?.reportId ?? db.collection('transactions').doc(transactionId).collection('packets').doc().id;
   const storagePath = `reports/${transactionId}/${reportId}.pdf`;
   const digest = createHash('sha256').update(bytes).digest('hex');
   await storage.bucket().file(storagePath).save(Buffer.from(bytes), {

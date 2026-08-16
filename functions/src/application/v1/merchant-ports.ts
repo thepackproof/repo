@@ -13,6 +13,7 @@ export type IdempotencyContext = {
   operation: string;
   key: string;
   requestFingerprint: string;
+  leaseSeconds?: number;
 };
 
 export type IdempotencyExecution<T> = {

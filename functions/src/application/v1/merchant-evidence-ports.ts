@@ -92,7 +92,7 @@ export interface MerchantEvidenceRepository {
 }
 
 export interface EvidenceReportGenerator {
-  generate(transactionId: string, generatedBy: string): Promise<{
+  generate(transactionId: string, generatedBy: string, options?: { reportId?: string }): Promise<{
     reportId: string;
     storagePath: string;
     sha256: string;

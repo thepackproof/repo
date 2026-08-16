@@ -1,5 +1,5 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
-import { FieldValue, Timestamp, type Firestore } from 'firebase-admin/firestore';
+import { FieldValue, Timestamp, type DocumentReference, type Firestore } from 'firebase-admin/firestore';
 import { MerchantAuthorizationPolicy } from '../../application/v1/merchant-transaction-service';
 import { ApiError, type ApiEnvironment, type ApiScope, type MerchantPrincipal, apiScopes } from './core';
 import type { MerchantAuthenticator } from './ports';
@@ -98,15 +98,20 @@ export class FirestoreMerchantAuthenticator implements MerchantAuthenticator {
       integrationId: typeof client.integrationId === 'string' && client.integrationId ? client.integrationId : null,
     };
 
-    // Use append-only usage records instead of mutating one credential document
-    // on every request; the latter becomes a per-credential write hotspot.
-    await credentialRef.collection('usage').add({
-      apiClientId,
-      organizationId,
-      environment,
-      usedAt: FieldValue.serverTimestamp(),
-    });
+    this.recordUsageBestEffort(credentialRef, { apiClientId, organizationId, environment });
     return principal;
+  }
+
+  private recordUsageBestEffort(
+    credentialRef: DocumentReference,
+    payload: { apiClientId: string; organizationId: string; environment: ApiEnvironment },
+  ): void {
+    void credentialRef.collection('usage').add({
+      ...payload,
+      usedAt: FieldValue.serverTimestamp(),
+    }).catch((error) => {
+      console.warn('api_credential_usage_record_failed', error);
+    });
   }
 }
 

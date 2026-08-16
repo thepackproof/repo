@@ -35,6 +35,10 @@ This directory records the controlled migration of the current PackProof 0.8.5.0
 - Executable source: `functions/src/application/v1/public-commerce-handoff-service.ts`, `functions/src/infrastructure/firebase/v1/public-commerce-handoff-repository.ts`, `functions/src/api/v1`, `sdk/javascript/browser.js`, and `src/app/handoff/review.tsx`.
 - Gates: `npm run test:application`, `npm run test:application:firestore`, `npm run test:api`, `npm run test:api:firestore`, `npm run test:sdk`, and `npm run test:rules`.
 
+## Scale and integrity
+
+- [Firestore partitioning v1](FIRESTORE_PARTITIONING_V1.md) - reserved shard and time-partition strategy for API rate-limit windows and organization audit-chain heads before enterprise burst volume. Hash-chain integrity is preserved.
+
 ## Camera acquisition checkpoint
 
 - [Camera acquisition milestones 1 and 2 completion](CAMERA_ACQUISITION_MILESTONE_1_2_COMPLETION_2026-08-13.md) - native-preview readiness, bounded capture controls, raw and normalized barcode provenance, claim-disciplined framing guidance, interruption and temporary-file cleanup, source gates, Android bundleability evidence, and the remaining signed-device boundary.

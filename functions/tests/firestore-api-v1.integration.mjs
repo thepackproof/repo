@@ -286,7 +286,12 @@ test('Firestore adapters preserve idempotency, organization isolation, audit lin
   const credentialSnap = await firestore.collection('apiCredentials').doc(credentialA).get();
   assert.equal(credentialSnap.data().secret, undefined);
   assert.equal(credentialSnap.data().usageCount, undefined);
-  const credentialUsageSnap = await firestore.collection('apiCredentials').doc(credentialA).collection('usage').get();
+  let credentialUsageSnap;
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    credentialUsageSnap = await firestore.collection('apiCredentials').doc(credentialA).collection('usage').get();
+    if (credentialUsageSnap.size >= 4) break;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
   assert.ok(credentialUsageSnap.size >= 4);
   assert.ok(credentialUsageSnap.docs.every((doc) => doc.data().usedAt));
   const rateSnap = await firestore.collection('apiRateLimits').get();
@@ -495,4 +500,35 @@ test('Firestore idempotency retry retains one stable operation ID after a failed
     () => store.execute({ ...context, requestFingerprint: sha256('different-request') }, async () => ({ ok: false })),
     (error) => error.code === 'IDEMPOTENCY_KEY_REUSED',
   );
+});
+
+test('Firestore idempotency fencing keeps a live owner and rejects a stale completer', { skip: !emulatorAvailable }, async () => {
+  let clock = 1_000;
+  const store = new FirestoreIdempotencyStore(firestore, 2, () => clock);
+  const context = {
+    principalId: 'org-integration-a:client-integration-a',
+    operation: 'POST /v1/transactions/{transactionId}/reports',
+    key: 'fence-lease-key',
+    requestFingerprint: sha256('report-request'),
+    leaseSeconds: 2,
+  };
+  let firstStarted;
+  const first = store.execute(context, async (operationId) => {
+    firstStarted = operationId;
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    return { reportId: operationId };
+  });
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  await assert.rejects(
+    () => store.execute(context, async () => ({ reportId: 'stolen' })),
+    (error) => error.code === 'IDEMPOTENCY_REQUEST_IN_PROGRESS',
+  );
+  const owned = await first;
+  assert.equal(owned.replayed, false);
+  assert.equal(owned.value.reportId, firstStarted);
+
+  clock = 10_000;
+  const reclaimed = await store.execute(context, async () => ({ reportId: 'should-replay' }));
+  assert.equal(reclaimed.replayed, true);
+  assert.equal(reclaimed.value.reportId, firstStarted);
 });

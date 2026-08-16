@@ -15,7 +15,9 @@ The public PackProof Button is a separate, lower-trust entry path. It imports st
 
 ## Authentication and idempotency
 
-API keys are returned only when an administrator provisions an integration. Only their SHA-256 hashes are stored. `idempotencyKey` is scoped to the integration; a replay with the same normalized payload returns the original session, while the same key with different data returns HTTP 409. Session handoff tokens are stored only as hashes and removed after first redemption.
+API keys are returned only when an administrator provisions an integration. Only their SHA-256 hashes are stored. `idempotencyKey` is scoped to the integration; a replay with the same normalized payload returns the original session, while the same key with different data returns HTTP 409.
+
+Seller redemption is a one-time grant exchange, not an implicit consume-on-sight. PackProof looks up the session without mutating it, then validates client, exact callback/redirect, optional PKCE, and the handoff token. Only after those checks pass does a Firestore transaction compare-and-set the unused token hash to consumed. A request that holds a valid token but supplies the wrong client, redirect, PKCE verifier, or token leaves the grant usable. Exact actor replay after a successful consume returns the same transaction. Session handoff tokens are stored only as hashes and removed after that successful consumption.
 
 ## Callback security
 
