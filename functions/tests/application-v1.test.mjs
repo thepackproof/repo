@@ -443,6 +443,7 @@ test('public commerce handoff is origin-bound, retry-stable, page-declared, edit
   assert.ok(repository.decision.transaction.identifiers.some(({ label, value }) => label === 'Option: Finish' && value === 'Black'));
   assert.equal(repository.decision.transaction.source.type, 'PACKPROOF_BUTTON');
   assert.equal(repository.decision.transaction.source.trustLevel, 'PAGE_DECLARED');
+  assert.equal(repository.decision.transaction.listingImageReferences[0].url, publicPageContext.item.imageReferences[0].url);
   assert.deepEqual(repository.decision.events.map(({ type }) => type), ['TRANSACTION_CREATED', 'COMMERCE_CONTEXT_CLAIMED']);
   repository.active = true;
   const claimReplay = await service.redeem({ actorId: 'seller-user', plan: 'FREE', handoffId: issued.handoffId, token: 'consumed', requestId: 'request-public-replay' });

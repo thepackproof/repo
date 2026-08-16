@@ -31,9 +31,20 @@ After `transactionId` is present:
 
 ```js
 const review = await client.getReviewPackage(current.data.transactionId);
+await client.associateShipment(current.data.transactionId, {
+  carrier: 'UPS',
+  trackingNumber: '1Z999AA10123456784',
+}, { idempotencyKey: 'ship-order-123-v1' });
+await client.associateDelivery(current.data.transactionId, {
+  carrier: 'UPS',
+  trackingNumber: '1Z999AA10123456784',
+}, { idempotencyKey: 'delivery-order-123-v1' });
+const requested = await client.createReturn(current.data.transactionId, {
+  reason: 'Item differs from the locked terms.',
+}, { idempotencyKey: 'return-order-123-v1' });
 ```
 
-`getReviewPackage` organizes hashes, protocol completeness, and limitations for human review. It does not decide fraud, fault, or a dispute outcome.
+`getReviewPackage` organizes hashes, protocol completeness, and limitations for human review. Shipment, delivery, and return writes are merchant assertions linked to server-finalized evidence. They do not decide fraud, fault, custody, or a dispute outcome.
 
 ## Webhooks
 

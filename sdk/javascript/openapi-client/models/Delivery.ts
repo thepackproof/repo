@@ -2,23 +2,25 @@
 /* istanbul ignore file */
 /* tslint:disable */
 /* eslint-disable */
-export type ReturnPassport = {
+/**
+ * Merchant-asserted inbound delivery context linked to an arrival photograph. It is not carrier custody proof.
+ */
+export type Delivery = {
     id: string;
     object: any;
     schemaVersion: any;
     transactionId: string;
-    reason: string;
-    status: string;
-    originalEvidenceHashes: Array<string>;
-    shippingCarrier: string | null;
-    shippingTrackingNumber: string | null;
-    packingEvidenceId: string | null;
-    sealEvidenceId: string | null;
-    labelEvidenceMatchStatus: ReturnPassport.labelEvidenceMatchStatus;
+    assertionSource: any;
+    status: any;
+    arrivalEvidenceId: string;
+    carrier: string | null;
+    trackingNumber: string | null;
+    labelEvidenceMatchStatus: Delivery.labelEvidenceMatchStatus;
+    receivedAt: string;
     createdAt: string;
     updatedAt: string;
 };
-export namespace ReturnPassport {
+export namespace Delivery {
     export enum labelEvidenceMatchStatus {
         MATCHED = 'MATCHED',
         MISMATCH = 'MISMATCH',

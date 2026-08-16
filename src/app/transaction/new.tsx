@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { Image } from 'expo-image';
 import { Button, Card, Choice, Field, LoadingScreen, ScreenTitle } from '@/components/ui';
 import { colors } from '@/constants/brand';
 import { featureFlags } from '@/constants/features';
@@ -27,6 +28,7 @@ export default function NewTransaction() {
   const [busy, setBusy] = useState(false);
   const [loadingExisting, setLoadingExisting] = useState(Boolean(transactionId));
   const [pageDeclaredSource, setPageDeclaredSource] = useState<string | null>(null);
+  const [listingImages, setListingImages] = useState<Array<{ url: string; altText?: string | null }>>([]);
   const valid = useMemo(() => title.trim().length > 2 && category.trim().length > 1 && Number.isFinite(Number(price)) && Number(price) >= 0, [category, price, title]);
 
   useEffect(() => {
@@ -52,6 +54,7 @@ export default function NewTransaction() {
       setReturnWindow(String(item.terms.returnWindowDays));
       setCustomTerms(item.terms.customTerms);
       setPageDeclaredSource(item.source?.type === 'PACKPROOF_BUTTON' ? item.source.origin : null);
+      setListingImages((item.listingImageReferences ?? []).filter((image) => typeof image.url === 'string' && image.url.startsWith('https://')).slice(0, 6));
       setLoadingExisting(false);
     }, (error) => { setLoadingExisting(false); Alert.alert('Could not load PackProof', readableError(error)); });
   }, [router, transactionId]);
@@ -87,6 +90,12 @@ export default function NewTransaction() {
       {pageDeclaredSource ? <Card style={styles.section}>
         <Text style={styles.sectionTitle}>Imported listing draft</Text>
         <Text style={styles.importNotice}>These fields came from structured data declared by {pageDeclaredSource}. Review and edit every detail before inviting another participant. The import does not establish an order, payment, condition, authenticity, or evidence result.</Text>
+        {listingImages.length ? <View style={styles.listingImages}>
+          {listingImages.map((image) => (
+            <Image key={image.url} source={{ uri: image.url }} style={styles.listingImage} contentFit="cover" accessibilityLabel={image.altText || 'Page-declared listing image'} />
+          ))}
+          <Text style={styles.importNotice}>Listing images are page-declared references only. They are not PackProof evidence, hashes, or capture originals.</Text>
+        </View> : null}
       </Card> : null}
       <Card style={styles.section}>
         <Text style={styles.sectionTitle}>Item</Text>
@@ -116,4 +125,4 @@ export default function NewTransaction() {
   </KeyboardAvoidingView></SafeAreaView>;
 }
 
-const styles = StyleSheet.create({ safe: { flex: 1, backgroundColor: colors.background }, container: { padding: 20, paddingBottom: 44, gap: 14 }, close: { alignSelf: 'flex-start', minHeight: 40 }, section: { gap: 16 }, sectionTitle: { color: colors.ink, fontSize: 18, fontWeight: '900' }, importNotice: { color: colors.muted, fontSize: 12, lineHeight: 19 }, label: { color: colors.ink, fontSize: 13, fontWeight: '700' }, choices: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 }, disclaimer: { backgroundColor: 'rgba(45,106,138,0.05)' }, disclaimerText: { color: colors.muted, fontSize: 11, lineHeight: 17 } });
+const styles = StyleSheet.create({ safe: { flex: 1, backgroundColor: colors.background }, container: { padding: 20, paddingBottom: 44, gap: 14 }, close: { alignSelf: 'flex-start', minHeight: 40 }, section: { gap: 16 }, sectionTitle: { color: colors.ink, fontSize: 18, fontWeight: '900' }, importNotice: { color: colors.muted, fontSize: 12, lineHeight: 19 }, listingImages: { gap: 10 }, listingImage: { width: '100%', height: 180, borderRadius: 12, backgroundColor: colors.surfaceRaised }, label: { color: colors.ink, fontSize: 13, fontWeight: '700' }, choices: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 }, disclaimer: { backgroundColor: 'rgba(45,106,138,0.05)' }, disclaimerText: { color: colors.muted, fontSize: 11, lineHeight: 17 } });

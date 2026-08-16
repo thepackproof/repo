@@ -88,6 +88,7 @@ export type PublicHandoffTransactionRecord = {
     origin: string;
     productUrl: string;
   };
+  listingImageReferences: Array<{ url: string; altText: string | null }>;
 };
 
 export type PublicHandoffRedemptionDecision =
@@ -382,6 +383,7 @@ export class PublicCommerceHandoffApplicationService {
           origin: snapshot.origin,
           productUrl: snapshot.context.source.productUrl!,
         },
+        listingImageReferences: item.imageReferences.map((image) => ({ url: image.url, altText: image.altText })),
       };
       transactionDtoSchema.parse(mapLegacyConsumerTransaction({ id: transactionId, ...transaction }));
       const events: ApplicationEvent[] = [

@@ -139,7 +139,11 @@ export class PackProofConnect {
   associateShipment(transactionId: string, input: { carrier: string; trackingNumber: string }, options: { idempotencyKey: string; signal?: AbortSignal }): Promise<{ data: unknown }>;
   getShipment(transactionId: string, options?: { signal?: AbortSignal }): Promise<{ data: unknown }>;
   listReturns(transactionId: string, options?: { signal?: AbortSignal }): Promise<{ data: unknown[] }>;
+  createReturn(transactionId: string, input: { reason: string }, options: { idempotencyKey: string; signal?: AbortSignal }): Promise<{ data: unknown }>;
   getReturn(transactionId: string, returnPassportId: string, options?: { signal?: AbortSignal }): Promise<{ data: unknown }>;
+  associateReturnShipment(transactionId: string, returnPassportId: string, input: { carrier: string; trackingNumber: string }, options: { idempotencyKey: string; signal?: AbortSignal }): Promise<{ data: unknown }>;
+  getDelivery(transactionId: string, options?: { signal?: AbortSignal }): Promise<{ data: unknown }>;
+  associateDelivery(transactionId: string, input: { carrier?: string; trackingNumber?: string }, options: { idempotencyKey: string; signal?: AbortSignal }): Promise<{ data: unknown }>;
 }
 
 export function verifyPackProofWebhook(input: WebhookVerifyInput): boolean;

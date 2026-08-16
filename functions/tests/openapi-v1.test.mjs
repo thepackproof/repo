@@ -21,6 +21,7 @@ test('OpenAPI v1 contract is parseable, versioned, and operation-complete', asyn
     '/v1/ready',
     '/v1/transactions',
     '/v1/transactions/{transactionId}',
+    '/v1/transactions/{transactionId}/delivery',
     '/v1/transactions/{transactionId}/evidence',
     '/v1/transactions/{transactionId}/evidence-sessions',
     '/v1/transactions/{transactionId}/evidence/{artifactId}',
@@ -29,6 +30,7 @@ test('OpenAPI v1 contract is parseable, versioned, and operation-complete', asyn
     '/v1/transactions/{transactionId}/reports/{reportId}',
     '/v1/transactions/{transactionId}/returns',
     '/v1/transactions/{transactionId}/returns/{returnPassportId}',
+    '/v1/transactions/{transactionId}/returns/{returnPassportId}/shipment',
     '/v1/transactions/{transactionId}/review-package',
     '/v1/transactions/{transactionId}/shipment',
     '/v1/transactions/{transactionId}/timeline',
@@ -44,6 +46,8 @@ test('OpenAPI v1 contract is parseable, versioned, and operation-complete', asyn
   }
   assert.equal(new Set(operations).size, operations.length, 'operationId values must be unique');
   assert.deepEqual(operations.sort(), [
+    'associateDelivery',
+    'associateReturnShipment',
     'associateShipment',
     'cancelConnectSession',
     'cancelEvidenceSession',
@@ -53,8 +57,10 @@ test('OpenAPI v1 contract is parseable, versioned, and operation-complete', asyn
     'createEvidenceSession',
     'createParticipantInvitation',
     'createPublicCommerceHandoff',
+    'createReturnPassport',
     'createTransaction',
     'getConnectSession',
+    'getDelivery',
     'getEvidence',
     'getEvidenceReport',
     'getEvidenceSession',

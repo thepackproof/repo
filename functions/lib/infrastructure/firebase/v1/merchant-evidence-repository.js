@@ -20,6 +20,23 @@ function optionalInteger(value) {
 function shipmentIdFor(transactionId) {
     return `shipment_${(0, merchant_transaction_service_1.sha256)(transactionId).slice(0, 40)}`;
 }
+function deliveryIdFor(transactionId) {
+    return `delivery_${(0, merchant_transaction_service_1.sha256)(transactionId).slice(0, 40)}`;
+}
+function matchStatus(value) {
+    return value === 'MATCHED' || value === 'MISMATCH' || value === 'NOT_SCANNED' ? value : null;
+}
+function trackingComparisonPatch(match, trackingNumber, occurredAt, existing) {
+    const expected = trackingNumber ? trackingNumber.toUpperCase().replace(/[^A-Z0-9]/g, '') : '';
+    return {
+        ...(match ? { postSubmissionTrackingMatchStatus: match } : {}),
+        ...(expected ? { postSubmissionExpectedTrackingNumber: expected } : {}),
+        postSubmissionComparedAt: firestore_1.Timestamp.fromDate(occurredAt),
+        ...(match === 'MISMATCH' && existing?.moderationStatus === 'UNREVIEWED'
+            ? { moderationStatus: 'TRACKING_MISMATCH_REVIEW' }
+            : {}),
+    };
+}
 function toShipment(transactionId, shipping, createdAt, updatedAt) {
     if (!shipping || typeof shipping !== 'object')
         return null;
@@ -27,7 +44,6 @@ function toShipment(transactionId, shipping, createdAt, updatedAt) {
     const trackingNumber = optionalString(shipping.trackingNumber);
     if (!carrier || !trackingNumber)
         return null;
-    const match = shipping.labelEvidenceMatchStatus;
     return {
         id: shipmentIdFor(transactionId),
         object: 'shipment',
@@ -39,8 +55,30 @@ function toShipment(transactionId, shipping, createdAt, updatedAt) {
         status: 'ASSOCIATED',
         packingEvidenceId: optionalString(shipping.packingEvidenceId),
         sealEvidenceId: optionalString(shipping.sealEvidenceId),
-        labelEvidenceMatchStatus: match === 'MATCHED' || match === 'MISMATCH' || match === 'NOT_SCANNED' ? match : null,
+        labelEvidenceMatchStatus: matchStatus(shipping.labelEvidenceMatchStatus),
         shippedAt: shipping.shippedAt ? dateValue(shipping.shippedAt, updatedAt).toISOString() : null,
+        createdAt: createdAt.toISOString(),
+        updatedAt: updatedAt.toISOString(),
+    };
+}
+function toDelivery(transactionId, delivery, createdAt, updatedAt) {
+    if (!delivery || typeof delivery !== 'object')
+        return null;
+    const arrivalEvidenceId = optionalString(delivery.arrivalEvidenceId);
+    if (!arrivalEvidenceId)
+        return null;
+    return {
+        id: deliveryIdFor(transactionId),
+        object: 'delivery',
+        schemaVersion: 1,
+        transactionId,
+        assertionSource: 'MERCHANT',
+        status: 'ASSOCIATED',
+        arrivalEvidenceId,
+        carrier: optionalString(delivery.carrier),
+        trackingNumber: optionalString(delivery.trackingNumber),
+        labelEvidenceMatchStatus: matchStatus(delivery.labelEvidenceMatchStatus),
+        receivedAt: delivery.receivedAt ? dateValue(delivery.receivedAt, updatedAt).toISOString() : updatedAt.toISOString(),
         createdAt: createdAt.toISOString(),
         updatedAt: updatedAt.toISOString(),
     };
@@ -79,7 +117,13 @@ function toAccessible(id, data) {
             returnWindowDays: Number.isSafeInteger(terms.returnWindowDays) ? terms.returnWindowDays : 0,
             customTerms: typeof terms.customTerms === 'string' ? terms.customTerms : '',
         } : null,
+        sellerId: optionalString(data.sellerId),
+        buyerId: optionalString(data.buyerId),
+        participantIds: Array.isArray(data.participantIds)
+            ? data.participantIds.filter((value) => typeof value === 'string')
+            : [],
         shipment: toShipment(id, data.shipping, createdAt, updatedAt),
+        delivery: toDelivery(id, data.delivery, createdAt, updatedAt),
         createdAt,
         updatedAt,
     };
@@ -142,6 +186,9 @@ function toReturn(transactionId, id, data) {
         originalEvidenceHashes: hashes,
         shippingCarrier: optionalString(shipping?.carrier),
         shippingTrackingNumber: optionalString(shipping?.trackingNumber),
+        packingEvidenceId: optionalString(shipping?.packingEvidenceId),
+        sealEvidenceId: optionalString(shipping?.sealEvidenceId),
+        labelEvidenceMatchStatus: matchStatus(shipping?.labelEvidenceMatchStatus),
         createdAt: createdAt.toISOString(),
         updatedAt: updatedAt.toISOString(),
     };
@@ -219,12 +266,18 @@ class FirestoreMerchantEvidenceRepository {
     }
     async associateShipment(transactionId, record, event) {
         const ref = this.firestore.collection('transactions').doc(transactionId);
+        const packingRef = ref.collection('evidence').doc(record.packingEvidenceId);
+        const sealRef = ref.collection('evidence').doc(record.sealEvidenceId);
         const eventRef = ref.collection('events').doc(event.id);
         const outboxRef = this.firestore.collection('domainOutbox').doc(event.id);
         return this.firestore.runTransaction(async (tx) => {
-            const [snap, existingEvent, existingOutbox] = await Promise.all([tx.get(ref), tx.get(eventRef), tx.get(outboxRef)]);
+            const [snap, packingSnap, sealSnap, existingEvent, existingOutbox] = await Promise.all([
+                tx.get(ref), tx.get(packingRef), tx.get(sealRef), tx.get(eventRef), tx.get(outboxRef),
+            ]);
             if (!snap.exists)
                 throw new Error('Transaction disappeared before shipment association.');
+            if (!packingSnap.exists || !sealSnap.exists)
+                throw new Error('Shipment evidence disappeared before association.');
             const data = snap.data();
             const createdAt = dateValue(data.createdAt, record.occurredAt);
             tx.update(ref, {
@@ -241,6 +294,8 @@ class FirestoreMerchantEvidenceRepository {
                 },
                 updatedAt: firestore_1.Timestamp.fromDate(record.occurredAt),
             });
+            tx.update(packingRef, trackingComparisonPatch(record.labelEvidenceMatchStatus, record.trackingNumber, record.occurredAt, packingSnap.data()));
+            tx.update(sealRef, trackingComparisonPatch(record.labelEvidenceMatchStatus, record.trackingNumber, record.occurredAt, sealSnap.data()));
             if (!existingEvent.exists) {
                 tx.create(eventRef, {
                     actorId: event.actor.id,
@@ -260,6 +315,155 @@ class FirestoreMerchantEvidenceRepository {
                 labelEvidenceMatchStatus: record.labelEvidenceMatchStatus,
                 shippedAt: firestore_1.Timestamp.fromDate(record.occurredAt),
             }, createdAt, record.occurredAt);
+        });
+    }
+    async createReturn(transactionId, record, event) {
+        const ref = this.firestore.collection('transactions').doc(transactionId);
+        const returnRef = ref.collection('returns').doc(record.id);
+        const eventRef = ref.collection('events').doc(event.id);
+        const outboxRef = this.firestore.collection('domainOutbox').doc(event.id);
+        return this.firestore.runTransaction(async (tx) => {
+            const [snap, existingReturn, existingEvent, existingOutbox] = await Promise.all([
+                tx.get(ref), tx.get(returnRef), tx.get(eventRef), tx.get(outboxRef),
+            ]);
+            if (!snap.exists)
+                throw new Error('Transaction disappeared before return creation.');
+            if (existingReturn.exists)
+                return toReturn(transactionId, existingReturn.id, existingReturn.data());
+            tx.create(returnRef, {
+                id: record.id,
+                transactionId,
+                initiatedBy: record.initiatedBy,
+                returningParticipantId: record.returningParticipantId,
+                recipientId: record.recipientId,
+                authorizedBy: null,
+                participantIds: record.participantIds,
+                status: 'REQUESTED',
+                reason: record.reason,
+                originalEvidenceHashes: record.originalEvidenceHashes,
+                completedBy: [],
+                createdAt: firestore_1.Timestamp.fromDate(record.occurredAt),
+                updatedAt: firestore_1.Timestamp.fromDate(record.occurredAt),
+            });
+            tx.update(ref, {
+                returnStatus: 'IN_PROGRESS',
+                updatedAt: firestore_1.Timestamp.fromDate(record.occurredAt),
+            });
+            if (!existingEvent.exists) {
+                tx.create(eventRef, {
+                    actorId: event.actor.id,
+                    type: event.type,
+                    summary: 'A merchant requested a return passport.',
+                    metadata: { applicationEventId: event.id, schemaVersion: 1, returnPassportId: record.id },
+                    createdAt: firestore_1.Timestamp.fromDate(record.occurredAt),
+                });
+            }
+            if (!existingOutbox.exists)
+                tx.create(outboxRef, (0, outbox_1.storedOutboxEvent)(event));
+            return toReturn(transactionId, record.id, {
+                reason: record.reason,
+                status: 'REQUESTED',
+                originalEvidenceHashes: record.originalEvidenceHashes,
+                createdAt: firestore_1.Timestamp.fromDate(record.occurredAt),
+                updatedAt: firestore_1.Timestamp.fromDate(record.occurredAt),
+            });
+        });
+    }
+    async associateReturnShipment(transactionId, returnPassportId, record, event) {
+        const ref = this.firestore.collection('transactions').doc(transactionId);
+        const returnRef = ref.collection('returns').doc(returnPassportId);
+        const packingRef = ref.collection('evidence').doc(record.packingEvidenceId);
+        const sealRef = ref.collection('evidence').doc(record.sealEvidenceId);
+        const eventRef = ref.collection('events').doc(event.id);
+        const outboxRef = this.firestore.collection('domainOutbox').doc(event.id);
+        return this.firestore.runTransaction(async (tx) => {
+            const [returnSnap, packingSnap, sealSnap, existingEvent, existingOutbox] = await Promise.all([
+                tx.get(returnRef), tx.get(packingRef), tx.get(sealRef), tx.get(eventRef), tx.get(outboxRef),
+            ]);
+            if (!returnSnap.exists)
+                throw new Error('Return passport disappeared before shipping association.');
+            if (!packingSnap.exists || !sealSnap.exists)
+                throw new Error('Return evidence disappeared before shipping association.');
+            const shipping = {
+                carrier: record.carrier,
+                trackingNumber: record.trackingNumber,
+                shippedAt: firestore_1.Timestamp.fromDate(record.occurredAt),
+                labelEvidenceMatchStatus: record.labelEvidenceMatchStatus,
+                scannedTrackingNumber: record.scannedTrackingNumber,
+                packingEvidenceId: record.packingEvidenceId,
+                sealEvidenceId: record.sealEvidenceId,
+            };
+            tx.update(returnRef, {
+                status: 'IN_TRANSIT',
+                shipping,
+                updatedAt: firestore_1.Timestamp.fromDate(record.occurredAt),
+            });
+            tx.update(packingRef, trackingComparisonPatch(record.labelEvidenceMatchStatus, record.trackingNumber, record.occurredAt, packingSnap.data()));
+            tx.update(sealRef, trackingComparisonPatch(record.labelEvidenceMatchStatus, record.trackingNumber, record.occurredAt, sealSnap.data()));
+            tx.update(ref, {
+                returnStatus: 'IN_PROGRESS',
+                updatedAt: firestore_1.Timestamp.fromDate(record.occurredAt),
+            });
+            if (!existingEvent.exists) {
+                tx.create(eventRef, {
+                    actorId: event.actor.id,
+                    type: event.type,
+                    summary: `Merchant recorded return shipment with ${record.carrier}.`,
+                    metadata: { applicationEventId: event.id, schemaVersion: 1, returnPassportId, labelEvidenceMatchStatus: record.labelEvidenceMatchStatus },
+                    createdAt: firestore_1.Timestamp.fromDate(record.occurredAt),
+                });
+            }
+            if (!existingOutbox.exists)
+                tx.create(outboxRef, (0, outbox_1.storedOutboxEvent)(event));
+            return toReturn(transactionId, returnPassportId, {
+                ...returnSnap.data(),
+                status: 'IN_TRANSIT',
+                shipping,
+                updatedAt: firestore_1.Timestamp.fromDate(record.occurredAt),
+            });
+        });
+    }
+    async associateDelivery(transactionId, record, event) {
+        const ref = this.firestore.collection('transactions').doc(transactionId);
+        const arrivalRef = ref.collection('evidence').doc(record.arrivalEvidenceId);
+        const eventRef = ref.collection('events').doc(event.id);
+        const outboxRef = this.firestore.collection('domainOutbox').doc(event.id);
+        return this.firestore.runTransaction(async (tx) => {
+            const [snap, arrivalSnap, existingEvent, existingOutbox] = await Promise.all([
+                tx.get(ref), tx.get(arrivalRef), tx.get(eventRef), tx.get(outboxRef),
+            ]);
+            if (!snap.exists)
+                throw new Error('Transaction disappeared before delivery association.');
+            if (!arrivalSnap.exists)
+                throw new Error('Arrival evidence disappeared before delivery association.');
+            const data = snap.data();
+            const createdAt = dateValue(data.createdAt, record.occurredAt);
+            const delivery = {
+                arrivalEvidenceId: record.arrivalEvidenceId,
+                carrier: record.carrier,
+                trackingNumber: record.trackingNumber,
+                scannedTrackingNumber: record.scannedTrackingNumber,
+                labelEvidenceMatchStatus: record.labelEvidenceMatchStatus,
+                receivedAt: firestore_1.Timestamp.fromDate(record.occurredAt),
+            };
+            tx.update(ref, {
+                receiverStatus: 'IN_PROGRESS',
+                delivery,
+                updatedAt: firestore_1.Timestamp.fromDate(record.occurredAt),
+            });
+            tx.update(arrivalRef, trackingComparisonPatch(record.labelEvidenceMatchStatus, record.trackingNumber, record.occurredAt, arrivalSnap.data()));
+            if (!existingEvent.exists) {
+                tx.create(eventRef, {
+                    actorId: event.actor.id,
+                    type: event.type,
+                    summary: 'Merchant associated receiver arrival observation.',
+                    metadata: { applicationEventId: event.id, schemaVersion: 1, arrivalEvidenceId: record.arrivalEvidenceId },
+                    createdAt: firestore_1.Timestamp.fromDate(record.occurredAt),
+                });
+            }
+            if (!existingOutbox.exists)
+                tx.create(outboxRef, (0, outbox_1.storedOutboxEvent)(event));
+            return toDelivery(transactionId, delivery, createdAt, record.occurredAt);
         });
     }
 }

@@ -66,6 +66,22 @@ export type MerchantShipmentDto = {
   updatedAt: string;
 };
 
+export type MerchantDeliveryDto = {
+  id: string;
+  object: 'delivery';
+  schemaVersion: 1;
+  transactionId: string;
+  assertionSource: 'MERCHANT';
+  status: 'ASSOCIATED';
+  arrivalEvidenceId: string;
+  carrier: string | null;
+  trackingNumber: string | null;
+  labelEvidenceMatchStatus: 'MATCHED' | 'MISMATCH' | 'NOT_SCANNED' | null;
+  receivedAt: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type MerchantReturnPassportDto = {
   id: string;
   object: 'return_passport';
@@ -76,6 +92,9 @@ export type MerchantReturnPassportDto = {
   originalEvidenceHashes: string[];
   shippingCarrier: string | null;
   shippingTrackingNumber: string | null;
+  packingEvidenceId: string | null;
+  sealEvidenceId: string | null;
+  labelEvidenceMatchStatus: 'MATCHED' | 'MISMATCH' | 'NOT_SCANNED' | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -141,6 +160,7 @@ export type MerchantReviewPackageDto = {
   documentationCategories: ReviewDocumentationEntry[];
   evidence: MerchantEvidenceArtifactDto[];
   shipment: MerchantShipmentDto | null;
+  delivery: MerchantDeliveryDto | null;
   returns: MerchantReturnPassportDto[];
   latestReport: Omit<MerchantEvidenceReportDto, 'downloadUrl' | 'downloadUrlExpiresAt'> | null;
   timeline: MerchantTimelineEventDto[];
@@ -152,6 +172,20 @@ export type MerchantReviewPackageDto = {
 export type AssociateMerchantShipmentInput = {
   carrier: string;
   trackingNumber: string;
+};
+
+export type CreateMerchantReturnInput = {
+  reason: string;
+};
+
+export type AssociateMerchantReturnShipmentInput = {
+  carrier: string;
+  trackingNumber: string;
+};
+
+export type AssociateMerchantDeliveryInput = {
+  carrier?: string;
+  trackingNumber?: string;
 };
 
 export const merchantConnectSessionStatuses = [

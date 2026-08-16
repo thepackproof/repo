@@ -94,6 +94,7 @@ function storedTransaction(decision: Extract<PublicHandoffRedemptionDecision, { 
     completedBy: record.completedBy,
     lockedAt: null,
     source: record.source,
+    listingImageReferences: record.listingImageReferences,
     createdAt: Timestamp.fromDate(record.createdAt),
     updatedAt: Timestamp.fromDate(record.updatedAt),
   };

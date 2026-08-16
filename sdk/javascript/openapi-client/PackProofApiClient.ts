@@ -8,6 +8,7 @@ import { FetchHttpRequest } from './core/FetchHttpRequest';
 import { ClaimsReviewService } from './services/ClaimsReviewService';
 import { CommerceHandoffsService } from './services/CommerceHandoffsService';
 import { ConnectSessionsService } from './services/ConnectSessionsService';
+import { DeliveryService } from './services/DeliveryService';
 import { EvidenceService } from './services/EvidenceService';
 import { EvidenceSessionsService } from './services/EvidenceSessionsService';
 import { ParticipantClaimsService } from './services/ParticipantClaimsService';
@@ -21,6 +22,7 @@ export class PackProofApiClient {
     public readonly claimsReview: ClaimsReviewService;
     public readonly commerceHandoffs: CommerceHandoffsService;
     public readonly connectSessions: ConnectSessionsService;
+    public readonly delivery: DeliveryService;
     public readonly evidence: EvidenceService;
     public readonly evidenceSessions: EvidenceSessionsService;
     public readonly participantClaims: ParticipantClaimsService;
@@ -45,6 +47,7 @@ export class PackProofApiClient {
         this.claimsReview = new ClaimsReviewService(this.request);
         this.commerceHandoffs = new CommerceHandoffsService(this.request);
         this.connectSessions = new ConnectSessionsService(this.request);
+        this.delivery = new DeliveryService(this.request);
         this.evidence = new EvidenceService(this.request);
         this.evidenceSessions = new EvidenceSessionsService(this.request);
         this.participantClaims = new ParticipantClaimsService(this.request);

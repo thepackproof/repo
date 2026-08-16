@@ -12,8 +12,11 @@ import {
 import { commercePlatforms, parseItemDescriptor } from '../../domain/v1/commerce';
 import type { PageCommerceContextInput } from '../../application/v1/public-commerce-handoff-service';
 import type {
+  AssociateMerchantDeliveryInput,
+  AssociateMerchantReturnShipmentInput,
   AssociateMerchantShipmentInput,
   CreateMerchantConnectSessionInput,
+  CreateMerchantReturnInput,
 } from '../../application/v1/merchant-evidence-types';
 import type {
   CreateEvidenceSessionInput,
@@ -467,6 +470,31 @@ export function parseAssociateShipment(value: unknown): AssociateMerchantShipmen
   return {
     carrier: string(input.carrier, 'carrier', 1, 80)!,
     trackingNumber: string(input.trackingNumber, 'trackingNumber', 3, 160)!,
+  };
+}
+
+export function parseCreateReturn(value: unknown): CreateMerchantReturnInput {
+  const input = object(value, 'body');
+  rejectUnknown(input, ['schemaVersion', 'reason']);
+  if (input.schemaVersion !== 1) {
+    throw new InputValidationError([{ field: 'schemaVersion', code: 'UNSUPPORTED_SCHEMA_VERSION', message: 'schemaVersion must equal 1.' }]);
+  }
+  return { reason: string(input.reason, 'reason', 5, 5000)! };
+}
+
+export function parseAssociateReturnShipment(value: unknown): AssociateMerchantReturnShipmentInput {
+  return parseAssociateShipment(value);
+}
+
+export function parseAssociateDelivery(value: unknown): AssociateMerchantDeliveryInput {
+  const input = object(value, 'body');
+  rejectUnknown(input, ['schemaVersion', 'carrier', 'trackingNumber']);
+  if (input.schemaVersion !== 1) {
+    throw new InputValidationError([{ field: 'schemaVersion', code: 'UNSUPPORTED_SCHEMA_VERSION', message: 'schemaVersion must equal 1.' }]);
+  }
+  return {
+    carrier: string(input.carrier, 'carrier', 1, 80, false),
+    trackingNumber: string(input.trackingNumber, 'trackingNumber', 3, 160, false),
   };
 }
 

@@ -81,6 +81,15 @@ export type TransactionRecord = {
     scannedTrackingNumber?: string | null;
     packingEvidenceId?: string;
   };
+  listingImageReferences?: Array<{ url: string; altText?: string | null }>;
+  delivery?: {
+    arrivalEvidenceId: string;
+    carrier: string | null;
+    trackingNumber: string | null;
+    scannedTrackingNumber?: string | null;
+    labelEvidenceMatchStatus?: 'MATCHED' | 'MISMATCH' | 'NOT_SCANNED' | null;
+    receivedAt: FirebaseFirestore.Timestamp;
+  };
   source?: {
     type: 'PACKPROOF_CONNECT';
     platform: string;

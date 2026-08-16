@@ -20,6 +20,7 @@
     { "name": "Evidence" },
     { "name": "Reports" },
     { "name": "Shipments" },
+    { "name": "Delivery" },
     { "name": "Returns" },
     { "name": "Connect Sessions" },
     { "name": "Connect Callbacks" },
@@ -538,6 +539,53 @@
         }
       }
     },
+    "/v1/transactions/{transactionId}/delivery": {
+      "get": {
+        "operationId": "getDelivery",
+        "tags": ["Delivery"],
+        "summary": "Retrieve the associated receiver arrival",
+        "description": "Returns merchant-asserted inbound delivery context linked to a server-finalized arrival photograph. This is not carrier custody proof, receipt authentication, or a completed buyer review.",
+        "security": [{ "merchantApiKey": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/AccessibleTransactionId" }],
+        "responses": {
+          "200": { "$ref": "#/components/responses/DeliveryRetrieved" },
+          "400": { "$ref": "#/components/responses/InvalidRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      },
+      "post": {
+        "operationId": "associateDelivery",
+        "tags": ["Delivery"],
+        "summary": "Associate receiver arrival after delivery evidence",
+        "description": "Records merchant-asserted inbound delivery context only after a server-finalized arrival photograph is present with no recorded byte-integrity mismatch. Optional tracking is compared to any barcode observed during capture. This does not complete the transaction or decide a dispute.",
+        "security": [{ "merchantApiKey": [] }],
+        "parameters": [
+          { "$ref": "#/components/parameters/AccessibleTransactionId" },
+          { "$ref": "#/components/parameters/IdempotencyKey" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AssociateDeliveryRequest" } } }
+        },
+        "responses": {
+          "201": { "$ref": "#/components/responses/DeliveryCreated" },
+          "200": { "$ref": "#/components/responses/DeliveryReplayed" },
+          "400": { "$ref": "#/components/responses/InvalidRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "413": { "$ref": "#/components/responses/RequestTooLarge" },
+          "415": { "$ref": "#/components/responses/UnsupportedMediaType" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
     "/v1/transactions/{transactionId}/returns": {
       "get": {
         "operationId": "listReturns",
@@ -551,6 +599,34 @@
           "401": { "$ref": "#/components/responses/Unauthorized" },
           "403": { "$ref": "#/components/responses/Forbidden" },
           "404": { "$ref": "#/components/responses/NotFound" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      },
+      "post": {
+        "operationId": "createReturnPassport",
+        "tags": ["Returns"],
+        "summary": "Request a return passport",
+        "description": "Creates a REQUESTED return passport after both participants are claimed and shipment has been recorded. The other participant still authorizes in the native app. This does not approve a refund or decide fault.",
+        "security": [{ "merchantApiKey": [] }],
+        "parameters": [
+          { "$ref": "#/components/parameters/AccessibleTransactionId" },
+          { "$ref": "#/components/parameters/IdempotencyKey" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateReturnRequest" } } }
+        },
+        "responses": {
+          "201": { "$ref": "#/components/responses/ReturnCreated" },
+          "200": { "$ref": "#/components/responses/ReturnReplayed" },
+          "400": { "$ref": "#/components/responses/InvalidRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "413": { "$ref": "#/components/responses/RequestTooLarge" },
+          "415": { "$ref": "#/components/responses/UnsupportedMediaType" },
           "429": { "$ref": "#/components/responses/RateLimited" },
           "500": { "$ref": "#/components/responses/InternalError" }
         }
@@ -572,6 +648,37 @@
           "401": { "$ref": "#/components/responses/Unauthorized" },
           "403": { "$ref": "#/components/responses/Forbidden" },
           "404": { "$ref": "#/components/responses/NotFound" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/v1/transactions/{transactionId}/returns/{returnPassportId}/shipment": {
+      "post": {
+        "operationId": "associateReturnShipment",
+        "tags": ["Returns"],
+        "summary": "Associate return tracking after packing and seal evidence",
+        "description": "Records merchant-asserted return carrier tracking only after a server-finalized return packing video and high-resolution return seal reference are present with no recorded byte-integrity mismatch. Tracking association is not a custody, refund, or fraud determination.",
+        "security": [{ "merchantApiKey": [] }],
+        "parameters": [
+          { "$ref": "#/components/parameters/AccessibleTransactionId" },
+          { "$ref": "#/components/parameters/ReturnPassportId" },
+          { "$ref": "#/components/parameters/IdempotencyKey" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AssociateShipmentRequest" } } }
+        },
+        "responses": {
+          "201": { "$ref": "#/components/responses/ReturnCreated" },
+          "200": { "$ref": "#/components/responses/ReturnReplayed" },
+          "400": { "$ref": "#/components/responses/InvalidRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "413": { "$ref": "#/components/responses/RequestTooLarge" },
+          "415": { "$ref": "#/components/responses/UnsupportedMediaType" },
           "429": { "$ref": "#/components/responses/RateLimited" },
           "500": { "$ref": "#/components/responses/InternalError" }
         }
@@ -1350,7 +1457,7 @@
       "ReturnPassport": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["id", "object", "schemaVersion", "transactionId", "reason", "status", "originalEvidenceHashes", "shippingCarrier", "shippingTrackingNumber", "createdAt", "updatedAt"],
+        "required": ["id", "object", "schemaVersion", "transactionId", "reason", "status", "originalEvidenceHashes", "shippingCarrier", "shippingTrackingNumber", "packingEvidenceId", "sealEvidenceId", "labelEvidenceMatchStatus", "createdAt", "updatedAt"],
         "properties": {
           "id": { "type": "string" },
           "object": { "const": "return_passport" },
@@ -1361,6 +1468,9 @@
           "originalEvidenceHashes": { "type": "array", "items": { "type": "string", "pattern": "^[a-f0-9]{64}$" } },
           "shippingCarrier": { "type": ["string", "null"] },
           "shippingTrackingNumber": { "type": ["string", "null"] },
+          "packingEvidenceId": { "type": ["string", "null"] },
+          "sealEvidenceId": { "type": ["string", "null"] },
+          "labelEvidenceMatchStatus": { "type": ["string", "null"], "enum": ["MATCHED", "MISMATCH", "NOT_SCANNED", null] },
           "createdAt": { "type": "string", "format": "date-time" },
           "updatedAt": { "type": "string", "format": "date-time" }
         }
@@ -1387,7 +1497,7 @@
       "ReviewPackage": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["id", "object", "schemaVersion", "transactionId", "title", "merchantReference", "status", "amount", "terms", "protocolCompleteness", "documentationCategories", "evidence", "shipment", "returns", "latestReport", "timeline", "limitations", "createdAt", "updatedAt"],
+        "required": ["id", "object", "schemaVersion", "transactionId", "title", "merchantReference", "status", "amount", "terms", "protocolCompleteness", "documentationCategories", "evidence", "shipment", "delivery", "returns", "latestReport", "timeline", "limitations", "createdAt", "updatedAt"],
         "properties": {
           "id": { "type": "string" },
           "object": { "const": "review_package" },
@@ -1419,6 +1529,7 @@
           }}},
           "evidence": { "type": "array", "items": { "$ref": "#/components/schemas/EvidenceArtifact" } },
           "shipment": { "oneOf": [{ "$ref": "#/components/schemas/Shipment" }, { "type": "null" }] },
+          "delivery": { "oneOf": [{ "$ref": "#/components/schemas/Delivery" }, { "type": "null" }] },
           "returns": { "type": "array", "items": { "$ref": "#/components/schemas/ReturnPassport" } },
           "latestReport": { "type": ["object", "null"] },
           "timeline": { "type": "array", "items": { "$ref": "#/components/schemas/TimelineEvent" } },
@@ -1517,6 +1628,46 @@
           "trackingNumber": { "type": "string", "minLength": 3, "maxLength": 160 }
         }
       },
+      "CreateReturnRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["schemaVersion", "reason"],
+        "properties": {
+          "schemaVersion": { "const": 1 },
+          "reason": { "type": "string", "minLength": 5, "maxLength": 5000 }
+        }
+      },
+      "AssociateDeliveryRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["schemaVersion"],
+        "properties": {
+          "schemaVersion": { "const": 1 },
+          "carrier": { "type": "string", "minLength": 1, "maxLength": 80 },
+          "trackingNumber": { "type": "string", "minLength": 3, "maxLength": 160 }
+        }
+      },
+      "Delivery": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "object", "schemaVersion", "transactionId", "assertionSource", "status", "arrivalEvidenceId", "carrier", "trackingNumber", "labelEvidenceMatchStatus", "receivedAt", "createdAt", "updatedAt"],
+        "properties": {
+          "id": { "type": "string" },
+          "object": { "const": "delivery" },
+          "schemaVersion": { "const": 1 },
+          "transactionId": { "type": "string" },
+          "assertionSource": { "const": "MERCHANT" },
+          "status": { "const": "ASSOCIATED" },
+          "arrivalEvidenceId": { "type": "string" },
+          "carrier": { "type": ["string", "null"] },
+          "trackingNumber": { "type": ["string", "null"] },
+          "labelEvidenceMatchStatus": { "type": ["string", "null"], "enum": ["MATCHED", "MISMATCH", "NOT_SCANNED", null] },
+          "receivedAt": { "type": "string", "format": "date-time" },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" }
+        },
+        "description": "Merchant-asserted inbound delivery context linked to an arrival photograph. It is not carrier custody proof."
+      },
       "CreateEvidenceReportRequest": {
         "type": "object",
         "additionalProperties": false,
@@ -1558,6 +1709,12 @@
         "additionalProperties": false,
         "required": ["data"],
         "properties": { "data": { "$ref": "#/components/schemas/Shipment" } }
+      },
+      "DeliveryResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["data"],
+        "properties": { "data": { "$ref": "#/components/schemas/Delivery" } }
       },
       "ReturnListResponse": {
         "type": "object",
@@ -1869,6 +2026,21 @@
         "headers": { "X-Request-Id": { "$ref": "#/components/headers/XRequestId" }, "Idempotent-Replayed": { "$ref": "#/components/headers/IdempotentReplayed" }, "RateLimit-Limit": { "$ref": "#/components/headers/RateLimitLimit" }, "RateLimit-Remaining": { "$ref": "#/components/headers/RateLimitRemaining" }, "RateLimit-Reset": { "$ref": "#/components/headers/RateLimitReset" } },
         "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ShipmentResponse" } } }
       },
+      "DeliveryRetrieved": {
+        "description": "The associated merchant-asserted receiver arrival.",
+        "headers": { "X-Request-Id": { "$ref": "#/components/headers/XRequestId" }, "RateLimit-Limit": { "$ref": "#/components/headers/RateLimitLimit" }, "RateLimit-Remaining": { "$ref": "#/components/headers/RateLimitRemaining" }, "RateLimit-Reset": { "$ref": "#/components/headers/RateLimitReset" } },
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DeliveryResponse" } } }
+      },
+      "DeliveryCreated": {
+        "description": "Inbound delivery was associated after arrival evidence.",
+        "headers": { "X-Request-Id": { "$ref": "#/components/headers/XRequestId" }, "Idempotent-Replayed": { "$ref": "#/components/headers/IdempotentReplayed" }, "RateLimit-Limit": { "$ref": "#/components/headers/RateLimitLimit" }, "RateLimit-Remaining": { "$ref": "#/components/headers/RateLimitRemaining" }, "RateLimit-Reset": { "$ref": "#/components/headers/RateLimitReset" } },
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DeliveryResponse" } } }
+      },
+      "DeliveryReplayed": {
+        "description": "The original delivery association for an exact idempotent retry.",
+        "headers": { "X-Request-Id": { "$ref": "#/components/headers/XRequestId" }, "Idempotent-Replayed": { "$ref": "#/components/headers/IdempotentReplayed" }, "RateLimit-Limit": { "$ref": "#/components/headers/RateLimitLimit" }, "RateLimit-Remaining": { "$ref": "#/components/headers/RateLimitRemaining" }, "RateLimit-Reset": { "$ref": "#/components/headers/RateLimitReset" } },
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DeliveryResponse" } } }
+      },
       "ReturnListRetrieved": {
         "description": "Return passports for the authorized transaction.",
         "headers": { "X-Request-Id": { "$ref": "#/components/headers/XRequestId" }, "RateLimit-Limit": { "$ref": "#/components/headers/RateLimitLimit" }, "RateLimit-Remaining": { "$ref": "#/components/headers/RateLimitRemaining" }, "RateLimit-Reset": { "$ref": "#/components/headers/RateLimitReset" } },
@@ -1877,6 +2049,16 @@
       "ReturnRetrieved": {
         "description": "One return passport.",
         "headers": { "X-Request-Id": { "$ref": "#/components/headers/XRequestId" }, "RateLimit-Limit": { "$ref": "#/components/headers/RateLimitLimit" }, "RateLimit-Remaining": { "$ref": "#/components/headers/RateLimitRemaining" }, "RateLimit-Reset": { "$ref": "#/components/headers/RateLimitReset" } },
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ReturnResponse" } } }
+      },
+      "ReturnCreated": {
+        "description": "A return passport was requested or return tracking was associated.",
+        "headers": { "X-Request-Id": { "$ref": "#/components/headers/XRequestId" }, "Idempotent-Replayed": { "$ref": "#/components/headers/IdempotentReplayed" }, "RateLimit-Limit": { "$ref": "#/components/headers/RateLimitLimit" }, "RateLimit-Remaining": { "$ref": "#/components/headers/RateLimitRemaining" }, "RateLimit-Reset": { "$ref": "#/components/headers/RateLimitReset" } },
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ReturnResponse" } } }
+      },
+      "ReturnReplayed": {
+        "description": "The original return passport for an exact idempotent retry.",
+        "headers": { "X-Request-Id": { "$ref": "#/components/headers/XRequestId" }, "Idempotent-Replayed": { "$ref": "#/components/headers/IdempotentReplayed" }, "RateLimit-Limit": { "$ref": "#/components/headers/RateLimitLimit" }, "RateLimit-Remaining": { "$ref": "#/components/headers/RateLimitRemaining" }, "RateLimit-Reset": { "$ref": "#/components/headers/RateLimitReset" } },
         "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ReturnResponse" } } }
       },
       "ConnectSessionCreated": {

@@ -130,11 +130,48 @@ export class PackProofConnect {
     return this.request(`/v1/transactions/${encodeURIComponent(transactionId)}/returns`, options);
   }
 
+  async createReturn(transactionId, input, { idempotencyKey, signal } = {}) {
+    if (!idempotencyKey) throw new TypeError('idempotencyKey is required to request a return passport.');
+    return this.request(`/v1/transactions/${encodeURIComponent(transactionId)}/returns`, {
+      method: 'POST',
+      body: { schemaVersion: 1, ...input },
+      idempotencyKey,
+      signal,
+    });
+  }
+
   async getReturn(transactionId, returnPassportId, options = {}) {
     return this.request(
       `/v1/transactions/${encodeURIComponent(transactionId)}/returns/${encodeURIComponent(returnPassportId)}`,
       options,
     );
+  }
+
+  async associateReturnShipment(transactionId, returnPassportId, input, { idempotencyKey, signal } = {}) {
+    if (!idempotencyKey) throw new TypeError('idempotencyKey is required for return shipment association.');
+    return this.request(
+      `/v1/transactions/${encodeURIComponent(transactionId)}/returns/${encodeURIComponent(returnPassportId)}/shipment`,
+      {
+        method: 'POST',
+        body: { schemaVersion: 1, ...input },
+        idempotencyKey,
+        signal,
+      },
+    );
+  }
+
+  async getDelivery(transactionId, options = {}) {
+    return this.request(`/v1/transactions/${encodeURIComponent(transactionId)}/delivery`, options);
+  }
+
+  async associateDelivery(transactionId, input, { idempotencyKey, signal } = {}) {
+    if (!idempotencyKey) throw new TypeError('idempotencyKey is required for delivery association.');
+    return this.request(`/v1/transactions/${encodeURIComponent(transactionId)}/delivery`, {
+      method: 'POST',
+      body: { schemaVersion: 1, ...input },
+      idempotencyKey,
+      signal,
+    });
   }
 
   // Backward-compatible alias for v0.2 clients. The response is an evidence

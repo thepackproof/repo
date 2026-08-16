@@ -24,7 +24,7 @@ A PackProof operator provisions a sandbox integration and binds your merchant AP
 
 Do not put the API key or webhook secret in a mobile app, storefront script, or repository.
 
-Required scopes: `transactions:read`, `transactions:write`. After capture, `evidence:read` and `shipments:write` are needed for review packages, dossiers, and tracking association.
+Required scopes: `transactions:read`, `transactions:write`. After capture, `evidence:read`, `shipments:read`, and `shipments:write` are needed for review packages, dossiers, tracking association, and delivery association.
 
 ### 2. Create a capture session
 
@@ -101,6 +101,10 @@ After `transactionId` is known:
 - `GET /v1/transactions/{transactionId}/evidence`
 - `POST /v1/transactions/{transactionId}/reports` then `GET .../reports/{reportId}`
 - `POST /v1/transactions/{transactionId}/shipment` after packing video and seal reference are server-finalized with no byte-integrity mismatch
+- `POST /v1/transactions/{transactionId}/delivery` after a server-finalized arrival photograph exists
+- `POST /v1/transactions/{transactionId}/returns` to request a return passport; after authorization plus return packing and seal evidence, `POST .../returns/{id}/shipment`
+
+None of these writes decide fraud, fault, custody, or a refund.
 
 The review package always states `physicalCorrespondence: NOT_AVAILABLE` and `businessLegalRelevance: REVIEW_REQUIRED`. Documentation categories are filing labels only. The package does not decide fraud, fault, authenticity, custody, or a card-network, carrier, marketplace, or payment outcome.
 
@@ -179,4 +183,4 @@ The CLI prints secrets once. Store them in a secrets manager.
 
 ## Out of partner scope
 
-General merchant webhook registration, receiver write, return write, verification verdict APIs, and commerce-platform adapters (Shopify/WooCommerce) are not part of this Connect slice. Connect's bounded `packproof.evidence.finalized` callback is the supported notification.
+General merchant webhook registration, verification verdict APIs, and commerce-platform adapters (Shopify/WooCommerce) are not part of this Connect slice. Connect's bounded `packproof.evidence.finalized` callback is the supported notification. Merchant return and delivery writes are available on `/v1` after the matching packing, seal, or arrival evidence is server-finalized.

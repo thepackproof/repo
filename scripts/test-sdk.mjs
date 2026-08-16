@@ -106,6 +106,39 @@ assert.ok(artifact);
 const returned = await v1Client.getReturn('txn_1', 'return-1');
 assert.ok(returned);
 
+v1Client.fetch = async (url, init) => {
+  observed = { url, init };
+  return new Response(JSON.stringify({ data: { object: 'return_passport', status: 'REQUESTED' } }), {
+    status: 201, headers: { 'Content-Type': 'application/json' },
+  });
+};
+const requestedReturn = await v1Client.createReturn('txn_1', { reason: 'Item differs from locked terms.' }, { idempotencyKey: 'return-1' });
+assert.equal(requestedReturn.data.object, 'return_passport');
+assert.equal(observed.url, 'https://packproof.example/v1/transactions/txn_1/returns');
+assert.equal(observed.init.headers['Idempotency-Key'], 'return-1');
+
+v1Client.fetch = async (url) => {
+  observed = { url };
+  return new Response(JSON.stringify({ data: { object: 'return_passport', status: 'IN_TRANSIT' } }), {
+    status: 201, headers: { 'Content-Type': 'application/json' },
+  });
+};
+const returnShipment = await v1Client.associateReturnShipment('txn_1', 'return-1', {
+  carrier: 'USPS', trackingNumber: '9400111899223198765432',
+}, { idempotencyKey: 'return-ship-1' });
+assert.equal(returnShipment.data.status, 'IN_TRANSIT');
+assert.equal(observed.url, 'https://packproof.example/v1/transactions/txn_1/returns/return-1/shipment');
+
+v1Client.fetch = async (url) => {
+  observed = { url };
+  return new Response(JSON.stringify({ data: { object: 'delivery', assertionSource: 'MERCHANT' } }), {
+    status: 201, headers: { 'Content-Type': 'application/json' },
+  });
+};
+const delivery = await v1Client.associateDelivery('txn_1', { carrier: 'UPS', trackingNumber: '1Z999AA10123456784' }, { idempotencyKey: 'delivery-1' });
+assert.equal(delivery.data.object, 'delivery');
+assert.equal(observed.url, 'https://packproof.example/v1/transactions/txn_1/delivery');
+
 const rawBody = JSON.stringify({ event: 'packproof.evidence.finalized', orderId: 'order-123', evidenceStatus: 'DIGITAL_EVIDENCE_WITH_LIMITATIONS' });
 const secret = 'whsec_validation_secret';
 const timestamp = '1786039200';

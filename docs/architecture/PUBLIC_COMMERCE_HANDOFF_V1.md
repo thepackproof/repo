@@ -4,7 +4,7 @@ Status: `SOURCE_CHECKED` and locally tested; Firestore emulator validation is re
 
 ## Outcome
 
-The PackProof Button can be embedded in a product or listing page with a publishable installation key. On click, the browser SDK reads explicit integration data, Schema.org `Product` JSON-LD, or a narrow Open Graph fallback and sends a versioned item descriptor to PackProof. PackProof creates a short-lived commerce handoff and passport draft. A signed-in PackProof user redeems the one-use bearer link and lands on the existing editable transaction form with the title, complete description, category, price/currency, identifiers, brand/model, and selected options already populated. The canonical passport draft separately retains the full structured descriptor, including listing image references, even though the current legacy editor does not yet render those images.
+The PackProof Button can be embedded in a product or listing page with a publishable installation key. On click, the browser SDK reads explicit integration data, Schema.org `Product` JSON-LD, or a narrow Open Graph fallback and sends a versioned item descriptor to PackProof. PackProof creates a short-lived commerce handoff and passport draft. A signed-in PackProof user redeems the one-use bearer link and lands on the existing editable transaction form with the title, complete description, category, price/currency, identifiers, brand/model, selected options, and HTTPS listing image references already populated. Listing images remain page-declared references; they are not PackProof evidence, hashes, or capture originals.
 
 The public route does not authenticate a merchant or assert that an order, payment, shipment, condition, authenticity result, or evidence capture exists.
 
@@ -98,7 +98,7 @@ Issuance atomically writes the commerce context, passport draft, handoff, and tw
 
 ## Review semantics
 
-Redemption creates a legacy-compatible transaction with canonical origin `COMMERCE_ADAPTER` and legacy source `PACKPROOF_BUTTON`. Its state is `DRAFT`, not `TERMS_LOCKED`. The user is sent to `/transaction/new?transactionId=...`, where the existing form hydrates all imported fields and shows a persistent page-declared warning. Subsequent edits preserve the source linkage because the consumer repository merges editable fields without deleting the source object.
+Redemption creates a legacy-compatible transaction with canonical origin `COMMERCE_ADAPTER` and legacy source `PACKPROOF_BUTTON`. Its state is `DRAFT`, not `TERMS_LOCKED`. The user is sent to `/transaction/new?transactionId=...`, where the existing form hydrates all imported fields, renders HTTPS listing image references as page-declared previews, and shows a persistent page-declared warning. Subsequent edits preserve the source linkage and listing image references because the consumer repository merges editable fields without deleting those objects.
 
 The active legacy consumer transaction model is seller-initiated, so the redeeming account becomes the draft seller. A future role-neutral passport-draft/participant-claim slice is required before the same public button can truthfully support a buyer initiating the shared transaction without first being treated as the seller. This limitation is explicit rather than silently relabeling participant roles.
 

@@ -182,6 +182,7 @@ class FakeMerchantEvidenceService {
   reports = new Map();
   shipments = new Map();
   returns = new Map();
+  deliveries = new Map();
 
   seedArtifact(transactionId, artifact) {
     const key = `${transactionId}:${artifact.id}`;
@@ -222,7 +223,7 @@ class FakeMerchantEvidenceService {
         sellerPackingVideo: 'ABSENT', sellerSealReference: 'ABSENT', buyerArrivalObservation: 'ABSENT',
         buyerUnboxing: 'ABSENT', returnPackingVideo: 'ABSENT', returnSealReference: 'ABSENT',
       },
-      documentationCategories: [], evidence: this.artifacts.get(transactionId) ?? [], shipment: null,
+      documentationCategories: [], evidence: this.artifacts.get(transactionId) ?? [], shipment: null, delivery: null,
       returns: [], latestReport: null, timeline: [],
       limitations: {
         physicalCorrespondence: 'NOT_AVAILABLE', businessLegalRelevance: 'REVIEW_REQUIRED',
@@ -276,6 +277,49 @@ class FakeMerchantEvidenceService {
   async listReturns(principal, transactionId) {
     this.requireScope(principal, 'transactions:read');
     return this.returns.get(transactionId) ?? [];
+  }
+
+  async createReturn(principal, transactionId, input) {
+    this.requireScope(principal, 'transactions:write');
+    const item = {
+      id: `return_${transactionId.slice(-8)}`, object: 'return_passport', schemaVersion: 1, transactionId,
+      reason: input.reason, status: 'REQUESTED', originalEvidenceHashes: [], shippingCarrier: null,
+      shippingTrackingNumber: null, packingEvidenceId: null, sealEvidenceId: null, labelEvidenceMatchStatus: null,
+      createdAt: '2026-08-11T12:00:00.000Z', updatedAt: '2026-08-11T12:00:00.000Z',
+    };
+    const list = this.returns.get(transactionId) ?? [];
+    list.push(item);
+    this.returns.set(transactionId, list);
+    return { returnPassport: item, replayed: false };
+  }
+
+  async associateReturnShipment(principal, transactionId, returnPassportId, input) {
+    this.requireScope(principal, 'shipments:write');
+    const item = (this.returns.get(transactionId) ?? []).find((entry) => entry.id === returnPassportId);
+    if (!item) throw new ApiError(404, 'RETURN_PASSPORT_NOT_FOUND', 'missing');
+    Object.assign(item, { status: 'IN_TRANSIT', shippingCarrier: input.carrier, shippingTrackingNumber: input.trackingNumber });
+    return { returnPassport: item, replayed: false };
+  }
+
+  async getDelivery(principal, transactionId) {
+    this.requireScope(principal, 'shipments:read');
+    const delivery = this.deliveries?.get(transactionId);
+    if (!delivery) throw new ApiError(404, 'DELIVERY_NOT_FOUND', 'missing');
+    return delivery;
+  }
+
+  async associateDelivery(principal, transactionId, input) {
+    this.requireScope(principal, 'shipments:write');
+    this.deliveries ??= new Map();
+    const delivery = {
+      id: `delivery_${transactionId.slice(-8)}`, object: 'delivery', schemaVersion: 1, transactionId,
+      assertionSource: 'MERCHANT', status: 'ASSOCIATED', arrivalEvidenceId: 'arrive-1',
+      carrier: input.carrier ?? null, trackingNumber: input.trackingNumber ?? null,
+      labelEvidenceMatchStatus: 'NOT_SCANNED', receivedAt: '2026-08-11T12:00:00.000Z',
+      createdAt: '2026-08-11T12:00:00.000Z', updatedAt: '2026-08-11T12:00:00.000Z',
+    };
+    this.deliveries.set(transactionId, delivery);
+    return { delivery, replayed: false };
   }
 
   async getReturn(principal, transactionId, returnPassportId) {
@@ -855,6 +899,27 @@ describe('PackProof API v1 headless Connect and claims-review routes', () => {
     });
     assert.equal(shipment.response.status, 201);
     assert.equal(shipment.body.data.assertionSource, 'MERCHANT');
+
+    const requestedReturn = await jsonRequest(`/v1/transactions/${transactionId}/returns`, {
+      method: 'POST',
+      headers: { authorization: 'Bearer write-a', 'content-type': 'application/json', 'idempotency-key': 'return-key-1' },
+      body: JSON.stringify({ schemaVersion: 1, reason: 'Item differs from the locked terms.' }),
+    });
+    assert.equal(requestedReturn.response.status, 201);
+    assert.equal(requestedReturn.body.data.object, 'return_passport');
+    const returnShipment = await jsonRequest(`/v1/transactions/${transactionId}/returns/${requestedReturn.body.data.id}/shipment`, {
+      method: 'POST',
+      headers: { authorization: 'Bearer write-a', 'content-type': 'application/json', 'idempotency-key': 'return-ship-1' },
+      body: JSON.stringify({ schemaVersion: 1, carrier: 'USPS', trackingNumber: '9400111899223198765432' }),
+    });
+    assert.equal(returnShipment.response.status, 201);
+    const delivery = await jsonRequest(`/v1/transactions/${transactionId}/delivery`, {
+      method: 'POST',
+      headers: { authorization: 'Bearer write-a', 'content-type': 'application/json', 'idempotency-key': 'delivery-key-1' },
+      body: JSON.stringify({ schemaVersion: 1, carrier: 'UPS', trackingNumber: '1Z999AA10123456784' }),
+    });
+    assert.equal(delivery.response.status, 201);
+    assert.equal(delivery.body.data.object, 'delivery');
   });
 
   test('rejects unknown Connect fields and unsupported evidence methods', async () => {

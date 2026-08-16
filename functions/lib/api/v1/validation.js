@@ -23,6 +23,9 @@ exports.parseListConnectSessions = parseListConnectSessions;
 exports.parseCancelConnectSession = parseCancelConnectSession;
 exports.parseCreateConnectSession = parseCreateConnectSession;
 exports.parseAssociateShipment = parseAssociateShipment;
+exports.parseCreateReturn = parseCreateReturn;
+exports.parseAssociateReturnShipment = parseAssociateReturnShipment;
+exports.parseAssociateDelivery = parseAssociateDelivery;
 exports.parseCreateEvidenceReport = parseCreateEvidenceReport;
 exports.asApiError = asApiError;
 const core_1 = require("./core");
@@ -445,6 +448,28 @@ function parseAssociateShipment(value) {
     return {
         carrier: string(input.carrier, 'carrier', 1, 80),
         trackingNumber: string(input.trackingNumber, 'trackingNumber', 3, 160),
+    };
+}
+function parseCreateReturn(value) {
+    const input = object(value, 'body');
+    rejectUnknown(input, ['schemaVersion', 'reason']);
+    if (input.schemaVersion !== 1) {
+        throw new core_1.InputValidationError([{ field: 'schemaVersion', code: 'UNSUPPORTED_SCHEMA_VERSION', message: 'schemaVersion must equal 1.' }]);
+    }
+    return { reason: string(input.reason, 'reason', 5, 5000) };
+}
+function parseAssociateReturnShipment(value) {
+    return parseAssociateShipment(value);
+}
+function parseAssociateDelivery(value) {
+    const input = object(value, 'body');
+    rejectUnknown(input, ['schemaVersion', 'carrier', 'trackingNumber']);
+    if (input.schemaVersion !== 1) {
+        throw new core_1.InputValidationError([{ field: 'schemaVersion', code: 'UNSUPPORTED_SCHEMA_VERSION', message: 'schemaVersion must equal 1.' }]);
+    }
+    return {
+        carrier: string(input.carrier, 'carrier', 1, 80, false),
+        trackingNumber: string(input.trackingNumber, 'trackingNumber', 3, 160, false),
     };
 }
 function parseCreateEvidenceReport(value) {
