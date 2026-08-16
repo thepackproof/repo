@@ -1,9 +1,10 @@
-import { Timestamp, type DocumentData, type Firestore } from 'firebase-admin/firestore';
+import { FieldValue, Timestamp, type DocumentData, type Firestore } from 'firebase-admin/firestore';
 import type { ApplicationEvent } from '../../../application/v1/events';
 import type {
   AccessibleMerchantTransaction,
   AssociateShipmentRecord,
   BoundConnectIntegration,
+  ConnectSessionCancelDecision,
   MerchantConnectIntegrationLookup,
   MerchantConnectSessionReader,
   MerchantEvidenceRepository,
@@ -284,6 +285,32 @@ export class FirestoreMerchantEvidenceRepository implements MerchantEvidenceRepo
   }
 }
 
+function connectSessionIsAccessible(session: StoredConnectSession, principal: MerchantPrincipal): boolean {
+  return (session.organizationId !== null && session.organizationId === principal.organizationId)
+    || (Boolean(session.integrationId) && Boolean(principal.integrationId) && session.integrationId === principal.integrationId);
+}
+
+function toStoredConnectSession(id: string, data: DocumentData): StoredConnectSession | null {
+  if (!(data.expiresAt instanceof Timestamp)) return null;
+  return {
+    id,
+    organizationId: optionalString(data.organizationId),
+    integrationId: optionalString(data.integrationId) ?? '',
+    platform: optionalString(data.platform) ?? 'custom',
+    externalOrderId: optionalString(data.externalOrderId) ?? '',
+    status: optionalString(data.status) ?? 'PENDING_REDEMPTION',
+    transactionId: optionalString(data.transactionId),
+    commerceContextId: optionalString(data.commerceContextId),
+    itemTitle: optionalString(data.itemTitle) ?? '',
+    currency: optionalString(data.currency) ?? 'USD',
+    priceMinor: optionalInteger(data.priceMinor) ?? 0,
+    trackingNumber: optionalString(data.trackingNumber),
+    carrier: optionalString(data.carrier),
+    expiresAt: data.expiresAt.toDate(),
+    createdAt: dateValue(data.createdAt, data.expiresAt.toDate()),
+  };
+}
+
 export class FirestoreMerchantConnectAdapter implements MerchantConnectIntegrationLookup, MerchantConnectSessionReader {
   constructor(private readonly firestore: Firestore) {}
 
@@ -307,29 +334,45 @@ export class FirestoreMerchantConnectAdapter implements MerchantConnectIntegrati
   async findAccessibleSession(sessionId: string, principal: MerchantPrincipal): Promise<StoredConnectSession | null> {
     const snap = await this.firestore.collection('connectSessions').doc(sessionId).get();
     if (!snap.exists) return null;
-    const data = snap.data()!;
-    const organizationId = optionalString(data.organizationId);
-    const integrationId = optionalString(data.integrationId);
-    const allowed = (organizationId && organizationId === principal.organizationId)
-      || (integrationId && principal.integrationId && integrationId === principal.integrationId);
-    if (!allowed) return null;
-    if (!(data.expiresAt instanceof Timestamp)) return null;
-    return {
-      id: snap.id,
-      organizationId,
-      integrationId: integrationId ?? '',
-      platform: optionalString(data.platform) ?? 'custom',
-      externalOrderId: optionalString(data.externalOrderId) ?? '',
-      status: optionalString(data.status) ?? 'UNKNOWN',
-      transactionId: optionalString(data.transactionId),
-      commerceContextId: optionalString(data.commerceContextId),
-      itemTitle: optionalString(data.itemTitle) ?? '',
-      currency: optionalString(data.currency) ?? 'USD',
-      priceMinor: optionalInteger(data.priceMinor) ?? 0,
-      trackingNumber: optionalString(data.trackingNumber),
-      carrier: optionalString(data.carrier),
-      expiresAt: data.expiresAt.toDate(),
-      createdAt: dateValue(data.createdAt, data.expiresAt.toDate()),
-    };
+    const session = toStoredConnectSession(snap.id, snap.data()!);
+    if (!session || !connectSessionIsAccessible(session, principal)) return null;
+    return session;
+  }
+
+  async listAccessibleSessions(principal: MerchantPrincipal, externalOrderId: string): Promise<StoredConnectSession[]> {
+    let query = this.firestore.collection('connectSessions').where('externalOrderId', '==', externalOrderId);
+    query = principal.integrationId
+      ? query.where('integrationId', '==', principal.integrationId)
+      : query.where('organizationId', '==', principal.organizationId);
+    const snap = await query.limit(25).get();
+    return snap.docs
+      .map((doc) => toStoredConnectSession(doc.id, doc.data()))
+      .filter((session): session is StoredConnectSession => session !== null && connectSessionIsAccessible(session, principal));
+  }
+
+  async cancelAccessibleSession(
+    sessionId: string,
+    principal: MerchantPrincipal,
+    decide: (session: StoredConnectSession | null) => ConnectSessionCancelDecision,
+  ): Promise<StoredConnectSession> {
+    const sessionRef = this.firestore.collection('connectSessions').doc(sessionId);
+    return this.firestore.runTransaction(async (tx) => {
+      const snap = await tx.get(sessionRef);
+      const loaded = snap.exists ? toStoredConnectSession(snap.id, snap.data()!) : null;
+      const accessible = loaded && connectSessionIsAccessible(loaded, principal) ? loaded : null;
+      const decision = decide(accessible);
+      if (decision.type === 'REPLAY') return decision.session;
+      const outboxRef = this.firestore.collection('domainOutbox').doc(decision.event.id);
+      const existingOutbox = await tx.get(outboxRef);
+      tx.update(sessionRef, {
+        status: 'CANCELLED',
+        tokenHash: FieldValue.delete(),
+        codeChallenge: FieldValue.delete(),
+        cancelledAt: Timestamp.fromDate(decision.event.occurredAt),
+        updatedAt: Timestamp.fromDate(decision.event.occurredAt),
+      });
+      if (!existingOutbox.exists) tx.create(outboxRef, storedOutboxEvent(decision.event));
+      return decision.session;
+    });
   }
 }

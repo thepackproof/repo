@@ -27,9 +27,11 @@ The canonical API contract is [`openapi/packproof-api-v1.json`](openapi/packproo
 - `GET /v1/transactions/{transactionId}/returns`
 - `GET /v1/transactions/{transactionId}/returns/{returnPassportId}`
 - `POST /v1/connect/sessions`
+- `GET /v1/connect/sessions`
 - `GET /v1/connect/sessions/{sessionId}`
+- `POST /v1/connect/sessions/{sessionId}/cancel`
 
-The public operation produces only a page-declared editable passport-draft handoff; it is not merchant authentication or order binding. Participant claims and evidence-session redemption bridge merchant transactions into the existing native capture-session path, but they do not prove that a capture was completed, uploaded, or server-finalized. Evidence list/read, review-package, presentation-dossier, shipment association, return-passport read, and v1 Connect session routes are now implemented as organization-isolated merchant projections. They reuse the existing ports, package-seal fail-closed rule, and layered-assurance fields. They do not authenticate items, prove custody, decide fraud or fault, or enable the general webhook dispatcher. Receiver write, return write, verification, general webhooks, and support-export routes remain subsequent milestones.
+The public operation produces only a page-declared editable passport-draft handoff; it is not merchant authentication or order binding. Participant claims and evidence-session redemption bridge merchant transactions into the existing native capture-session path, but they do not prove that a capture was completed, uploaded, or server-finalized. Evidence list/read, review-package, presentation-dossier, shipment association, return-passport read, and v1 Connect session routes are now implemented as organization-isolated merchant projections. They reuse the existing ports, package-seal fail-closed rule, and layered-assurance fields. They do not authenticate items, prove custody, decide fraud or fault, or enable the general webhook dispatcher. Receiver write, return write, verification, general webhooks, and support-export routes remain subsequent milestones. The Connect callback remains the bounded `packproof.evidence.finalized` event documented as an OpenAPI webhook.
 
 ## Boundaries
 

@@ -11,6 +11,7 @@ const {
   ConnectHandoffApplicationService,
   ConsumerTransactionApplicationService,
   MerchantAuthorizationPolicy,
+  MerchantConnectApplicationService,
   ParticipantCaptureApplicationService,
   PublicCommerceHandoffApplicationService,
   sha256,
@@ -25,6 +26,7 @@ const { FirestoreConnectHandoffRepository } = require('../lib/infrastructure/fir
 const { FirestoreConsumerTransactionRepository } = require('../lib/infrastructure/firebase/v1/consumer-transaction-repository.js');
 const { FirestorePublicCommerceHandoffRepository } = require('../lib/infrastructure/firebase/v1/public-commerce-handoff-repository.js');
 const { FirestoreParticipantCaptureRepository } = require('../lib/infrastructure/firebase/v1/participant-capture-repository.js');
+const { FirestoreMerchantConnectAdapter } = require('../lib/infrastructure/firebase/v1/merchant-evidence-repository.js');
 
 const emulatorAvailable = Boolean(process.env.FIRESTORE_EMULATOR_HOST);
 const adminApp = emulatorAvailable ? initializeApp({ projectId: 'packproof-application-test' }, `application-v1-${Date.now()}`) : null;
@@ -207,6 +209,50 @@ test('Connect grant exchange does not consume a valid code when exchange paramet
   assert.equal(consumed.data().transactionId, first.transactionId);
   const created = await firestore.collection('transactions').doc(first.transactionId).get();
   assert.equal(created.exists, true);
+});
+
+test('merchant Connect adapter lists by external order and cancels an unredeemed session', { skip: !emulatorAvailable }, async () => {
+  const issuer = new HmacConnectSessionTokenIssuer();
+  await firestore.collection('platformIntegrations').doc('merchantConnectInt001').set({
+    status: 'ACTIVE',
+    platform: 'custom',
+    organizationId: 'org-connect-a',
+    webhookSigningSecret: 'whsec_emulator_connect',
+    callbackOrigins: ['https://merchant.example'],
+  });
+  const adapter = new FirestoreMerchantConnectAdapter(firestore);
+  const service = new MerchantConnectApplicationService(
+    new CommerceContextApplicationService(new FirestoreCommerceContextRepository(firestore), issuer, () => now),
+    adapter,
+    adapter,
+    { validate: async () => undefined },
+    new MerchantAuthorizationPolicy(),
+    { environment: 'sandbox' },
+    () => 'https://packproof.example',
+    () => now,
+  );
+  const principal = {
+    type: 'MERCHANT_API_CLIENT', credentialId: 'cred-connect', apiClientId: 'client-connect',
+    organizationId: 'org-connect-a', environment: 'sandbox', integrationId: 'merchantConnectInt001',
+    scopes: ['transactions:read', 'transactions:write'],
+  };
+  const created = await service.createSession(principal, {
+    platform: 'custom', externalOrderId: 'order-list-1', externalSellerId: 'seller-1', itemTitle: 'Listed camera',
+    itemDescription: '', amount: { currency: 'USD', minorUnits: 2500 }, callbackUrl: 'https://merchant.example/hook',
+  }, 'idempotency-list-1', 'req-list-1');
+  const listed = await service.listSessions(principal, 'order-list-1');
+  assert.equal(listed.length, 1);
+  assert.equal(listed[0].id, created.session.id);
+  assert.equal(listed[0].status, 'PENDING_REDEMPTION');
+  const isolated = await service.listSessions({ ...principal, organizationId: 'org-connect-b', integrationId: 'other' }, 'order-list-1');
+  assert.equal(isolated.length, 0);
+  const cancelled = await service.cancelSession(principal, created.session.id, 'req-cancel-1');
+  assert.equal(cancelled.session.status, 'CANCELLED');
+  const stored = await firestore.collection('connectSessions').doc(created.session.id).get();
+  assert.equal(stored.data().status, 'CANCELLED');
+  assert.equal(stored.data().tokenHash, undefined);
+  const replayed = await service.cancelSession(principal, created.session.id, 'req-cancel-2');
+  assert.equal(replayed.replayed, true);
 });
 
 test('public button issue and redemption atomically retain page provenance, bind a draft, and consume the bearer token', { skip: !emulatorAvailable }, async () => {

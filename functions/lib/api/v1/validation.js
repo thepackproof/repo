@@ -19,6 +19,8 @@ exports.parseEvidenceArtifactId = parseEvidenceArtifactId;
 exports.parseEvidenceReportId = parseEvidenceReportId;
 exports.parseReturnPassportId = parseReturnPassportId;
 exports.parseConnectSessionId = parseConnectSessionId;
+exports.parseListConnectSessions = parseListConnectSessions;
+exports.parseCancelConnectSession = parseCancelConnectSession;
 exports.parseCreateConnectSession = parseCreateConnectSession;
 exports.parseAssociateShipment = parseAssociateShipment;
 exports.parseCreateEvidenceReport = parseCreateEvidenceReport;
@@ -373,6 +375,22 @@ function parseConnectSessionId(value) {
         throw new core_1.InputValidationError([{ field: 'sessionId', code: 'INVALID_ID', message: 'sessionId is not a valid PackProof Connect session identifier.' }]);
     }
     return value;
+}
+function parseListConnectSessions(query) {
+    rejectUnknown(query, ['externalOrderId'], 'query');
+    const externalOrderId = oneQueryValue(query.externalOrderId, 'externalOrderId');
+    if (!externalOrderId) {
+        throw new core_1.InputValidationError([{ field: 'externalOrderId', code: 'REQUIRED', message: 'externalOrderId is required to list Connect sessions.' }]);
+    }
+    return { externalOrderId: string(externalOrderId, 'externalOrderId', 1, 200) };
+}
+function parseCancelConnectSession(value) {
+    const input = object(value, 'body');
+    rejectUnknown(input, ['schemaVersion']);
+    if (input.schemaVersion !== 1) {
+        throw new core_1.InputValidationError([{ field: 'schemaVersion', code: 'UNSUPPORTED_SCHEMA_VERSION', message: 'schemaVersion must equal 1.' }]);
+    }
+    return { schemaVersion: 1 };
 }
 function parseHttpsCallbackUrl(value, field) {
     const raw = string(value, field, 12, 2_000);

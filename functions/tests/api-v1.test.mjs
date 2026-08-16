@@ -314,6 +314,22 @@ class FakeMerchantConnectService {
     if (!session) throw new ApiError(404, 'CONNECT_SESSION_NOT_FOUND', 'missing');
     return session;
   }
+
+  async listSessions(principal, externalOrderId) {
+    if (!principal.scopes.includes('transactions:read')) throw new ApiError(403, 'INSUFFICIENT_SCOPE', 'missing scope');
+    return [...this.sessions.values()].filter((session) => session.externalOrderId === externalOrderId);
+  }
+
+  async cancelSession(principal, sessionId) {
+    if (!principal.scopes.includes('transactions:write')) throw new ApiError(403, 'INSUFFICIENT_SCOPE', 'missing scope');
+    const session = this.sessions.get(sessionId);
+    if (!session) throw new ApiError(404, 'CONNECT_SESSION_NOT_FOUND', 'missing');
+    if (session.status === 'CANCELLED') return { session, replayed: true };
+    if (session.transactionId) throw new ApiError(409, 'CONNECT_SESSION_NOT_CANCELLABLE', 'redeemed');
+    const cancelled = { ...session, status: 'CANCELLED' };
+    this.sessions.set(sessionId, cancelled);
+    return { session: cancelled, replayed: false };
+  }
 }
 
 class FakeParticipantCaptureService {
@@ -811,6 +827,26 @@ describe('PackProof API v1 headless Connect and claims-review routes', () => {
     const fetched = await jsonRequest(`/v1/connect/sessions/${connect.body.data.id}`, { headers: { authorization: 'Bearer write-a' } });
     assert.equal(fetched.response.status, 200);
     assert.equal(fetched.body.data.externalOrderId, 'order-99');
+    const listed = await jsonRequest('/v1/connect/sessions?externalOrderId=order-99', { headers: { authorization: 'Bearer write-a' } });
+    assert.equal(listed.response.status, 200);
+    assert.equal(listed.body.data.length, 1);
+    assert.equal(listed.body.data[0].id, connect.body.data.id);
+    const missingQuery = await jsonRequest('/v1/connect/sessions', { headers: { authorization: 'Bearer write-a' } });
+    assert.equal(missingQuery.response.status, 400);
+    const cancelled = await jsonRequest(`/v1/connect/sessions/${connect.body.data.id}/cancel`, {
+      method: 'POST',
+      headers: { authorization: 'Bearer write-a', 'content-type': 'application/json' },
+      body: JSON.stringify({ schemaVersion: 1 }),
+    });
+    assert.equal(cancelled.response.status, 200);
+    assert.equal(cancelled.body.data.status, 'CANCELLED');
+    const replayedCancel = await jsonRequest(`/v1/connect/sessions/${connect.body.data.id}/cancel`, {
+      method: 'POST',
+      headers: { authorization: 'Bearer write-a', 'content-type': 'application/json' },
+      body: JSON.stringify({ schemaVersion: 1 }),
+    });
+    assert.equal(replayedCancel.response.status, 200);
+    assert.equal(replayedCancel.response.headers.get('idempotent-replayed'), 'true');
 
     const shipment = await jsonRequest(`/v1/transactions/${transactionId}/shipment`, {
       method: 'POST',

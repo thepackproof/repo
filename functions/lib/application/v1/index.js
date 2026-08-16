@@ -15,6 +15,7 @@ var __exportStar = (this && this.__exportStar) || function(m, exports) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 __exportStar(require("./commerce-context-service"), exports);
+__exportStar(require("./connect-callback"), exports);
 __exportStar(require("./connect-handoff-service"), exports);
 __exportStar(require("./consumer-transaction-service"), exports);
 __exportStar(require("./errors"), exports);

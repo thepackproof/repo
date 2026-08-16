@@ -1,81 +1,182 @@
 # PackProof Connect
 
-PackProof Connect lets a commerce platform create a locked capture session, hand the seller into the native PackProof workflow and receive an HMAC-authenticated digital-evidence callback without embedding PackProof's camera or evidence-storage stack. The callback is not a physical-authenticity, fraud, carrier, payment, or legal verdict.
+PackProof Connect is the partner API for binding an external commerce order to a native PackProof capture session and receiving a signed digital-evidence callback. The callback is not a physical-authenticity, fraud, carrier, payment, or legal verdict.
 
-The public PackProof Button is a separate, lower-trust entry path. It imports structured product-page data into an editable passport draft and is always labeled `PAGE_DECLARED`; it cannot create an order-bound Connect session. See `docs/architecture/PUBLIC_COMMERCE_HANDOFF_V1.md`.
+Recommended partner path: **Merchant API v1**. Keep `/api/connect/orders` only for existing v0.2 clients.
 
-## Flow
+Contract: [`docs/openapi/packproof-api-v1.json`](openapi/packproof-api-v1.json)  
+SDK: [`sdk/javascript`](../sdk/javascript)  
+Copyable server: [`sdk/javascript/examples/partner-server.mjs`](../sdk/javascript/examples/partner-server.mjs)
 
-1. An approved integration calls `POST /api/connect/orders` with a bearer API key, external order data, callback URL and idempotency key.
-2. The API validates payload bounds, integration/platform match, callback-origin allowlist and public HTTPS DNS resolution.
-3. It atomically creates one seven-day Connect session and returns a universal evidence-capture URL. The response field remains `verificationUrl` for v0.2 API compatibility.
-4. The signed-in seller redeems the one-use handoff token. PackProof creates a locked `TERMS_LOCKED` platform transaction and opens the normal packing workflow.
-5. The app performs just-in-time attestation, continuous capture, encrypted offline queueing, barcode collection and exact-path upload.
-6. After the Storage trigger independently hashes, inspects, and finalizes the packing-video record, PackProof generates a presentation PDF dossier and posts `packproof.evidence.finalized` to the integration callback.
+The public PackProof Button is a separate, lower-trust entry path. It imports structured product-page data into an editable passport draft and is always labeled `PAGE_DECLARED`. It cannot create an order-bound Connect session. See `docs/architecture/PUBLIC_COMMERCE_HANDOFF_V1.md`.
 
-## Authentication and idempotency
+## Partner implementation
 
-API keys are returned only when an administrator provisions an integration. Only their SHA-256 hashes are stored. `idempotencyKey` is scoped to the integration; a replay with the same normalized payload returns the original session, while the same key with different data returns HTTP 409.
+### 1. Credentials
 
-Seller redemption is a one-time grant exchange, not an implicit consume-on-sight. PackProof looks up the session without mutating it, then validates client, exact callback/redirect, optional PKCE, and the handoff token. Only after those checks pass does a Firestore transaction compare-and-set the unused token hash to consumed. A request that holds a valid token but supplies the wrong client, redirect, PKCE verifier, or token leaves the grant usable. Exact actor replay after a successful consume returns the same transaction. Session handoff tokens are stored only as hashes and removed after that successful consumption.
+A PackProof operator provisions a sandbox integration and binds your merchant API client. You receive once:
 
-## Callback security
+| Secret | Where it lives | Used for |
+|---|---|---|
+| `pp_sandbox_{credentialId}.{secret}` or `pp_live_...` | Your secret manager | `Authorization: Bearer` on `/v1` |
+| `whsec_...` | Your secret manager | HMAC verification of callbacks |
+| `pp_pub_{sandbox\|live}_...` | Browser markup only | PackProof Button, never Connect |
 
-Callbacks include:
+Do not put the API key or webhook secret in a mobile app, storefront script, or repository.
 
-- `X-PackProof-Timestamp`
-- `X-PackProof-Signature: v1=<hex HMAC-SHA256>`
-- `X-PackProof-Delivery`
+Required scopes: `transactions:read`, `transactions:write`. After capture, `evidence:read` and `shipments:write` are needed for review packages, dossiers, and tracking association.
 
-The signed input is `<timestamp>.<exact raw request body>`. Reject timestamps outside a short replay window, deduplicate `X-PackProof-Delivery`, and compare signatures in constant time. The included JavaScript SDK provides `verifyPackProofWebhook`.
+### 2. Create a capture session
 
-Each delivery attempt receives a freshly generated dossier URL that expires after 15 minutes. The expiry is carried in `dossierUrlExpiresAt`; integrations should download, hash-check, and store the dossier according to their own authorized retention policy. The native evidence and manifest remain the source records, and the dossier does not replace them.
+`POST /v1/connect/sessions` with `Idempotency-Key` and `schemaVersion: 1`.
 
-Callback destinations must use HTTPS, contain no embedded credentials, match an integration allowlist and resolve only to public IP space. DNS is checked again before each delivery. Failed deliveries retry every five minutes with bounded exponential backoff. For the strongest DNS-rebinding protection at very high scale, route callbacks through a controlled egress proxy that pins the resolved address.
+```http
+POST /v1/connect/sessions
+Authorization: Bearer pp_sandbox_...
+Idempotency-Key: fulfillment-order-123-v1
+Content-Type: application/json
 
-## Status meaning
+{
+  "schemaVersion": 1,
+  "platform": "custom",
+  "externalOrderId": "order-123",
+  "externalSellerId": "merchant-42",
+  "itemTitle": "Vintage camera",
+  "amount": { "currency": "USD", "minorUnits": 129900 },
+  "callbackUrl": "https://merchant.example/webhooks/packproof"
+}
+```
 
-`DIGITAL_EVIDENCE_READY` requires server finalization, the strongest implemented online app/device context, exact client/server file-hash and byte-length matches, a declared/detected media-type match and—when the Connect order supplied tracking context—a matching observed barcode. Otherwise the callback is `DIGITAL_EVIDENCE_WITH_LIMITATIONS`.
+Store `data.id`. Give the seller only `captureInstructions.captureUrl`. The token is one-time and returned only on create and exact idempotent replay. `GET` never returns it.
 
-Both states remain bounded to the digital evidence path. `statusReasonCodes` and the six `assurance` dimensions remain authoritative for policy decisions. In version 0.8.5.0, physical correspondence is always `NOT_AVAILABLE` and business/legal relevance is always `REVIEW_REQUIRED`.
+Exact replay of the same key and payload returns HTTP 200 with `Idempotent-Replayed: true`. The same key with a different payload returns HTTP 409 `IDEMPOTENCY_KEY_REUSED`.
 
-## Provisioning
+`callbackUrl` must be public HTTPS, contain no embedded credentials, match the integration allowlist, and resolve only to public IP space.
 
-`provisionConnectIntegration` is an App-Check-protected callable restricted to accounts with the custom claim `packproofAdmin: true`. It returns an API key and webhook signing secret once, plus a non-secret Button `publishableKey` and normalized `allowedOrigins`. Store the API and webhook secrets in a secrets manager; put only the publishable key in browser code. The current per-integration webhook secret is held in a server-only Firestore collection; production environments with stricter key-management requirements should envelope-encrypt it with Cloud KMS.
+### 3. Seller capture
 
-For staging and vendor demonstrations, an authorized operator can provision directly with Application Default Credentials:
+The capture URL opens the native PackProof workflow through Android App Links. The seller signs in, redeems the handoff, and records packing evidence. You do not embed PackProof's camera stack.
 
-```bash
+Poll `GET /v1/connect/sessions/{sessionId}` or `GET /v1/connect/sessions?externalOrderId=order-123` until `status` is `READY_FOR_CAPTURE` and `transactionId` is present.
+
+| Status | Meaning |
+|---|---|
+| `PENDING_REDEMPTION` | Handoff issued; seller has not claimed it |
+| `READY_FOR_CAPTURE` | Seller redeemed; `transactionId` is set |
+| `EXPIRED` | Unredeemed session past `expiresAt` (computed on read) |
+| `CANCELLED` | Merchant revoked an unredeemed session |
+
+Cancel an unused session with `POST /v1/connect/sessions/{sessionId}/cancel` and `{ "schemaVersion": 1 }`. Redeemed sessions cannot be cancelled.
+
+### 4. Receive `packproof.evidence.finalized`
+
+After the Storage trigger independently hashes, inspects, and finalizes the packing-video record, PackProof posts to `callbackUrl`:
+
+```
+X-PackProof-Timestamp: 1786039200
+X-PackProof-Signature: v1=<hex HMAC-SHA256>
+X-PackProof-Delivery: <stable delivery id>
+User-Agent: PackProof-Connect/1.0
+```
+
+Signed input: `<timestamp>.<exact raw request body>`.
+
+Partner checks:
+
+1. Read the raw body before JSON parsing.
+2. Reject timestamps outside a short replay window (SDK default 300 seconds).
+3. Compare `v1=` HMAC-SHA256 in constant time.
+4. Deduplicate `X-PackProof-Delivery`.
+5. Download `dossierUrl` before `dossierUrlExpiresAt` (15 minutes, fresh URL per attempt). Hash-check against `dossierSha256` and store under your retention policy.
+
+Use `parsePackProofWebhook` from `@packproof/connect`. Do not parse and re-serialize the body before verification.
+
+Failed deliveries retry every five minutes with bounded exponential backoff. DNS is re-checked before each delivery.
+
+### 5. Read evidence for human review
+
+After `transactionId` is known:
+
+- `GET /v1/transactions/{transactionId}/review-package`
+- `GET /v1/transactions/{transactionId}/evidence`
+- `POST /v1/transactions/{transactionId}/reports` then `GET .../reports/{reportId}`
+- `POST /v1/transactions/{transactionId}/shipment` after packing video and seal reference are server-finalized with no byte-integrity mismatch
+
+The review package always states `physicalCorrespondence: NOT_AVAILABLE` and `businessLegalRelevance: REVIEW_REQUIRED`. Documentation categories are filing labels only. The package does not decide fraud, fault, authenticity, custody, or a card-network, carrier, marketplace, or payment outcome.
+
+## Callback fields
+
+`evidenceStatus` is `DIGITAL_EVIDENCE_READY` only when all of the following are true:
+
+- server finalization recorded
+- strongest implemented online app/device context
+- exact client/server file-hash and byte-length matches
+- declared/detected media-type match
+- when the Connect order supplied tracking context, a matching observed barcode
+
+Otherwise the callback is `DIGITAL_EVIDENCE_WITH_LIMITATIONS`.
+
+Permanent reason codes on every callback:
+
+- `PHYSICAL_CORRESPONDENCE_NOT_AVAILABLE`
+- `BUSINESS_LEGAL_REVIEW_REQUIRED`
+
+Additional codes appear when a gate did not pass. `statusReasonCodes` and the six `assurance` dimensions remain authoritative for policy decisions.
+
+## SDK
+
+```js
+import { PackProofConnect, parsePackProofWebhook } from '@packproof/connect';
+
+const client = new PackProofConnect({
+  apiKey: process.env.PACKPROOF_API_KEY,
+  baseUrl: 'https://YOUR_PACKPROOF_DOMAIN.example',
+});
+
+const session = await client.createConnectSession({
+  platform: 'custom',
+  externalOrderId: 'order-123',
+  externalSellerId: 'merchant-42',
+  itemTitle: 'Vintage camera',
+  amount: { currency: 'USD', minorUnits: 129900 },
+  callbackUrl: 'https://merchant.example/webhooks/packproof',
+  idempotencyKey: 'fulfillment-123-v1',
+});
+
+// In the webhook handler, pass the exact raw body:
+const event = parsePackProofWebhook({
+  rawBody,
+  timestamp: req.headers['x-packproof-timestamp'],
+  signature: req.headers['x-packproof-signature'],
+  secret: process.env.PACKPROOF_WEBHOOK_SECRET,
+});
+```
+
+`createEvidenceSession` / `createVerification` remain as the legacy `/api/connect/orders` client. New integrations should use `createConnectSession`.
+
+## Compatibility route
+
+Existing v0.2 clients may keep `POST /api/connect/orders` with a Connect integration API key (`pp_test_...` / `pp_live_...`). The response field `verificationUrl` is the capture URL. See [`docs/openapi/packproof-connect.yaml`](openapi/packproof-connect.yaml). Behavior is the same commerce-context ingestion path as v1; the HTTP envelope is not the v1 error contract.
+
+## Provisioning (PackProof operators)
+
+`provisionConnectIntegration` is an App-Check-protected callable restricted to accounts with `packproofAdmin: true`. It returns an API key and webhook signing secret once, plus a non-secret Button `publishableKey` and normalized `allowedOrigins`.
+
+For staging:
+
+```powershell
 gcloud auth application-default login
 npm --prefix functions run provision:connect -- --project YOUR_FIREBASE_PROJECT --name "Vendor sandbox" --platform vendor-slug --environment SANDBOX --callback https://vendor.example/packproof/webhook
 ```
 
-The CLI applies the same public-HTTPS and DNS restrictions, writes only the API-key hash, and prints the API key and callback-signing secret once.
-
-See `docs/openapi/packproof-connect.yaml` and `sdk/javascript/`.
-
-## Headless v1 merchant API
-
-Merchants, commerce platforms, and claims-review tools that already hold a PackProof merchant credential can use the versioned `/v1` contract instead of, or in addition to, the legacy `/api/connect/orders` route. The v1 routes are documented in `docs/openapi/packproof-api-v1.json`.
-
-### E-commerce platforms
-
-`POST /v1/connect/sessions` creates the same order-bound Connect session as the legacy route when the API client is bound to an active Connect integration (`integrationId` on the API client). The response is a v1 `connect_session` plus one-time `captureInstructions`. `GET /v1/connect/sessions/{sessionId}` returns status and the redeemed `transactionId` without the handoff token.
-
-Bind the client at provision time:
+Bind a v1 merchant credential:
 
 ```powershell
-npm.cmd --prefix functions run provision:api-client -- --organization-id org_example --organization-name 'Example Merchant' --client-id client_example_backend --client-name 'Example backend' --environment sandbox --scopes transactions:read,transactions:write,evidence:read,shipments:read,shipments:write --integration-id YOUR_CONNECT_INTEGRATION_ID
+npm.cmd --prefix functions run provision:api-client -- --organization-id org_example --organization-name 'Example Merchant' --client-id client_example_backend --client-name 'Example backend' --environment sandbox --scopes transactions:read,transactions:write,evidence:read,evidence:write,shipments:read,shipments:write --integration-id YOUR_CONNECT_INTEGRATION_ID
 ```
 
-The public PackProof Button remains `PAGE_DECLARED` and cannot create these sessions.
+The CLI prints secrets once. Store them in a secrets manager.
 
-### Merchants
+## Out of partner scope
 
-After participants capture and the Storage trigger finalizes evidence, merchant credentials with `evidence:read` can list artifacts, read hashes and layered assurance, request a presentation dossier, and read return passports. `POST /v1/transactions/{transactionId}/shipment` records merchant-asserted tracking only after a server-finalized packing video and seal reference are present with no recorded byte-integrity mismatch.
-
-### Claims specialists
-
-`GET /v1/transactions/{transactionId}/review-package` organizes terms, protocol completeness, hashed evidence, shipment/return records, and the audit timeline for authorized human review. Documentation categories are filing labels only. The package always states `physicalCorrespondence: NOT_AVAILABLE` and `businessLegalRelevance: REVIEW_REQUIRED`. It does not decide fraud, fault, authenticity, custody, or a card-network, carrier, marketplace, or payment outcome.
-
-General merchant webhook registration remains feature-gated and is not part of this headless slice. Connect's existing bounded `packproof.evidence.finalized` callback is unchanged.
+General merchant webhook registration, receiver write, return write, verification verdict APIs, and commerce-platform adapters (Shopify/WooCommerce) are not part of this Connect slice. Connect's bounded `packproof.evidence.finalized` callback is the supported notification.

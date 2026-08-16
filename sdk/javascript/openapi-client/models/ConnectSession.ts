@@ -3,13 +3,14 @@
 /* tslint:disable */
 /* eslint-disable */
 import type { Amount } from './Amount';
+import type { ConnectSessionStatus } from './ConnectSessionStatus';
 export type ConnectSession = {
     id: string;
     object: any;
     schemaVersion: any;
     platform: string;
     externalOrderId: string;
-    status: string;
+    status: ConnectSessionStatus;
     transactionId: string | null;
     commerceContextId: string | null;
     itemTitle: string;

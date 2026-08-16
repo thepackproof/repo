@@ -11,6 +11,7 @@ test('OpenAPI v1 contract is parseable, versioned, and operation-complete', asyn
   assert.deepEqual(Object.keys(contract.paths).sort(), [
     '/v1/connect/sessions',
     '/v1/connect/sessions/{sessionId}',
+    '/v1/connect/sessions/{sessionId}/cancel',
     '/v1/evidence-sessions/{evidenceSessionId}',
     '/v1/evidence-sessions/{evidenceSessionId}/cancel',
     '/v1/evidence-sessions/{evidenceSessionId}/redeem',
@@ -44,6 +45,7 @@ test('OpenAPI v1 contract is parseable, versioned, and operation-complete', asyn
   assert.equal(new Set(operations).size, operations.length, 'operationId values must be unique');
   assert.deepEqual(operations.sort(), [
     'associateShipment',
+    'cancelConnectSession',
     'cancelEvidenceSession',
     'claimParticipantInvitation',
     'createConnectSession',
@@ -63,6 +65,7 @@ test('OpenAPI v1 contract is parseable, versioned, and operation-complete', asyn
     'getShipment',
     'getTimeline',
     'getTransaction',
+    'listConnectSessions',
     'listEvidence',
     'listReturns',
     'listTransactions',
@@ -120,4 +123,13 @@ test('OpenAPI mutation and protected operations declare security controls', asyn
   assert.equal('actorId' in contract.components.schemas.EvidenceSession.properties, false);
   assert.equal(contract.components.schemas.ParticipantClaimInstructions.properties.token.writeOnly, true);
   assert.equal(contract.components.schemas.EvidenceSessionRedemptionInstructions.properties.token.writeOnly, true);
+
+  assert.deepEqual(contract.paths['/v1/connect/sessions'].get.security, [{ merchantApiKey: [] }]);
+  assert.deepEqual(contract.paths['/v1/connect/sessions/{sessionId}/cancel'].post.security, [{ merchantApiKey: [] }]);
+  assert.deepEqual(contract.components.schemas.ConnectSession.properties.status.$ref, '#/components/schemas/ConnectSessionStatus');
+  assert.equal(contract.components.schemas.CreateConnectSessionRequest.additionalProperties, false);
+  assert.equal(contract.components.schemas.EvidenceFinalizedCallback.additionalProperties, false);
+  assert.equal(contract.components.schemas.EvidenceFinalizedCallback.properties.event.const, 'packproof.evidence.finalized');
+  assert.equal(contract.webhooks.packproofEvidenceFinalized.post.operationId, 'receivePackProofEvidenceFinalized');
+  assert.equal(contract.components.schemas.ConnectCaptureInstructions.properties.token.writeOnly, true);
 });

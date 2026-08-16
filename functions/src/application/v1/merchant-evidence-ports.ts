@@ -1,5 +1,6 @@
 import type { ApplicationEvent } from './events';
 import type {
+  MerchantConnectSessionStatus,
   MerchantEvidenceArtifactDto,
   MerchantReturnPassportDto,
   MerchantShipmentDto,
@@ -129,12 +130,35 @@ export type StoredConnectSession = {
   createdAt: Date;
 };
 
+export type ConnectSessionCancelDecision =
+  | { type: 'REPLAY'; session: StoredConnectSession }
+  | { type: 'CANCEL'; session: StoredConnectSession; event: ApplicationEvent };
+
+export function publicConnectSessionStatus(
+  status: string,
+  expiresAt: Date,
+  now: Date,
+): MerchantConnectSessionStatus {
+  if (status === 'CANCELLED') return 'CANCELLED';
+  if (status === 'READY_FOR_CAPTURE') return 'READY_FOR_CAPTURE';
+  if (status === 'EXPIRED' || (status === 'PENDING_REDEMPTION' && expiresAt.getTime() < now.getTime())) {
+    return 'EXPIRED';
+  }
+  return 'PENDING_REDEMPTION';
+}
+
 export interface MerchantConnectIntegrationLookup {
   findBoundIntegration(principal: MerchantPrincipal): Promise<BoundConnectIntegration | null>;
 }
 
 export interface MerchantConnectSessionReader {
   findAccessibleSession(sessionId: string, principal: MerchantPrincipal): Promise<StoredConnectSession | null>;
+  listAccessibleSessions(principal: MerchantPrincipal, externalOrderId: string): Promise<StoredConnectSession[]>;
+  cancelAccessibleSession(
+    sessionId: string,
+    principal: MerchantPrincipal,
+    decide: (session: StoredConnectSession | null) => ConnectSessionCancelDecision,
+  ): Promise<StoredConnectSession>;
 }
 
 export interface PublicCallbackUrlValidator {

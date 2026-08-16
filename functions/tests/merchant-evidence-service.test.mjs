@@ -156,6 +156,7 @@ test('shipment association fails closed without packing and seal evidence', asyn
 
 test('Connect v1 create requires a bound integration and hides tokens on get', async () => {
   const ingested = [];
+  let cancelled = false;
   const commerceContext = {
     async ingestConnectOrder(principal, input) {
       ingested.push({ principal, input });
@@ -175,7 +176,24 @@ test('Connect v1 create requires a bound integration and hides tokens on get', a
       status: 'PENDING_REDEMPTION', transactionId: null, commerceContextId: `ctx_${'f'.repeat(40)}`,
       itemTitle: 'Camera', currency: 'USD', priceMinor: 1000, trackingNumber: null, carrier: null,
       expiresAt: new Date('2026-08-18T12:00:00.000Z'), createdAt: now,
-    } : null },
+    } : null,
+    listAccessibleSessions: async (principal, externalOrderId) => principal.organizationId === 'org-a' && externalOrderId === 'order-1' ? [{
+      id: 'e'.repeat(64), organizationId: 'org-a', integrationId: 'int-a', platform: 'custom', externalOrderId: 'order-1',
+      status: 'PENDING_REDEMPTION', transactionId: null, commerceContextId: `ctx_${'f'.repeat(40)}`,
+      itemTitle: 'Camera', currency: 'USD', priceMinor: 1000, trackingNumber: null, carrier: null,
+      expiresAt: new Date('2026-08-18T12:00:00.000Z'), createdAt: now,
+    }] : [],
+    cancelAccessibleSession: async (sessionId, principal, decide) => {
+      const current = sessionId === 'e'.repeat(64) && principal.organizationId === 'org-a' ? {
+        id: sessionId, organizationId: 'org-a', integrationId: 'int-a', platform: 'custom', externalOrderId: 'order-1',
+        status: cancelled ? 'CANCELLED' : 'PENDING_REDEMPTION', transactionId: null, commerceContextId: `ctx_${'f'.repeat(40)}`,
+        itemTitle: 'Camera', currency: 'USD', priceMinor: 1000, trackingNumber: null, carrier: null,
+        expiresAt: new Date('2026-08-18T12:00:00.000Z'), createdAt: now,
+      } : null;
+      const decision = decide(current);
+      if (decision.type === 'CANCEL') cancelled = true;
+      return decision.session;
+    } },
     { validate: async () => undefined },
     new MerchantAuthorizationPolicy(),
     { environment: 'sandbox' },
@@ -197,6 +215,38 @@ test('Connect v1 create requires a bound integration and hides tokens on get', a
 
   const fetched = await service.getSession(orgA, 'e'.repeat(64));
   assert.equal(fetched.externalOrderId, 'order-1');
+  assert.equal(fetched.status, 'PENDING_REDEMPTION');
   assert.equal('token' in fetched, false);
   await assert.rejects(() => service.getSession(orgB, 'e'.repeat(64)), (error) => error.code === 'CONNECT_SESSION_NOT_FOUND');
+
+  const listed = await service.listSessions(orgA, 'order-1');
+  assert.equal(listed.length, 1);
+  assert.equal(listed[0].id, 'e'.repeat(64));
+
+  const cancelledSession = await service.cancelSession(orgA, 'e'.repeat(64), 'req-6');
+  assert.equal(cancelledSession.session.status, 'CANCELLED');
+  assert.equal(cancelledSession.replayed, false);
+  const replayed = await service.cancelSession(orgA, 'e'.repeat(64), 'req-7');
+  assert.equal(replayed.replayed, true);
+});
+
+test('Connect v1 get reports EXPIRED for unredeemed past-due sessions', async () => {
+  const expiredAt = new Date('2026-08-10T12:00:00.000Z');
+  const service = new MerchantConnectApplicationService(
+    { ingestConnectOrder: async () => { throw new Error('unused'); } },
+    { findBoundIntegration: async () => null },
+    { findAccessibleSession: async () => ({
+      id: 'e'.repeat(64), organizationId: 'org-a', integrationId: 'int-a', platform: 'custom', externalOrderId: 'order-1',
+      status: 'PENDING_REDEMPTION', transactionId: null, commerceContextId: `ctx_${'f'.repeat(40)}`,
+      itemTitle: 'Camera', currency: 'USD', priceMinor: 1000, trackingNumber: null, carrier: null,
+      expiresAt: expiredAt, createdAt: new Date('2026-08-03T12:00:00.000Z'),
+    }), listAccessibleSessions: async () => [], cancelAccessibleSession: async () => { throw new Error('unused'); } },
+    { validate: async () => undefined },
+    new MerchantAuthorizationPolicy(),
+    { environment: 'sandbox' },
+    () => 'https://packproof.example',
+    () => now,
+  );
+  const fetched = await service.getSession(orgA, 'e'.repeat(64));
+  assert.equal(fetched.status, 'EXPIRED');
 });

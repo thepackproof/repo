@@ -264,6 +264,31 @@ class FirestoreMerchantEvidenceRepository {
     }
 }
 exports.FirestoreMerchantEvidenceRepository = FirestoreMerchantEvidenceRepository;
+function connectSessionIsAccessible(session, principal) {
+    return (session.organizationId !== null && session.organizationId === principal.organizationId)
+        || (Boolean(session.integrationId) && Boolean(principal.integrationId) && session.integrationId === principal.integrationId);
+}
+function toStoredConnectSession(id, data) {
+    if (!(data.expiresAt instanceof firestore_1.Timestamp))
+        return null;
+    return {
+        id,
+        organizationId: optionalString(data.organizationId),
+        integrationId: optionalString(data.integrationId) ?? '',
+        platform: optionalString(data.platform) ?? 'custom',
+        externalOrderId: optionalString(data.externalOrderId) ?? '',
+        status: optionalString(data.status) ?? 'PENDING_REDEMPTION',
+        transactionId: optionalString(data.transactionId),
+        commerceContextId: optionalString(data.commerceContextId),
+        itemTitle: optionalString(data.itemTitle) ?? '',
+        currency: optionalString(data.currency) ?? 'USD',
+        priceMinor: optionalInteger(data.priceMinor) ?? 0,
+        trackingNumber: optionalString(data.trackingNumber),
+        carrier: optionalString(data.carrier),
+        expiresAt: data.expiresAt.toDate(),
+        createdAt: dateValue(data.createdAt, data.expiresAt.toDate()),
+    };
+}
 class FirestoreMerchantConnectAdapter {
     firestore;
     constructor(firestore) {
@@ -294,32 +319,43 @@ class FirestoreMerchantConnectAdapter {
         const snap = await this.firestore.collection('connectSessions').doc(sessionId).get();
         if (!snap.exists)
             return null;
-        const data = snap.data();
-        const organizationId = optionalString(data.organizationId);
-        const integrationId = optionalString(data.integrationId);
-        const allowed = (organizationId && organizationId === principal.organizationId)
-            || (integrationId && principal.integrationId && integrationId === principal.integrationId);
-        if (!allowed)
+        const session = toStoredConnectSession(snap.id, snap.data());
+        if (!session || !connectSessionIsAccessible(session, principal))
             return null;
-        if (!(data.expiresAt instanceof firestore_1.Timestamp))
-            return null;
-        return {
-            id: snap.id,
-            organizationId,
-            integrationId: integrationId ?? '',
-            platform: optionalString(data.platform) ?? 'custom',
-            externalOrderId: optionalString(data.externalOrderId) ?? '',
-            status: optionalString(data.status) ?? 'UNKNOWN',
-            transactionId: optionalString(data.transactionId),
-            commerceContextId: optionalString(data.commerceContextId),
-            itemTitle: optionalString(data.itemTitle) ?? '',
-            currency: optionalString(data.currency) ?? 'USD',
-            priceMinor: optionalInteger(data.priceMinor) ?? 0,
-            trackingNumber: optionalString(data.trackingNumber),
-            carrier: optionalString(data.carrier),
-            expiresAt: data.expiresAt.toDate(),
-            createdAt: dateValue(data.createdAt, data.expiresAt.toDate()),
-        };
+        return session;
+    }
+    async listAccessibleSessions(principal, externalOrderId) {
+        let query = this.firestore.collection('connectSessions').where('externalOrderId', '==', externalOrderId);
+        query = principal.integrationId
+            ? query.where('integrationId', '==', principal.integrationId)
+            : query.where('organizationId', '==', principal.organizationId);
+        const snap = await query.limit(25).get();
+        return snap.docs
+            .map((doc) => toStoredConnectSession(doc.id, doc.data()))
+            .filter((session) => session !== null && connectSessionIsAccessible(session, principal));
+    }
+    async cancelAccessibleSession(sessionId, principal, decide) {
+        const sessionRef = this.firestore.collection('connectSessions').doc(sessionId);
+        return this.firestore.runTransaction(async (tx) => {
+            const snap = await tx.get(sessionRef);
+            const loaded = snap.exists ? toStoredConnectSession(snap.id, snap.data()) : null;
+            const accessible = loaded && connectSessionIsAccessible(loaded, principal) ? loaded : null;
+            const decision = decide(accessible);
+            if (decision.type === 'REPLAY')
+                return decision.session;
+            const outboxRef = this.firestore.collection('domainOutbox').doc(decision.event.id);
+            const existingOutbox = await tx.get(outboxRef);
+            tx.update(sessionRef, {
+                status: 'CANCELLED',
+                tokenHash: firestore_1.FieldValue.delete(),
+                codeChallenge: firestore_1.FieldValue.delete(),
+                cancelledAt: firestore_1.Timestamp.fromDate(decision.event.occurredAt),
+                updatedAt: firestore_1.Timestamp.fromDate(decision.event.occurredAt),
+            });
+            if (!existingOutbox.exists)
+                tx.create(outboxRef, (0, outbox_1.storedOutboxEvent)(decision.event));
+            return decision.session;
+        });
     }
 }
 exports.FirestoreMerchantConnectAdapter = FirestoreMerchantConnectAdapter;

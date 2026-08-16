@@ -154,13 +154,21 @@ export type AssociateMerchantShipmentInput = {
   trackingNumber: string;
 };
 
+export const merchantConnectSessionStatuses = [
+  'PENDING_REDEMPTION',
+  'READY_FOR_CAPTURE',
+  'CANCELLED',
+  'EXPIRED',
+] as const;
+export type MerchantConnectSessionStatus = (typeof merchantConnectSessionStatuses)[number];
+
 export type MerchantConnectSessionDto = {
   id: string;
   object: 'connect_session';
   schemaVersion: 1;
   platform: string;
   externalOrderId: string;
-  status: string;
+  status: MerchantConnectSessionStatus;
   transactionId: string | null;
   commerceContextId: string | null;
   itemTitle: string;

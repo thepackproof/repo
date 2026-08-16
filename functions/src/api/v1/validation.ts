@@ -396,6 +396,24 @@ export function parseConnectSessionId(value: unknown): string {
   return value;
 }
 
+export function parseListConnectSessions(query: UnknownRecord): { externalOrderId: string } {
+  rejectUnknown(query, ['externalOrderId'], 'query');
+  const externalOrderId = oneQueryValue(query.externalOrderId, 'externalOrderId');
+  if (!externalOrderId) {
+    throw new InputValidationError([{ field: 'externalOrderId', code: 'REQUIRED', message: 'externalOrderId is required to list Connect sessions.' }]);
+  }
+  return { externalOrderId: string(externalOrderId, 'externalOrderId', 1, 200)! };
+}
+
+export function parseCancelConnectSession(value: unknown): { schemaVersion: 1 } {
+  const input = object(value, 'body');
+  rejectUnknown(input, ['schemaVersion']);
+  if (input.schemaVersion !== 1) {
+    throw new InputValidationError([{ field: 'schemaVersion', code: 'UNSUPPORTED_SCHEMA_VERSION', message: 'schemaVersion must equal 1.' }]);
+  }
+  return { schemaVersion: 1 };
+}
+
 function parseHttpsCallbackUrl(value: unknown, field: string): string {
   const raw = string(value, field, 12, 2_000)!;
   let parsed: URL;

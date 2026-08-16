@@ -194,15 +194,16 @@ npm.cmd --prefix functions run provision:connect -- --project YOUR_FIREBASE_PROJ
 
 The command validates public HTTPS/DNS, creates the real Firestore integration, stores only the API-key hash, and prints the API key and webhook signing secret once. Move both directly into the vendor's secret manager.
 
-The vendor then calls:
+The vendor then calls the versioned merchant API:
 
 ```text
-POST https://YOUR_PROJECT.web.app/api/connect/orders
-Authorization: Bearer pp_test_...
+POST https://YOUR_PROJECT.web.app/v1/connect/sessions
+Authorization: Bearer pp_sandbox_...
+Idempotency-Key: fulfillment-order-123-v1
 Content-Type: application/json
 ```
 
-Use `docs/openapi/packproof-connect.yaml` for the payload and `sdk/javascript` to verify the exact-body HMAC on the `packproof.evidence.finalized` callback. The legacy response field `verificationUrl` opens the actual native evidence-capture workflow through Android App Links, with the hosted fallback available when the app is not installed.
+Use `docs/PACKPROOF_CONNECT.md` and `docs/openapi/packproof-api-v1.json` for the payload. Existing v0.2 clients may keep `POST /api/connect/orders`. The JavaScript SDK in `sdk/javascript` verifies the exact-body HMAC on the `packproof.evidence.finalized` callback. The capture URL opens the native evidence-capture workflow through Android App Links, with the hosted fallback available when the app is not installed.
 
 ## 10. Five-minute pre-meeting check
 

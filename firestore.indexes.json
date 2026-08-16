@@ -29,6 +29,34 @@
       ]
     },
     {
+      "collectionGroup": "connectSessions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "integrationId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "externalOrderId",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "connectSessions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "organizationId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "externalOrderId",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
       "collectionGroup": "webhookDeliveries",
       "queryScope": "COLLECTION",
       "fields": [

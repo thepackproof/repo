@@ -5,6 +5,7 @@ import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 import { HttpsError, onCall, onRequest } from 'firebase-functions/v2/https';
 import { onDocumentCreated } from 'firebase-functions/v2/firestore';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
+import { buildConnectEvidenceFinalizedCallback } from './application/v1/connect-callback';
 import { CommerceContextApplicationService } from './application/v1/commerce-context-service';
 import { ConnectHandoffApplicationService } from './application/v1/connect-handoff-service';
 import { PublicCommerceHandoffApplicationService } from './application/v1/public-commerce-handoff-service';
@@ -244,49 +245,26 @@ export const onConnectEvidenceVerified = onDocumentCreated('transactions/{transa
   // create-only record ensure one callback lifecycle per accepted evidence file.
   if ((await deliveryRef.get()).exists) return;
   const packet = await generateEvidencePacket(transactionId, 'PACKPROOF_CONNECT_SYSTEM');
-  const trackingRequired = Boolean(transaction.source.trackingNumber);
-  const trackingSatisfied = trackingRequired
-    ? evidence.carrierTrackingMatchStatus === 'MATCHED'
-    : evidence.carrierTrackingMatchStatus !== 'MISMATCH';
-  const digitalEvidenceReady = evidence.serverFinalized === true
-    && ['ONLINE_APP_CHECK_AND_KEY_POSSESSION', 'JIT_VERIFIED'].includes(String(evidence.attestationStatus))
-    && evidence.clientHashMatched === true
-    && evidence.clientSizeMatched === true
-    && evidence.contentTypeMatched === true
-    && evidence.assurance?.byteIntegrity?.status !== 'MISMATCH'
-    && trackingSatisfied;
-  const evidenceStatus = digitalEvidenceReady ? 'DIGITAL_EVIDENCE_READY' : 'DIGITAL_EVIDENCE_WITH_LIMITATIONS';
-  const statusReasonCodes = [
-    ...(evidence.serverFinalized === true ? [] : ['SERVER_FINALIZATION_NOT_RECORDED']),
-    ...(['ONLINE_APP_CHECK_AND_KEY_POSSESSION', 'JIT_VERIFIED'].includes(String(evidence.attestationStatus)) ? [] : ['STRONGEST_APP_DEVICE_CONTEXT_NOT_AVAILABLE']),
-    ...(evidence.clientHashMatched === true ? [] : ['CLIENT_SERVER_HASH_MATCH_NOT_ESTABLISHED']),
-    ...(evidence.clientSizeMatched === true ? [] : ['CLIENT_SERVER_SIZE_MATCH_NOT_ESTABLISHED']),
-    ...(evidence.contentTypeMatched === true ? [] : ['DECLARED_MEDIA_TYPE_MATCH_NOT_ESTABLISHED']),
-    ...(trackingSatisfied ? [] : ['CARRIER_CONTEXT_REQUIREMENT_NOT_SATISFIED']),
-    'PHYSICAL_CORRESPONDENCE_NOT_AVAILABLE',
-    'BUSINESS_LEGAL_REVIEW_REQUIRED',
-  ];
-  const payload = {
-    event: 'packproof.evidence.finalized',
-    orderId: transaction.source.externalOrderId,
+  const payload = buildConnectEvidenceFinalizedCallback({
+    orderId: String(transaction.source.externalOrderId),
     trackingNumber: transaction.shipping?.trackingNumber ?? transaction.source.trackingNumber ?? null,
-    evidenceStatus,
-    statusReasonCodes,
-    fileSha256: evidence.sha256,
-    sha256Hash: evidence.sha256,
-    manifestSha256: evidence.manifestSha256,
-    evidenceBundleSha256: evidence.evidenceBundleSha256,
-    manifestAuthentication: evidence.manifestAuthentication ?? {
-      type: 'LEGACY_SERVICE_MAC',
-      macBase64url: evidence.manifestSignature ?? null,
-      verificationScope: 'PACKPROOF_SERVICE_ONLY',
-    },
-    assurance: evidence.assurance ?? null,
-    attestationStatus: evidence.attestationStatus,
-    carrierTrackingMatchStatus: evidence.carrierTrackingMatchStatus ?? 'NOT_SCANNED',
+    fileSha256: String(evidence.sha256),
+    manifestSha256: typeof evidence.manifestSha256 === 'string' ? evidence.manifestSha256 : null,
+    evidenceBundleSha256: typeof evidence.evidenceBundleSha256 === 'string' ? evidence.evidenceBundleSha256 : null,
+    manifestAuthentication: evidence.manifestAuthentication ?? null,
+    legacyManifestMac: typeof evidence.manifestSignature === 'string' ? evidence.manifestSignature : null,
+    assurance: evidence.assurance && typeof evidence.assurance === 'object' ? evidence.assurance as Record<string, unknown> : null,
+    attestationStatus: String(evidence.attestationStatus ?? ''),
+    carrierTrackingMatchStatus: typeof evidence.carrierTrackingMatchStatus === 'string' ? evidence.carrierTrackingMatchStatus : null,
     declaredWeightGrams: transaction.source.declaredWeightGrams ?? null,
     dossierSha256: packet.sha256,
-  };
+    serverFinalized: evidence.serverFinalized === true,
+    clientHashMatched: evidence.clientHashMatched === true ? true : evidence.clientHashMatched === false ? false : null,
+    clientSizeMatched: evidence.clientSizeMatched === true ? true : evidence.clientSizeMatched === false ? false : null,
+    contentTypeMatched: evidence.contentTypeMatched === true ? true : evidence.contentTypeMatched === false ? false : null,
+    trackingNumberWasSupplied: Boolean(transaction.source.trackingNumber),
+    byteIntegrityStatus: evidence.assurance?.byteIntegrity?.status ?? null,
+  });
   await deliveryRef.create({
     integrationId: transaction.source.integrationId,
     transactionId,

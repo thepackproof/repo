@@ -13,6 +13,7 @@ import {
   parseAccessibleTransactionId,
   parseAssociateShipment,
   parseBrowserOrigin,
+  parseCancelConnectSession,
   parseClaimParticipant,
   parseConnectSessionId,
   parseCreateConnectSession,
@@ -25,6 +26,7 @@ import {
   parseEvidenceReportId,
   parseIdempotencyKey,
   parseEvidenceSessionId,
+  parseListConnectSessions,
   parseListTransactions,
   parsePublishableKey,
   parseRedeemEvidenceSession,
@@ -75,6 +77,7 @@ const ratePolicies = {
   shipmentWrite: { name: 'shipment-write', limit: 30, windowSeconds: 60 },
   connectCreate: { name: 'connect-session-create', limit: 30, windowSeconds: 60 },
   connectRead: { name: 'connect-session-read', limit: 120, windowSeconds: 60 },
+  connectCancel: { name: 'connect-session-cancel', limit: 30, windowSeconds: 60 },
 } as const satisfies Record<string, RateLimitPolicy>;
 
 function asyncHandler(handler: (req: Request, res: Response<unknown, ApiLocals>, next: NextFunction) => Promise<void>): RequestHandler {
@@ -614,6 +617,15 @@ export function createApiV1App(dependencies: ApiAppDependencies): express.Expres
     });
   }));
 
+  merchantRouter.get('/connect/sessions', asyncHandler(async (req, res) => {
+    res.locals.operation = 'listConnectSessions';
+    const principal = res.locals.principal!;
+    await enforcePrincipalRateLimit(dependencies.rateLimiter, principal, ratePolicies.connectRead, res);
+    const { externalOrderId } = parseListConnectSessions(req.query as Record<string, unknown>);
+    const sessions = await dependencies.merchantConnectService.listSessions(principal, externalOrderId);
+    res.status(200).json({ data: sessions });
+  }));
+
   merchantRouter.get('/connect/sessions/:sessionId', asyncHandler(async (req, res) => {
     res.locals.operation = 'getConnectSession';
     const principal = res.locals.principal!;
@@ -623,6 +635,21 @@ export function createApiV1App(dependencies: ApiAppDependencies): express.Expres
       parseConnectSessionId(req.params.sessionId),
     );
     res.status(200).json({ data: session });
+  }));
+
+  merchantRouter.post('/connect/sessions/:sessionId/cancel', asyncHandler(async (req, res) => {
+    res.locals.operation = 'cancelConnectSession';
+    requireJson(req);
+    const principal = res.locals.principal!;
+    await enforcePrincipalRateLimit(dependencies.rateLimiter, principal, ratePolicies.connectCancel, res);
+    parseCancelConnectSession(req.body);
+    const result = await dependencies.merchantConnectService.cancelSession(
+      principal,
+      parseConnectSessionId(req.params.sessionId),
+      res.locals.requestId,
+    );
+    res.setHeader('Idempotent-Replayed', String(result.replayed));
+    res.status(200).json({ data: result.session });
   }));
 
   merchantRouter.all('/transactions', (req, _res, next) => {
@@ -671,10 +698,13 @@ export function createApiV1App(dependencies: ApiAppDependencies): express.Expres
     next(new ApiError(405, 'METHOD_NOT_ALLOWED', 'This HTTP method is not supported for the resource.', [], { Allow: 'GET' }));
   });
   merchantRouter.all('/connect/sessions', (req, _res, next) => {
-    next(new ApiError(405, 'METHOD_NOT_ALLOWED', 'This HTTP method is not supported for the resource.', [], { Allow: 'POST' }));
+    next(new ApiError(405, 'METHOD_NOT_ALLOWED', 'This HTTP method is not supported for the resource.', [], { Allow: 'GET, POST' }));
   });
   merchantRouter.all('/connect/sessions/:sessionId', (req, _res, next) => {
     next(new ApiError(405, 'METHOD_NOT_ALLOWED', 'This HTTP method is not supported for the resource.', [], { Allow: 'GET' }));
+  });
+  merchantRouter.all('/connect/sessions/:sessionId/cancel', (req, _res, next) => {
+    next(new ApiError(405, 'METHOD_NOT_ALLOWED', 'This HTTP method is not supported for the resource.', [], { Allow: 'POST' }));
   });
   app.use('/v1', merchantRouter);
 

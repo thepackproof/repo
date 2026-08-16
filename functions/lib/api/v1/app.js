@@ -29,6 +29,7 @@ const ratePolicies = {
     shipmentWrite: { name: 'shipment-write', limit: 30, windowSeconds: 60 },
     connectCreate: { name: 'connect-session-create', limit: 30, windowSeconds: 60 },
     connectRead: { name: 'connect-session-read', limit: 120, windowSeconds: 60 },
+    connectCancel: { name: 'connect-session-cancel', limit: 30, windowSeconds: 60 },
 };
 function asyncHandler(handler) {
     return (req, res, next) => { void handler(req, res, next).catch(next); };
@@ -434,12 +435,30 @@ function createApiV1App(dependencies) {
             },
         });
     }));
+    merchantRouter.get('/connect/sessions', asyncHandler(async (req, res) => {
+        res.locals.operation = 'listConnectSessions';
+        const principal = res.locals.principal;
+        await enforcePrincipalRateLimit(dependencies.rateLimiter, principal, ratePolicies.connectRead, res);
+        const { externalOrderId } = (0, validation_1.parseListConnectSessions)(req.query);
+        const sessions = await dependencies.merchantConnectService.listSessions(principal, externalOrderId);
+        res.status(200).json({ data: sessions });
+    }));
     merchantRouter.get('/connect/sessions/:sessionId', asyncHandler(async (req, res) => {
         res.locals.operation = 'getConnectSession';
         const principal = res.locals.principal;
         await enforcePrincipalRateLimit(dependencies.rateLimiter, principal, ratePolicies.connectRead, res);
         const session = await dependencies.merchantConnectService.getSession(principal, (0, validation_1.parseConnectSessionId)(req.params.sessionId));
         res.status(200).json({ data: session });
+    }));
+    merchantRouter.post('/connect/sessions/:sessionId/cancel', asyncHandler(async (req, res) => {
+        res.locals.operation = 'cancelConnectSession';
+        requireJson(req);
+        const principal = res.locals.principal;
+        await enforcePrincipalRateLimit(dependencies.rateLimiter, principal, ratePolicies.connectCancel, res);
+        (0, validation_1.parseCancelConnectSession)(req.body);
+        const result = await dependencies.merchantConnectService.cancelSession(principal, (0, validation_1.parseConnectSessionId)(req.params.sessionId), res.locals.requestId);
+        res.setHeader('Idempotent-Replayed', String(result.replayed));
+        res.status(200).json({ data: result.session });
     }));
     merchantRouter.all('/transactions', (req, _res, next) => {
         next(new core_1.ApiError(405, 'METHOD_NOT_ALLOWED', 'This HTTP method is not supported for the resource.', [], { Allow: 'GET, POST' }));
@@ -487,10 +506,13 @@ function createApiV1App(dependencies) {
         next(new core_1.ApiError(405, 'METHOD_NOT_ALLOWED', 'This HTTP method is not supported for the resource.', [], { Allow: 'GET' }));
     });
     merchantRouter.all('/connect/sessions', (req, _res, next) => {
-        next(new core_1.ApiError(405, 'METHOD_NOT_ALLOWED', 'This HTTP method is not supported for the resource.', [], { Allow: 'POST' }));
+        next(new core_1.ApiError(405, 'METHOD_NOT_ALLOWED', 'This HTTP method is not supported for the resource.', [], { Allow: 'GET, POST' }));
     });
     merchantRouter.all('/connect/sessions/:sessionId', (req, _res, next) => {
         next(new core_1.ApiError(405, 'METHOD_NOT_ALLOWED', 'This HTTP method is not supported for the resource.', [], { Allow: 'GET' }));
+    });
+    merchantRouter.all('/connect/sessions/:sessionId/cancel', (req, _res, next) => {
+        next(new core_1.ApiError(405, 'METHOD_NOT_ALLOWED', 'This HTTP method is not supported for the resource.', [], { Allow: 'POST' }));
     });
     app.use('/v1', merchantRouter);
     app.use((req, _res, next) => {
