@@ -5,6 +5,7 @@ export type {
   CreateMerchantTransactionResult as CreateTransactionResult,
   IdempotencyContext,
   IdempotencyExecution,
+  IdempotencyFence,
   IdempotencyStore,
   MerchantAuditEventInput as AuditEventInput,
   MerchantAuditWriter as AuditWriter,

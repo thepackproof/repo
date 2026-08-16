@@ -5,6 +5,7 @@ import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 const { ApplicationError } = require('../lib/application/v1/errors.js');
 const { MerchantAuthorizationPolicy, canonicalize, sha256 } = require('../lib/application/v1/merchant-transaction-service.js');
+const { passThroughIdempotencyFence } = require('../lib/application/v1/merchant-ports.js');
 const { MerchantEvidenceApplicationService } = require('../lib/application/v1/merchant-evidence-service.js');
 const { MerchantConnectApplicationService } = require('../lib/application/v1/merchant-connect-service.js');
 
@@ -22,7 +23,7 @@ class MemoryIdempotency {
     const key = sha256(canonicalize({ principalId: context.principalId, operation: context.operation, key: context.key }));
     const existing = this.records.get(key);
     if (existing) return { value: existing.value, replayed: true, operationId: existing.operationId };
-    const value = await operation('op_1');
+    const value = await operation('op_1', passThroughIdempotencyFence('op_1'));
     this.records.set(key, { value, operationId: 'op_1' });
     return { value, replayed: false, operationId: 'op_1' };
   }

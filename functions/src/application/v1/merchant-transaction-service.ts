@@ -121,7 +121,7 @@ export class MerchantTransactionApplicationService {
         key: idempotencyKey,
         requestFingerprint,
       },
-      async (transactionId) => {
+      async (transactionId, fence) => {
         const timestamp = this.now();
         const transaction: MerchantTransaction = {
           id: transactionId,
@@ -157,7 +157,7 @@ export class MerchantTransactionApplicationService {
           data: { origin: 'MERCHANT_API', requestFingerprint, merchantReferenceHash: sha256(input.merchantReference) },
         };
         const persisted = await this.repository.create(transaction, event);
-        await this.audit.append({
+        await fence.runSideEffect('audit-transaction-created', () => this.audit.append({
           eventId: `transaction_created_${persisted.id}`,
           organizationId: principal.organizationId,
           type: 'TRANSACTION_CREATED',
@@ -171,7 +171,7 @@ export class MerchantTransactionApplicationService {
             merchantReferenceHash: sha256(input.merchantReference),
             outboxEventId: event.id,
           },
-        });
+        }));
         return { transaction: toMerchantTransactionDto(persisted) };
       },
     );

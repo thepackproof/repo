@@ -52,9 +52,13 @@ jobs:
           npm run test:queue-attention
           npm run test:runtime-display
           npm run test:package-seal-protocol
+          npm run test:capture-workflow
 
       - name: Generate OpenAPI SDK
         run: npm run generate:openapi-sdk
+
+      - name: Fail on generated OpenAPI/SDK drift
+        run: git diff --exit-code -- sdk/javascript/openapi-client public/sdk/packproof-api-v1.json docs/openapi/packproof-api-v1.json
 
       - name: Merchant API unit and contract tests
         run: npm run test:api
@@ -88,15 +92,17 @@ jobs:
       - name: Functions production dependency high-severity gate
         run: npm --prefix functions audit --omit=dev --audit-level=high
 
-      - name: Record full application dependency advisories
-        continue-on-error: true
-        run: npm audit --omit=dev
+      - name: Accepted dependency-advisory policy gate
+        run: npm run test:dependency-advisories
 
   deploy:
     runs-on: ubuntu-latest
     needs: source-and-api
     if: github.event_name == 'push' && github.ref == 'refs/heads/master' && vars.ENABLE_SANDBOX_DEPLOY == 'true'
     environment: sandbox
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - name: Check out source
         uses: actions/checkout@v5

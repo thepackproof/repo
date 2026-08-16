@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "recordedAt": "2026-08-16",
+  "owner": "nericollin@thepackproof.com",
+  "trees": {
+    "root": {
+      "acceptedHigh": [
+        {
+          "id": "GHSA-w3rx-r6r6-pgpr",
+          "package": "image-size",
+          "classification": "BUILD_TIME_ONLY",
+          "expiresOn": "2026-11-13",
+          "acceptanceRecord": "docs/RISK_ACCEPTANCE_IMAGE_SIZE_2026-08-13.md"
+        },
+        {
+          "id": "GHSA-5p2g-fcmc-qvqq",
+          "package": "image-size",
+          "classification": "BUILD_TIME_ONLY",
+          "expiresOn": "2026-11-13",
+          "acceptanceRecord": "docs/RISK_ACCEPTANCE_IMAGE_SIZE_2026-08-13.md"
+        }
+      ],
+      "acceptedModerate": [
+        {
+          "id": "GHSA-w5hq-g745-h8pq",
+          "package": "uuid",
+          "classification": "BUILD_TIME_ONLY",
+          "owner": "nericollin@thepackproof.com",
+          "target": "Upgrade Expo/Xcode tooling when a compatible uuid >=11.1.1 lands without regressing SDK 57"
+        }
+      ]
+    },
+    "functions": {
+      "acceptedHigh": [],
+      "acceptedModerate": [
+        {
+          "id": "GHSA-w5hq-g745-h8pq",
+          "package": "uuid",
+          "classification": "TRANSITIVE_GOOGLE_CLIENT",
+          "owner": "nericollin@thepackproof.com",
+          "target": "Adopt firebase-admin/google-auth uuid >=11.1.1 without a forced incompatible override"
+        }
+      ]
+    }
+  }
+}

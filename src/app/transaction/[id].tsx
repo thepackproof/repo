@@ -12,43 +12,12 @@ import { forceFreshCallableCredentials } from '@/lib/firebase';
 import { enqueueEvidence, syncEvidenceQueue } from '@/lib/offline-evidence-queue';
 import { formatDate, formatMoney, readableError, statusProgress } from '@/lib/format';
 import { HUMAN_REVIEW_DISCLAIMER, groupHumanReviewObservations, packageSealProtocolStatus } from '@/lib/package-seal-protocol';
+import { attestationLabel, byteIntegrityLabel, evidenceLabels, trackingLabel, trackingStatus } from '@/lib/transaction-detail-labels';
 import { formatRuntimeEnum, normalizePhysicalStatus, type PhysicalStatusView } from '@/lib/runtime-display';
 import { useAuth } from '@/providers/auth-provider';
 import type { EvidenceRecord, EvidenceType, PackProofTransaction, ReturnPassport, TimelineEvent } from '@/types/models';
 
-const evidenceLabels: Record<EvidenceType, string> = {
-  ITEM_PHOTO: 'Item photo', CONDITION_PHOTO: 'Condition photo', IDENTIFIER_PHOTO: 'Identifier photo', COA_PHOTO: 'COA photo', PACKING_VIDEO: 'Continuous packing video', SHIPPING_LABEL: 'High-resolution seal reference', UNBOXING_VIDEO: 'Continuous unboxing video', DELIVERY_PHOTO: 'Arrival package observation', SUPPORTING_DOCUMENT: 'Supporting document', RETURN_CONDITION_PHOTO: 'Return condition photo', RETURN_PACKING_VIDEO: 'Continuous return repacking video', RETURN_SHIPPING_LABEL: 'High-resolution return seal reference', RETURN_UNBOXING_VIDEO: 'Continuous returned-item unboxing video', PHYSICAL_REFERENCE_FRAME: 'Physical reference frame', PHYSICAL_VERIFICATION_FRAME: 'Physical verification frame',
-};
-
 function shortId(id?: string | null) { return id ? `${id.slice(0, 5)}…${id.slice(-4)}` : 'Not joined'; }
-
-function attestationLabel(record: EvidenceRecord): string {
-  switch (record.attestationStatus) {
-    case 'ONLINE_APP_CHECK_AND_KEY_POSSESSION':
-    case 'JIT_VERIFIED': return 'ONLINE APP CHECK + KEY POSSESSION';
-    case 'ONLINE_APP_CHECK_ONLY':
-    case 'JIT_APP_CHECK_ONLY': return 'ONLINE APP CHECK ONLY';
-    case 'OFFLINE_UNATTESTED': return 'OFFLINE / UNATTESTED';
-    default: return 'NO APP/DEVICE CONTEXT';
-  }
-}
-
-function byteIntegrityLabel(record: EvidenceRecord): string {
-  return record.assurance?.byteIntegrity.status
-    ?? (record.clientHashMatched === false || record.clientSizeMatched === false || record.contentTypeMatched === false
-      ? 'MISMATCH'
-      : record.clientHashMatched === true ? 'MATCHED' : 'SERVER HASH ONLY');
-}
-
-function trackingStatus(record: EvidenceRecord): EvidenceRecord['carrierTrackingMatchStatus'] | EvidenceRecord['postSubmissionTrackingMatchStatus'] {
-  return record.postSubmissionTrackingMatchStatus ?? record.carrierTrackingMatchStatus;
-}
-
-function trackingLabel(record: EvidenceRecord): string | null {
-  const status = trackingStatus(record);
-  if (!status || status === 'NOT_SCANNED') return null;
-  return `${record.postSubmissionTrackingMatchStatus ? 'SUBMITTED TRACKING' : 'TRACKING'} ${formatRuntimeEnum(status)}`;
-}
 
 export default function TransactionDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();

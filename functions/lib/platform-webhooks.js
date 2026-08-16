@@ -11,6 +11,7 @@ const scheduler_1 = require("firebase-functions/v2/scheduler");
 const connect_callback_1 = require("./application/v1/connect-callback");
 const commerce_context_service_1 = require("./application/v1/commerce-context-service");
 const connect_handoff_service_1 = require("./application/v1/connect-handoff-service");
+const connect_callback_retry_1 = require("./infrastructure/firebase/v1/connect-callback-retry");
 const public_commerce_handoff_service_1 = require("./application/v1/public-commerce-handoff-service");
 const errors_1 = require("./application/v1/errors");
 const config_1 = require("./config");
@@ -297,35 +298,9 @@ exports.onConnectEvidenceVerified = (0, firestore_2.onDocumentCreated)('transact
     }
 });
 exports.retryConnectCallbacks = (0, scheduler_1.onSchedule)('every 5 minutes', async () => {
-    const due = await config_1.db.collection('webhookDeliveries').where('status', 'in', ['FAILED', 'PENDING']).limit(20).get();
-    for (const doc of due.docs) {
-        const delivery = await config_1.db.runTransaction(async (tx) => {
-            const fresh = await tx.get(doc.ref);
-            const data = fresh.data();
-            if (!fresh.exists || !data || !['FAILED', 'PENDING'].includes(String(data.status)))
-                return null;
-            const nextAttemptAt = data.nextAttemptAt;
-            if (nextAttemptAt && nextAttemptAt.toMillis() > Date.now())
-                return null;
-            tx.set(doc.ref, {
-                status: 'PENDING',
-                attempts: firestore_1.FieldValue.increment(1),
-                // Lease the delivery so overlapping scheduler runs cannot double-send it.
-                nextAttemptAt: (0, helpers_1.expiresIn)(120),
-                updatedAt: firestore_1.FieldValue.serverTimestamp(),
-            }, { merge: true });
-            return data;
-        });
-        if (!delivery)
-            continue;
-        try {
-            await deliverCallback(doc.ref, delivery);
-        }
-        catch (error) {
-            const attempts = Number(delivery.attempts ?? 1) + 1;
-            const delaySeconds = Math.min(6 * 3600, 300 * 2 ** Math.min(attempts, 6));
-            await doc.ref.set({ status: 'FAILED', lastError: error instanceof Error ? error.message.slice(0, 500) : 'Unknown callback error.', nextAttemptAt: (0, helpers_1.expiresIn)(delaySeconds), updatedAt: firestore_1.FieldValue.serverTimestamp() }, { merge: true });
-        }
-    }
+    await (0, connect_callback_retry_1.processDueConnectCallbacks)({
+        firestore: config_1.db,
+        deliver: deliverCallback,
+    });
 });
 //# sourceMappingURL=platform-webhooks.js.map

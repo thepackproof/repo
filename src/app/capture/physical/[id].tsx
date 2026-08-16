@@ -23,6 +23,15 @@ import {
   type PhysicalCaptureIntent,
   type PhysicalRegionId,
 } from '@/lib/capture-profiles';
+import {
+  canDiscardPhysicalSeries,
+  canTransitionPhysicalCaptureStage,
+  physicalSeriesIsComplete,
+  shouldDeletePhysicalFramesOnUnmount,
+  shouldDeletePhysicalOriginalsAfterSeriesCommit,
+  shouldDeletePhysicalSourceAfterEachEncrypt,
+  type PhysicalCaptureStage,
+} from '@/lib/capture-workflow';
 import { discardQueuedEvidence, enqueueEvidence, syncEvidenceQueue } from '@/lib/offline-evidence-queue';
 import { readableError } from '@/lib/format';
 import { useAuth } from '@/providers/auth-provider';
@@ -88,7 +97,10 @@ export default function PhysicalCaptureScreen() {
   const mountedRef = useRef(true);
   const securingRef = useRef(false);
   const [permission, requestPermission] = useCameraPermissions();
-  const [stage, setStage] = useState<'INTRO' | 'CAMERA' | 'REVIEW' | 'SECURING'>('INTRO');
+  const [stage, setStage] = useState<PhysicalCaptureStage>('INTRO');
+  const goTo = (next: PhysicalCaptureStage) => {
+    setStage((current) => (canTransitionPhysicalCaptureStage(current, next) ? next : current));
+  };
   const [includeLocation, setIncludeLocation] = useState(false);
   const [preparing, setPreparing] = useState(false);
   const [cameraReady, setCameraReady] = useState(false);
@@ -107,7 +119,7 @@ export default function PhysicalCaptureScreen() {
       const collector = collectorRef.current;
       collectorRef.current = null;
       if (collector) void collector.finish().catch(() => undefined);
-      if (!securingRef.current) {
+      if (shouldDeletePhysicalFramesOnUnmount(securingRef.current, framesRef.current.length)) {
         const temporaryFrames = framesRef.current;
         framesRef.current = [];
         void Promise.all(temporaryFrames.map((frame) => FileSystem.deleteAsync(frame.uri, { idempotent: true }).catch(() => undefined)));
@@ -180,7 +192,7 @@ export default function PhysicalCaptureScreen() {
       setAttestation(preparedAttestation);
       setCameraReady(false);
       setCameraError(null);
-      setStage('CAMERA');
+      goTo('CAMERA');
     } catch (error) {
       if (mountedRef.current) Alert.alert('Could not start physical capture', readableError(error));
     } finally {
@@ -234,7 +246,7 @@ export default function PhysicalCaptureScreen() {
         qualitySignals,
       };
       const next = [...frames, nextFrame];
-      if (next.length === PHYSICAL_CAPTURE_FRAME_COUNT) {
+      if (physicalSeriesIsComplete(next.length, PHYSICAL_CAPTURE_FRAME_COUNT)) {
         const collector = collectorRef.current;
         if (!collector) throw new Error('Capture telemetry collector was unavailable at finalization.');
         collectorRef.current = null;
@@ -249,8 +261,8 @@ export default function PhysicalCaptureScreen() {
       framesRef.current = next;
       setFrames(next);
       setAttempt(1);
-      if (next.length === PHYSICAL_CAPTURE_FRAME_COUNT) {
-        setStage('REVIEW');
+      if (physicalSeriesIsComplete(next.length, PHYSICAL_CAPTURE_FRAME_COUNT)) {
+        goTo('REVIEW');
       }
     } catch (error) {
       if (uri) await FileSystem.deleteAsync(uri, { idempotent: true }).catch(() => undefined);
@@ -261,6 +273,7 @@ export default function PhysicalCaptureScreen() {
   };
 
   const discard = async () => {
+    if (!canDiscardPhysicalSeries(stage, securingRef.current)) return;
     if (collectorRef.current) await collectorRef.current.finish().catch(() => undefined);
     collectorRef.current = null;
     await Promise.all(frames.map((frame) => FileSystem.deleteAsync(frame.uri, { idempotent: true }).catch(() => undefined)));
@@ -271,9 +284,9 @@ export default function PhysicalCaptureScreen() {
   };
 
   const secureSeries = async () => {
-    if (!id || !user || !completedTelemetry || !attestation || frames.length !== PHYSICAL_CAPTURE_FRAME_COUNT) return;
+    if (!id || !user || !completedTelemetry || !attestation || !physicalSeriesIsComplete(frames.length, PHYSICAL_CAPTURE_FRAME_COUNT)) return;
     securingRef.current = true;
-    setStage('SECURING');
+    goTo('SECURING');
     setProgress(0);
     const queuedIds: string[] = [];
     let encryptedSeriesCommitted = false;
@@ -358,6 +371,7 @@ export default function PhysicalCaptureScreen() {
           originalName: `physical-${intent.toLowerCase()}-${frame.regionId.toLowerCase()}-${frame.frameWithinRegion}-${Date.now()}.jpg`,
           manifest,
           captureSessionId: attestation.captureSessionId,
+          deleteSourceAfterEncrypt: shouldDeletePhysicalSourceAfterEachEncrypt(),
         });
         queuedIds.push(item.id);
         if (mountedRef.current) setProgress(((index + 1) / frames.length) * 0.45);
@@ -368,11 +382,13 @@ export default function PhysicalCaptureScreen() {
       // never roll those queue records back merely because synchronization did
       // not finish in the same UI session.
       encryptedSeriesCommitted = true;
-      await Promise.all(frames.map((frame) => FileSystem.deleteAsync(frame.uri, { idempotent: true }).catch(() => undefined)));
-      framesRef.current = [];
-      if (mountedRef.current) {
-        setFrames([]);
-        setProgress(0.5);
+      if (shouldDeletePhysicalOriginalsAfterSeriesCommit(encryptedSeriesCommitted)) {
+        await Promise.all(frames.map((frame) => FileSystem.deleteAsync(frame.uri, { idempotent: true }).catch(() => undefined)));
+        framesRef.current = [];
+        if (mountedRef.current) {
+          setFrames([]);
+          setProgress(0.5);
+        }
       }
       const result = await syncEvidenceQueue();
       const thisBatchFinalized = queuedIds.filter((queueId) => result.uploadedIds.includes(queueId)).length;
@@ -394,7 +410,7 @@ export default function PhysicalCaptureScreen() {
         // for a complete retry.
         await Promise.allSettled(queuedIds.map((queueId) => discardQueuedEvidence(queueId)));
         if (mountedRef.current) {
-          setStage('REVIEW');
+          goTo('REVIEW');
           Alert.alert('Could not secure the full series', `${readableError(error)} The original camera files were retained so the complete series can be retried.`);
         }
       } else {

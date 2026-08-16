@@ -13,6 +13,7 @@ const {
   ParticipantCaptureApplicationService,
   PublicCommerceHandoffApplicationService,
   canonicalize,
+  passThroughIdempotencyFence,
   sha256,
 } = require('../lib/application/v1/index.js');
 
@@ -29,7 +30,7 @@ class MemoryIdempotencyStore {
     }
     if (existing) return { value: existing.value, replayed: true, operationId: existing.operationId };
     const operationId = 'txn_1234567890abcdef1234567890abcdef';
-    const value = await operation(operationId);
+    const value = await operation(operationId, passThroughIdempotencyFence(operationId));
     this.records.set(key, { fingerprint: context.requestFingerprint, value, operationId });
     return { value, replayed: false, operationId };
   }

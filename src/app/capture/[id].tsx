@@ -13,146 +13,33 @@ import { Button, Card, ProgressBar, ScreenTitle } from '@/components/ui';
 import { colors } from '@/constants/brand';
 import { prepareCaptureAttestation, prepareEvidenceSessionAttestation } from '@/lib/api';
 import { startCaptureTelemetry } from '@/lib/capture-telemetry';
+import {
+  canDiscardReviewedCapture,
+  canTransitionCaptureStage,
+  captureForegroundInterruption,
+  shouldDeleteLocalCaptureOnUnmount,
+  type CaptureStage,
+} from '@/lib/capture-workflow';
+import {
+  captureChecklists,
+  captureGuideFor,
+  captureTitles,
+  formatCaptureBytes,
+  formatCaptureDuration,
+  labelAwareTypes,
+  requestedRegions,
+  videoTypes,
+} from '@/lib/capture-guides';
 import { enqueueEvidence, syncEvidenceQueue } from '@/lib/offline-evidence-queue';
 import { readableError } from '@/lib/format';
 import { useAuth } from '@/providers/auth-provider';
 import type { EvidenceType } from '@/types/models';
 import type { CaptureAttestation, CaptureManifestInput, ShippingLabelTelemetry } from '@/types/telemetry';
 
-const videoTypes = new Set<EvidenceType>(['PACKING_VIDEO', 'UNBOXING_VIDEO', 'RETURN_PACKING_VIDEO', 'RETURN_UNBOXING_VIDEO']);
-const labelAwareTypes = new Set<EvidenceType>(['PACKING_VIDEO', 'SHIPPING_LABEL', 'RETURN_PACKING_VIDEO', 'RETURN_SHIPPING_LABEL']);
 const zoomSteps = [0, 0.15, 0.3] as const;
 const MAX_VIDEO_DURATION_SECONDS = 15 * 60;
 
-type CaptureGuide = { title: string; instruction: string; aspectRatio: number };
 type ReviewSummary = { durationMs: number; sizeBytes: number | null; widthPixels: number | null; heightPixels: number | null };
-
-const defaultPhotoGuide: CaptureGuide = {
-  title: 'Evidence framing guide',
-  instruction: 'Keep the complete relevant subject inside the guide with surrounding context visible.',
-  aspectRatio: 3 / 4,
-};
-
-const captureGuides: Partial<Record<EvidenceType, CaptureGuide>> = {
-  ITEM_PHOTO: { title: 'Complete item', instruction: 'Show the entire item without cropping its edges.', aspectRatio: 3 / 4 },
-  CONDITION_PHOTO: { title: 'Condition and context', instruction: 'Center the condition area while retaining enough surrounding detail to locate it.', aspectRatio: 1 },
-  IDENTIFIER_PHOTO: { title: 'Identifier and context', instruction: 'Keep the identifier readable and include the nearby item surface.', aspectRatio: 4 / 3 },
-  COA_PHOTO: { title: 'Complete document', instruction: 'Align all document edges inside the guide and avoid glare.', aspectRatio: 3 / 4 },
-  SHIPPING_LABEL: { title: 'PP mark and seal reference', instruction: 'Fill the frame with the PP mark crossing the label and package, plus tape or seal and nearby cardboard.', aspectRatio: 4 / 3 },
-  DELIVERY_PHOTO: { title: 'Received package before opening', instruction: 'Show the received package, label/package boundary, visible seams, and tape or seal before any opening.', aspectRatio: 3 / 4 },
-  SUPPORTING_DOCUMENT: { title: 'Complete document', instruction: 'Align all document edges inside the guide and keep text legible.', aspectRatio: 3 / 4 },
-  RETURN_CONDITION_PHOTO: { title: 'Return condition and context', instruction: 'Center the condition area while retaining identifying context.', aspectRatio: 1 },
-  RETURN_SHIPPING_LABEL: { title: 'Return PP mark and seal reference', instruction: 'Fill the frame with the return PP mark crossing the label and package, plus tape or seal and nearby cardboard.', aspectRatio: 4 / 3 },
-};
-
-const videoGuides: Partial<Record<EvidenceType, CaptureGuide>> = {
-  PACKING_VIDEO: { title: 'Item-to-seal sequence', instruction: 'Keep the item, package, PP mark, and tape in frame. End on a steady view of the marked label/package boundary.', aspectRatio: 3 / 4 },
-  UNBOXING_VIDEO: { title: 'Arrival-to-contents sequence', instruction: 'Start with the sealed package, boundary mark, tape, and seams. Keep the opening continuous before setting contents aside.', aspectRatio: 3 / 4 },
-  RETURN_PACKING_VIDEO: { title: 'Return item-to-seal sequence', instruction: 'Keep the returned item, package, PP mark, and tape in frame. End on a steady view of the marked boundary.', aspectRatio: 3 / 4 },
-  RETURN_UNBOXING_VIDEO: { title: 'Return arrival-to-contents sequence', instruction: 'Start with the sealed return package, boundary mark, tape, and seams. Keep the opening continuous.', aspectRatio: 3 / 4 },
-};
-
-const defaultVideoGuide: CaptureGuide = {
-  title: 'Continuous action area',
-  instruction: 'Keep the package, item, hands, and relevant action visible throughout the recording.',
-  aspectRatio: 3 / 4,
-};
-
-function formatDuration(totalSeconds: number): string {
-  const minutes = Math.floor(totalSeconds / 60);
-  return `${String(minutes).padStart(2, '0')}:${String(totalSeconds % 60).padStart(2, '0')}`;
-}
-
-function formatBytes(sizeBytes: number | null): string {
-  if (sizeBytes === null) return 'Size unavailable';
-  if (sizeBytes < 1024 * 1024) return `${Math.max(1, Math.round(sizeBytes / 1024))} KB`;
-  return `${(sizeBytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-const titles: Record<EvidenceType, string> = {
-  ITEM_PHOTO: 'Item photo',
-  CONDITION_PHOTO: 'Condition photo',
-  IDENTIFIER_PHOTO: 'Identifier photo',
-  COA_PHOTO: 'COA photo',
-  PACKING_VIDEO: 'Continuous packing video',
-  SHIPPING_LABEL: 'High-resolution seal reference',
-  UNBOXING_VIDEO: 'Continuous unboxing video',
-  DELIVERY_PHOTO: 'Arrival package observation',
-  SUPPORTING_DOCUMENT: 'Supporting document',
-  RETURN_CONDITION_PHOTO: 'Return condition photo',
-  RETURN_PACKING_VIDEO: 'Continuous return repacking video',
-  RETURN_SHIPPING_LABEL: 'High-resolution return seal reference',
-  RETURN_UNBOXING_VIDEO: 'Continuous returned-item unboxing video',
-  PHYSICAL_REFERENCE_FRAME: 'Physical reference frame',
-  PHYSICAL_VERIFICATION_FRAME: 'Physical verification frame',
-};
-
-const checklists: Partial<Record<EvidenceType, string[]>> = {
-  PACKING_VIDEO: [
-    'Begin with the unpacked item and included accessories visible in one continuous take.',
-    'Place the item into the package on camera, then close the package.',
-    'Apply the shipping label so the label and adjacent package surface remain visible.',
-    'Draw the designated PP mark across the label/package boundary so it spans both surfaces.',
-    'Apply the prescribed clear tape or seal over the mark and seams.',
-    'Finish with a steady, high-resolution view of the marked boundary, tape, and nearby cardboard.',
-  ],
-  UNBOXING_VIDEO: [
-    'Before opening, record every side of the received package, including the label/package boundary, seams, and tape or seal.',
-    'Do not dispose of or alter the packaging before those regions are recorded.',
-    'Keep the package and contents in frame continuously while opening.',
-    'Show packing materials, included items, and identifiers. PackProof does not decide cause, actor, or fault.',
-  ],
-  RETURN_PACKING_VIDEO: [
-    'Begin with the returned item, accessories, and identifiers visible in one continuous take.',
-    'Document the current visible condition before packing.',
-    'Keep the item in frame while adding every packing layer and sealing the package.',
-    'Draw the PP mark across the return label/package boundary, apply tape or seal, and finish on a steady view of that boundary.',
-  ],
-  RETURN_UNBOXING_VIDEO: [
-    'Begin with all sides of the sealed return package, including the boundary mark, tape or seal, and seams.',
-    'Open continuously without moving the package or contents off camera.',
-    'Show identifiers, accessories, packing materials, and visible condition before ending.',
-    'PackProof preserves the observations. It does not decide cause, actor, authenticity, or fault.',
-  ],
-  SHIPPING_LABEL: [
-    'Fill the frame with the PP mark crossing the label and the package.',
-    'Include the tape or seal, nearby seams, and adjacent cardboard.',
-    'Keep the tracking barcode readable when it is present.',
-    'Hold the camera steady. This still is a high-resolution reference for later human review, not a system verdict.',
-  ],
-  DELIVERY_PHOTO: [
-    'Photograph the received package before opening or discarding packaging.',
-    'Include the label/package boundary, any visible PP mark, tape or seal, and seams.',
-    'Keep surrounding context limited to what is needed to locate those regions.',
-    'This arrival still is for human comparison with the seller reference. PackProof does not conclude whether the package matches.',
-  ],
-  RETURN_SHIPPING_LABEL: [
-    'Fill the frame with the return PP mark crossing the label and the package.',
-    'Include the tape or seal, nearby seams, and adjacent cardboard.',
-    'Keep the return tracking barcode readable when it is present.',
-    'Hold the camera steady. This still is a high-resolution reference for later human review, not a system verdict.',
-  ],
-  ITEM_PHOTO: ['Fill the frame with the complete item.', 'Use even lighting and avoid filters.', 'Capture identifiers separately when they are too small to read.'],
-  CONDITION_PHOTO: ['Focus on the exact condition area.', 'Include enough surrounding detail to establish where it is.', 'Do not use beauty filters or image editing.'],
-  RETURN_CONDITION_PHOTO: ['Show the complete returned item first.', 'Capture the exact condition issue and surrounding context.', 'Include identifiers when possible.'],
-};
-
-const requestedRegions: Record<EvidenceType, string[]> = {
-  ITEM_PHOTO: ['ITEM_OVERVIEW'],
-  CONDITION_PHOTO: ['ITEM_OVERVIEW', 'CONDITION_DETAIL'],
-  IDENTIFIER_PHOTO: ['IDENTIFIER', 'SURROUNDING_CONTEXT'],
-  COA_PHOTO: ['DOCUMENT_OVERVIEW', 'IDENTIFIER'],
-  PACKING_VIDEO: ['ITEM_OVERVIEW', 'IDENTIFIER', 'PACKAGE_INTERIOR', 'PACKING_SEQUENCE', 'SEALED_PACKAGE', 'LABEL_PACKAGE_BOUNDARY', 'PP_BOUNDARY_MARK', 'TAPE_OR_SEAL', 'HIGH_RESOLUTION_REFERENCE', 'TRACKING_LABEL'],
-  SHIPPING_LABEL: ['TRACKING_LABEL', 'LABEL_PACKAGE_BOUNDARY', 'PP_BOUNDARY_MARK', 'TAPE_OR_SEAL', 'ADJACENT_PACKAGE_SURFACE'],
-  UNBOXING_VIDEO: ['SEALED_PACKAGE', 'LABEL_PACKAGE_BOUNDARY', 'PP_BOUNDARY_MARK', 'TAPE_OR_SEAL', 'OPENING_SEQUENCE', 'CONTENTS_OVERVIEW', 'IDENTIFIER', 'CONDITION_DETAIL'],
-  DELIVERY_PHOTO: ['PACKAGE_OVERVIEW', 'LABEL_PACKAGE_BOUNDARY', 'PP_BOUNDARY_MARK', 'TAPE_OR_SEAL', 'DELIVERY_CONTEXT'],
-  SUPPORTING_DOCUMENT: ['DOCUMENT_OVERVIEW'],
-  RETURN_CONDITION_PHOTO: ['ITEM_OVERVIEW', 'CONDITION_DETAIL', 'IDENTIFIER'],
-  RETURN_PACKING_VIDEO: ['ITEM_OVERVIEW', 'IDENTIFIER', 'RETURN_PACKING_SEQUENCE', 'SEALED_PACKAGE', 'LABEL_PACKAGE_BOUNDARY', 'PP_BOUNDARY_MARK', 'TAPE_OR_SEAL', 'HIGH_RESOLUTION_REFERENCE', 'TRACKING_LABEL'],
-  RETURN_SHIPPING_LABEL: ['TRACKING_LABEL', 'LABEL_PACKAGE_BOUNDARY', 'PP_BOUNDARY_MARK', 'TAPE_OR_SEAL', 'ADJACENT_PACKAGE_SURFACE'],
-  RETURN_UNBOXING_VIDEO: ['SEALED_PACKAGE', 'LABEL_PACKAGE_BOUNDARY', 'PP_BOUNDARY_MARK', 'TAPE_OR_SEAL', 'OPENING_SEQUENCE', 'CONTENTS_OVERVIEW', 'IDENTIFIER', 'CONDITION_DETAIL'],
-  PHYSICAL_REFERENCE_FRAME: ['PHYSICAL_CAPTURE_ROUTE_ONLY'],
-  PHYSICAL_VERIFICATION_FRAME: ['PHYSICAL_CAPTURE_ROUTE_ONLY'],
-};
 
 function offlineAttestation(reasonCode: 'NO_NETWORK' | 'ATTESTATION_PROVIDER_UNAVAILABLE'): CaptureAttestation {
   const now = new Date().toISOString();
@@ -181,15 +68,18 @@ export default function CaptureScreen() {
   }>();
   const { id, returnPassportId, connectSessionId, evidenceSessionId, evidenceSessionToken, evidenceSessionOperationKey } = params;
   const rawType = params.type;
-  const type = rawType && titles[rawType] ? rawType : 'CONDITION_PHOTO';
+  const type = rawType && captureTitles[rawType] ? rawType : 'CONDITION_PHOTO';
   const isVideo = videoTypes.has(type);
-  const guide = isVideo ? (videoGuides[type] ?? defaultVideoGuide) : captureGuides[type] ?? defaultPhotoGuide;
+  const guide = captureGuideFor(type, isVideo);
   const router = useRouter();
   const { user } = useAuth();
   const camera = useRef<CameraView>(null);
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const [microphonePermission, requestMicrophonePermission] = useMicrophonePermissions();
-  const [stage, setStage] = useState<'CHECKLIST' | 'CAMERA' | 'REVIEW' | 'UPLOADING'>('CHECKLIST');
+  const [stage, setStage] = useState<CaptureStage>('CHECKLIST');
+  const goTo = (next: CaptureStage) => {
+    setStage((current) => (canTransitionCaptureStage(current, next) ? next : current));
+  };
   const [recording, setRecording] = useState(false);
   const [preparing, setPreparing] = useState(false);
   const [cameraReady, setCameraReady] = useState(false);
@@ -219,10 +109,9 @@ export default function CaptureScreen() {
     mountedRef.current = true;
     const subscription = AppState.addEventListener('change', (nextState) => {
       if (nextState === 'active' || !captureInFlightRef.current) return;
-      interruptionRef.current = recordingRef.current
-        ? 'Recording stopped because PackProof left the foreground. Retake the evidence as one continuous recording.'
-        : 'Capture cancelled because PackProof left the foreground. Return to the camera and retake the evidence.';
-      if (recordingRef.current) stopRecordingRef.current?.();
+      const interruption = captureForegroundInterruption(recordingRef.current);
+      interruptionRef.current = interruption.message;
+      if (interruption.stopRecording) stopRecordingRef.current?.();
     });
     return () => {
       mountedRef.current = false;
@@ -236,8 +125,8 @@ export default function CaptureScreen() {
       const collector = collectorRef.current;
       collectorRef.current = null;
       if (collector) void collector.finish().catch(() => undefined);
-      if (localUriRef.current && !securingRef.current) {
-        const temporaryUri = localUriRef.current;
+      const temporaryUri = localUriRef.current;
+      if (temporaryUri && shouldDeleteLocalCaptureOnUnmount(securingRef.current, true)) {
         localUriRef.current = null;
         void FileSystem.deleteAsync(temporaryUri, { idempotent: true }).catch(() => undefined);
       }
@@ -303,7 +192,7 @@ export default function CaptureScreen() {
     }
     setCameraReady(false);
     setCameraError(null);
-    setStage('CAMERA');
+    goTo('CAMERA');
   };
 
   const changeLocationPreference = async (enabled: boolean) => {
@@ -466,7 +355,7 @@ export default function CaptureScreen() {
           heightPixels: result.height ?? null,
         });
         captureInFlightRef.current = false;
-        setStage('REVIEW');
+        goTo('REVIEW');
       }
     } catch (error) {
       captureInFlightRef.current = false;
@@ -488,6 +377,7 @@ export default function CaptureScreen() {
   const stop = () => stopRecordingRef.current?.();
 
   const discard = async () => {
+    if (!canDiscardReviewedCapture(stage, securingRef.current)) return;
     const temporaryUri = localUriRef.current ?? localUri;
     localUriRef.current = null;
     if (temporaryUri) await FileSystem.deleteAsync(temporaryUri, { idempotent: true }).catch(() => undefined);
@@ -498,7 +388,7 @@ export default function CaptureScreen() {
     setShippingLabel(null);
     setCameraReady(false);
     setCameraError(null);
-    setStage('CAMERA');
+    goTo('CAMERA');
   };
 
   const close = async () => {
@@ -511,7 +401,7 @@ export default function CaptureScreen() {
   const upload = async () => {
     if (!localUri || !id || !user) return;
     securingRef.current = true;
-    setStage('UPLOADING');
+    goTo('UPLOADING');
     setProgress(0);
     let queuedId: string | null = null;
     try {
@@ -567,7 +457,7 @@ export default function CaptureScreen() {
           localUriRef.current = null;
           await FileSystem.deleteAsync(localUri, { idempotent: true }).catch(() => undefined);
         } else {
-          setStage('REVIEW');
+          goTo('REVIEW');
           Alert.alert('Could not secure evidence', readableError(error));
         }
       }
@@ -577,7 +467,7 @@ export default function CaptureScreen() {
   if (stage === 'CAMERA') return <View style={styles.cameraPage}>
     <CameraView ref={camera} style={StyleSheet.absoluteFill} facing="back" mode={isVideo ? 'video' : 'picture'} flash={isVideo ? 'off' : flashMode} enableTorch={isVideo && torchEnabled} zoom={zoom} videoQuality="720p" mute={false} onCameraReady={() => { setCameraReady(true); setCameraError(null); }} onMountError={({ message }) => { setCameraReady(false); setCameraError(message); }} onBarcodeScanned={labelAwareTypes.has(type) ? handleBarcodeScanned : undefined} barcodeScannerSettings={{ barcodeTypes: ['code128', 'code39', 'code93', 'qr', 'pdf417', 'aztec', 'ean13', 'ean8', 'upc_a', 'upc_e', 'itf14', 'datamatrix'] }} />
     <SafeAreaView style={styles.overlay}>
-      <View style={styles.cameraHeader}><Pressable disabled={recording || preparing} onPress={() => { void close(); }} style={styles.circleButton}><AppIcon name="xmark" size={18} tintColor={colors.white} /></Pressable><View style={styles.captureLabel}><View style={[styles.liveDot, recording && { backgroundColor: colors.danger }, cameraError && { backgroundColor: colors.danger }]} /><Text style={styles.captureLabelText}>{cameraError ? 'CAMERA UNAVAILABLE' : preparing ? 'CHECKING APP CONTEXT…' : recording ? `REC ${formatDuration(recordingSeconds)} · CONTINUOUS` : cameraReady ? titles[type].toUpperCase() : 'STARTING CAMERA…'}</Text></View></View>
+      <View style={styles.cameraHeader}><Pressable disabled={recording || preparing} onPress={() => { void close(); }} style={styles.circleButton}><AppIcon name="xmark" size={18} tintColor={colors.white} /></Pressable><View style={styles.captureLabel}><View style={[styles.liveDot, recording && { backgroundColor: colors.danger }, cameraError && { backgroundColor: colors.danger }]} /><Text style={styles.captureLabelText}>{cameraError ? 'CAMERA UNAVAILABLE' : preparing ? 'CHECKING APP CONTEXT…' : recording ? `REC ${formatCaptureDuration(recordingSeconds)} · CONTINUOUS` : cameraReady ? captureTitles[type].toUpperCase() : 'STARTING CAMERA…'}</Text></View></View>
       <View pointerEvents="none" style={styles.guideArea}>
         <View style={[styles.frameGuide, { aspectRatio: guide.aspectRatio }]} />
         <Text style={styles.guideTitle}>{guide.title}</Text>
@@ -599,8 +489,8 @@ export default function CaptureScreen() {
   return <SafeAreaView style={styles.safe}><ScrollView contentContainerStyle={styles.container}>
     <Button label="Close" variant="ghost" onPress={() => { void close(); }} style={styles.close} disabled={stage === 'UPLOADING'} />
     {stage === 'CHECKLIST' ? <>
-      <ScreenTitle eyebrow="Before you begin" title={titles[type]} subtitle={isVideo ? 'This must be one continuous, unedited recording. Prepare the package and supplies before you start.' : 'Capture an original image directly in PackProof so it stays connected to this transaction.'} />
-      <Card style={styles.checklist}>{(checklists[type] ?? checklists.CONDITION_PHOTO!).map((item, index) => <View key={item} style={styles.check}><View style={styles.number}><Text style={styles.numberText}>{index + 1}</Text></View><Text style={styles.checkText}>{item}</Text></View>)}</Card>
+      <ScreenTitle eyebrow="Before you begin" title={captureTitles[type]} subtitle={isVideo ? 'This must be one continuous, unedited recording. Prepare the package and supplies before you start.' : 'Capture an original image directly in PackProof so it stays connected to this transaction.'} />
+      <Card style={styles.checklist}>{(captureChecklists[type] ?? captureChecklists.CONDITION_PHOTO!).map((item, index) => <View key={item} style={styles.check}><View style={styles.number}><Text style={styles.numberText}>{index + 1}</Text></View><Text style={styles.checkText}>{item}</Text></View>)}</Card>
       {['PACKING_VIDEO', 'SHIPPING_LABEL', 'UNBOXING_VIDEO', 'DELIVERY_PHOTO', 'RETURN_PACKING_VIDEO', 'RETURN_SHIPPING_LABEL', 'RETURN_UNBOXING_VIDEO'].includes(type) ? <Card style={styles.caution}><AppIcon name="info.circle.fill" size={20} tintColor={colors.amber} /><Text style={styles.cautionText}>Human visual review may note visible continuity or difference. PackProof does not conclude that the package is the same or altered, or identify a cause, actor, authenticity, custody, fraud, or fault.</Text></Card> : null}
       <Card style={styles.locationCard}><View style={{ flex: 1, gap: 4 }}><Text style={styles.locationTitle}>Include precise capture location</Text><Text style={styles.locationText}>Optional. When enabled, coordinates and accuracy are included in the private service-authenticated evidence manifest, but omitted from the presentation dossier. Leave off when location is unnecessary.</Text></View><Switch value={includeLocation} onValueChange={(value) => { changeLocationPreference(value).catch((error) => Alert.alert('Could not update location setting', readableError(error))); }} /></Card>
       <Card style={styles.caution}><AppIcon name="exclamationmark.triangle.fill" size={20} tintColor={colors.amber} /><Text style={styles.cautionText}>Do not capture payment cards, government IDs, private messages, unrelated faces or addresses not required for the shipping record.</Text></Card>
@@ -609,7 +499,7 @@ export default function CaptureScreen() {
     {stage === 'REVIEW' ? <>
       <ScreenTitle eyebrow="Encrypted queue ready" title="Secure this evidence?" subtitle="PackProof will hash and encrypt the original capture before attempting any network transfer. It remains queued if connectivity drops." />
       {!isVideo && localUri ? <Image source={{ uri: localUri }} contentFit="contain" style={styles.reviewImage} accessibilityLabel="Captured evidence preview" /> : null}
-      <Card style={styles.review}><AppIcon name={isVideo ? 'video.fill' : 'photo.fill'} size={42} tintColor={colors.teal} /><Text style={styles.reviewTitle}>{titles[type]}</Text>{reviewSummary ? <View style={styles.reviewFacts}><Text style={styles.reviewFact}>{isVideo ? `Duration ${formatDuration(Math.round(reviewSummary.durationMs / 1000))}` : reviewSummary.widthPixels && reviewSummary.heightPixels ? `${reviewSummary.widthPixels} × ${reviewSummary.heightPixels} px` : 'Dimensions unavailable'}</Text><Text style={styles.reviewFact}>{formatBytes(reviewSummary.sizeBytes)}</Text><Text style={styles.reviewFact}>{manifest?.cameraObservation.flashMode ?? 'OFF'} · zoom {Math.round((manifest?.cameraObservation.zoom ?? 0) * 100)}%</Text></View> : null}<Text style={styles.reviewText}>{manifest?.attestation.mode === 'JIT_APP_CHECK' ? 'Fresh online App Check context and any available device-key proof are bound to this capture; neither proves the physical scene.' : 'Captured offline; the manifest records that fresh online attestation and trusted absolute capture time were unavailable.'} Acquisition quality is not machine-evaluated, and physical correspondence is not available in this build.{manifest?.shippingLabel ? ` Tracking barcode: ${manifest.shippingLabel.trackingNumber}.` : ''}</Text></Card>
+      <Card style={styles.review}><AppIcon name={isVideo ? 'video.fill' : 'photo.fill'} size={42} tintColor={colors.teal} /><Text style={styles.reviewTitle}>{captureTitles[type]}</Text>{reviewSummary ? <View style={styles.reviewFacts}><Text style={styles.reviewFact}>{isVideo ? `Duration ${formatCaptureDuration(Math.round(reviewSummary.durationMs / 1000))}` : reviewSummary.widthPixels && reviewSummary.heightPixels ? `${reviewSummary.widthPixels} × ${reviewSummary.heightPixels} px` : 'Dimensions unavailable'}</Text><Text style={styles.reviewFact}>{formatCaptureBytes(reviewSummary.sizeBytes)}</Text><Text style={styles.reviewFact}>{manifest?.cameraObservation.flashMode ?? 'OFF'} · zoom {Math.round((manifest?.cameraObservation.zoom ?? 0) * 100)}%</Text></View> : null}<Text style={styles.reviewText}>{manifest?.attestation.mode === 'JIT_APP_CHECK' ? 'Fresh online App Check context and any available device-key proof are bound to this capture; neither proves the physical scene.' : 'Captured offline; the manifest records that fresh online attestation and trusted absolute capture time were unavailable.'} Acquisition quality is not machine-evaluated, and physical correspondence is not available in this build.{manifest?.shippingLabel ? ` Tracking barcode: ${manifest.shippingLabel.trackingNumber}.` : ''}</Text></Card>
       <Button label="Encrypt, hash and sync" icon="lock.shield.fill" onPress={upload} />
       <Button label="Discard and retake" variant="danger" onPress={discard} />
     </> : null}

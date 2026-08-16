@@ -269,8 +269,8 @@ class MerchantEvidenceApplicationService {
             key: idempotencyKey,
             requestFingerprint: (0, merchant_transaction_service_1.sha256)((0, merchant_transaction_service_1.canonicalize)({ transactionId })),
             leaseSeconds: 900,
-        }, async (operationId) => {
-            const generated = await this.reports.generate(transactionId, `merchant:${principal.apiClientId}`, { reportId: operationId });
+        }, async (operationId, fence) => {
+            const generated = await fence.runSideEffect('generate-evidence-report', () => (this.reports.generate(transactionId, `merchant:${principal.apiClientId}`, { reportId: operationId })));
             const createdAt = this.now();
             const stored = {
                 id: generated.reportId,
@@ -281,8 +281,8 @@ class MerchantEvidenceApplicationService {
                 createdAt,
             };
             const expiresAt = new Date(createdAt.getTime() + REPORT_URL_TTL_MS);
-            const downloadUrl = await this.urls.sign(generated.storagePath, expiresAt);
-            await this.audit.append({
+            const downloadUrl = await fence.runSideEffect('sign-evidence-report-url', () => this.urls.sign(generated.storagePath, expiresAt));
+            await fence.runSideEffect('audit-evidence-report-available', () => this.audit.append({
                 eventId: `report_created_${generated.reportId}`,
                 organizationId: principal.organizationId,
                 type: 'EVIDENCE_REPORT_AVAILABLE',
@@ -291,7 +291,7 @@ class MerchantEvidenceApplicationService {
                 resourceId: generated.reportId,
                 requestId,
                 metadata: { apiVersion: 'v1', transactionId, reportSha256: generated.sha256, presentationOnly: true },
-            });
+            }));
             return { report: reportDto(stored, { url: downloadUrl, expiresAt }), storagePath: generated.storagePath };
         });
         if (execution.replayed) {
@@ -319,7 +319,8 @@ class MerchantEvidenceApplicationService {
             operation: 'POST /v1/transactions/{transactionId}/shipment',
             key: idempotencyKey,
             requestFingerprint: (0, merchant_transaction_service_1.sha256)((0, merchant_transaction_service_1.canonicalize)({ transactionId, ...input })),
-        }, async () => {
+        }, async (_operationId, fence) => {
+            await fence.assertOwned();
             const records = await this.repository.listEvidence(transactionId);
             const artifacts = records.map(toMerchantEvidenceArtifactDto);
             const packing = artifacts.find((item) => item.type === 'PACKING_VIDEO' && item.workflowReady);
@@ -366,7 +367,7 @@ class MerchantEvidenceApplicationService {
                 markConsumerShipped: ['TERMS_LOCKED', 'PACKED'].includes(transaction.consumerStatus),
                 occurredAt,
             }, event);
-            await this.audit.append({
+            await fence.runSideEffect('audit-shipment-associated', () => this.audit.append({
                 eventId: `shipment_associated_${transactionId}_${(0, merchant_transaction_service_1.sha256)(idempotencyKey).slice(0, 16)}`,
                 organizationId: principal.organizationId,
                 type: 'SHIPMENT_ASSOCIATED',
@@ -375,7 +376,7 @@ class MerchantEvidenceApplicationService {
                 resourceId: shipment.id,
                 requestId,
                 metadata: { apiVersion: 'v1', transactionId, labelEvidenceMatchStatus },
-            });
+            }));
             return { shipment };
         });
         return { shipment: execution.value.shipment, replayed: execution.replayed };
@@ -388,7 +389,8 @@ class MerchantEvidenceApplicationService {
             operation: 'POST /v1/transactions/{transactionId}/returns',
             key: idempotencyKey,
             requestFingerprint: (0, merchant_transaction_service_1.sha256)((0, merchant_transaction_service_1.canonicalize)({ transactionId, reason: input.reason })),
-        }, async (operationId) => {
+        }, async (operationId, fence) => {
+            await fence.assertOwned();
             if (!transaction.sellerId || !transaction.buyerId) {
                 throw new errors_1.ApplicationError('FAILED_PRECONDITION', 'PARTICIPANTS_REQUIRED', 'A return passport requires both transaction participants to be claimed.');
             }
@@ -432,7 +434,7 @@ class MerchantEvidenceApplicationService {
                 originalEvidenceHashes,
                 occurredAt,
             }, event);
-            await this.audit.append({
+            await fence.runSideEffect('audit-return-requested', () => this.audit.append({
                 eventId: `return_requested_${returnPassportId}`,
                 organizationId: principal.organizationId,
                 type: 'RETURN_PASSPORT_REQUESTED',
@@ -441,7 +443,7 @@ class MerchantEvidenceApplicationService {
                 resourceId: returnPassportId,
                 requestId,
                 metadata: { apiVersion: 'v1', transactionId },
-            });
+            }));
             return { returnPassport };
         });
         return { returnPassport: execution.value.returnPassport, replayed: execution.replayed };
@@ -454,7 +456,8 @@ class MerchantEvidenceApplicationService {
             operation: 'POST /v1/transactions/{transactionId}/returns/{returnPassportId}/shipment',
             key: idempotencyKey,
             requestFingerprint: (0, merchant_transaction_service_1.sha256)((0, merchant_transaction_service_1.canonicalize)({ transactionId, returnPassportId, ...input })),
-        }, async () => {
+        }, async (_operationId, fence) => {
+            await fence.assertOwned();
             const current = await this.repository.findReturn(transactionId, returnPassportId);
             if (!current)
                 throw notFound('RETURN_PASSPORT_NOT_FOUND', 'The requested return passport was not found.');
@@ -504,7 +507,7 @@ class MerchantEvidenceApplicationService {
                 labelEvidenceMatchStatus,
                 occurredAt,
             }, event);
-            await this.audit.append({
+            await fence.runSideEffect('audit-return-shipped', () => this.audit.append({
                 eventId: `return_shipped_${returnPassportId}_${(0, merchant_transaction_service_1.sha256)(idempotencyKey).slice(0, 16)}`,
                 organizationId: principal.organizationId,
                 type: 'RETURN_SHIPPED',
@@ -513,7 +516,7 @@ class MerchantEvidenceApplicationService {
                 resourceId: returnPassportId,
                 requestId,
                 metadata: { apiVersion: 'v1', transactionId, labelEvidenceMatchStatus },
-            });
+            }));
             return { returnPassport };
         });
         return { returnPassport: execution.value.returnPassport, replayed: execution.replayed };
@@ -533,7 +536,8 @@ class MerchantEvidenceApplicationService {
             operation: 'POST /v1/transactions/{transactionId}/delivery',
             key: idempotencyKey,
             requestFingerprint: (0, merchant_transaction_service_1.sha256)((0, merchant_transaction_service_1.canonicalize)({ transactionId, ...input })),
-        }, async () => {
+        }, async (_operationId, fence) => {
+            await fence.assertOwned();
             const records = await this.repository.listEvidence(transactionId);
             const artifacts = records.map(toMerchantEvidenceArtifactDto);
             const arrival = artifacts.find((item) => item.type === 'DELIVERY_PHOTO' && item.workflowReady);
@@ -570,7 +574,7 @@ class MerchantEvidenceApplicationService {
                 labelEvidenceMatchStatus,
                 occurredAt,
             }, event);
-            await this.audit.append({
+            await fence.runSideEffect('audit-delivery-associated', () => this.audit.append({
                 eventId: `delivery_associated_${transactionId}_${(0, merchant_transaction_service_1.sha256)(idempotencyKey).slice(0, 16)}`,
                 organizationId: principal.organizationId,
                 type: 'DELIVERY_ASSOCIATED',
@@ -579,7 +583,7 @@ class MerchantEvidenceApplicationService {
                 resourceId: delivery.id,
                 requestId,
                 metadata: { apiVersion: 'v1', transactionId, labelEvidenceMatchStatus },
-            });
+            }));
             return { delivery };
         });
         return { delivery: execution.value.delivery, replayed: execution.replayed };

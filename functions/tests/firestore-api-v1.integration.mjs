@@ -532,3 +532,40 @@ test('Firestore idempotency fencing keeps a live owner and rejects a stale compl
   assert.equal(reclaimed.replayed, true);
   assert.equal(reclaimed.value.reportId, firstStarted);
 });
+
+test('Firestore idempotency fence blocks a stale worker side effect after lease reclaim', { skip: !emulatorAvailable }, async () => {
+  let clock = 1_000;
+  const store = new FirestoreIdempotencyStore(firestore, 2, () => clock);
+  const context = {
+    principalId: 'org-integration-a:client-integration-a',
+    operation: 'POST /v1/transactions/{transactionId}/reports',
+    key: 'stale-side-effect-key',
+    requestFingerprint: sha256('stale-side-effect'),
+    leaseSeconds: 2,
+  };
+  let releaseFirst;
+  let firstEntered = false;
+  const sideEffects = [];
+  const first = store.execute(context, async (operationId, fence) => {
+    firstEntered = true;
+    await new Promise((resolve) => { releaseFirst = resolve; });
+    await fence.runSideEffect('external-report', async () => {
+      sideEffects.push('stale');
+      return 'stale';
+    });
+    return { reportId: operationId };
+  });
+  while (!firstEntered) await new Promise((resolve) => setTimeout(resolve, 10));
+  clock = 10_000;
+  const reclaimed = await store.execute(context, async (operationId, fence) => {
+    await fence.runSideEffect('external-report', async () => {
+      sideEffects.push(operationId);
+      return operationId;
+    });
+    return { reportId: operationId };
+  });
+  releaseFirst();
+  await assert.rejects(first, (error) => error.code === 'IDEMPOTENCY_LEASE_LOST');
+  assert.equal(reclaimed.replayed, false);
+  assert.deepEqual(sideEffects, [reclaimed.operationId]);
+});
