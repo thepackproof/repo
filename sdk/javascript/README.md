@@ -1,8 +1,8 @@
-# PackProof Connect JavaScript SDK
+# PackProof API JavaScript SDK
 
-Server-side helper for PackProof Connect v1 and the legacy `/api/connect/orders` route.
+Server-side helper for PackProof API v1 and the legacy `/api/connect/orders` route. Technical identifiers still use Connect (`@packproof/connect`, `PackProofConnect`, `/v1/connect/sessions`); the product name is PackProof API.
 
-New partners should use merchant credentials (`pp_sandbox_` / `pp_live_`) bound to a Connect integration. See [`docs/PACKPROOF_CONNECT.md`](../../docs/PACKPROOF_CONNECT.md) and the copyable server in [`examples/partner-server.mjs`](examples/partner-server.mjs).
+New partners should use merchant credentials (`pp_sandbox_` / `pp_live_`) bound to a Connect integration. See [`docs/PACKPROOF_API.md`](../../docs/PACKPROOF_API.md) and the copyable server in [`examples/partner-server.mjs`](examples/partner-server.mjs).
 
 ```js
 import { PackProofConnect, parsePackProofWebhook } from '@packproof/connect';

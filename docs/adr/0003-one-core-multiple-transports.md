@@ -3,6 +3,8 @@
 - Status: Accepted
 - Date: 2026-08-11
 
+Product-name note: PackProof Connect is now the user-facing product **PackProof API**. Technical identifiers still use Connect. The decision below is unchanged.
+
 ## Context
 
 Consumer callable functions, PackProof Connect and `/v1` currently expose overlapping transaction and evidence concepts. Expanding each independently would produce incompatible authorization, idempotency, state and audit behavior.

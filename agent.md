@@ -114,7 +114,7 @@ Do not delete future-scope work merely to pass a gate. Preserve it behind an exp
 Record these decisions before freezing the first release candidate:
 
 1. **Pro at initial launch:** Recommended default is disabled with every Pro and pricing claim removed. If enabled, purchase, restore, renewal, cancellation, expiration, transfer, localized price, webhook authorization, and Firebase UID binding become release blockers.
-2. **General webhooks at initial launch:** If advertised, implement the complete dispatcher described in Gate 6. Otherwise, confine callback claims to the exact Connect behavior that is tested.
+2. **General webhooks at initial launch:** If advertised, implement the complete dispatcher described in Gate 6. Otherwise, confine callback claims to the exact PackProof API behavior that is tested.
 3. **Live auth providers:** Recommended baseline is Google sign-in only. Any additional provider must pass provider approval, redirect, deletion, account-linking, and non-admin-user tests.
 
 ## 5. Evidence vocabulary

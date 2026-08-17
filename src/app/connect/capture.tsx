@@ -36,7 +36,7 @@ export default function ConnectCaptureHandoff() {
   if (loading || (valid && !user)) return <LoadingScreen />;
   return <SafeAreaView style={styles.safe}>
     <View style={styles.container}>
-      <ScreenTitle eyebrow="PackProof Connect" title="Document this marketplace order" subtitle="The order context will be locked to a native PackProof evidence capture and a structured finalization record will be returned to the originating platform." />
+      <ScreenTitle eyebrow="PackProof API" title="Document this marketplace order" subtitle="The order context will be locked to a native PackProof evidence capture and a structured finalization record will be returned to the originating platform." />
       <Card style={styles.card}>
         <AppIcon name="link.badge.plus" size={42} tintColor={colors.teal} />
         <Text style={styles.title}>{valid ? 'Secure order handoff ready' : 'Invalid handoff link'}</Text>

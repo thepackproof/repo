@@ -403,7 +403,7 @@ export function parseReturnPassportId(value: unknown): string {
 
 export function parseConnectSessionId(value: unknown): string {
   if (typeof value !== 'string' || !/^[a-f0-9]{64}$/.test(value)) {
-    throw new InputValidationError([{ field: 'sessionId', code: 'INVALID_ID', message: 'sessionId is not a valid PackProof Connect session identifier.' }]);
+    throw new InputValidationError([{ field: 'sessionId', code: 'INVALID_ID', message: 'sessionId is not a valid PackProof API session identifier.' }]);
   }
   return value;
 }

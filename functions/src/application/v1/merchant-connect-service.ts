@@ -52,14 +52,14 @@ export function evaluateConnectSessionCancel(
     throw new ApplicationError(
       'CONFLICT',
       'CONNECT_SESSION_NOT_CANCELLABLE',
-      'This PackProof Connect session was already redeemed and cannot be cancelled.',
+      'This PackProof API session was already redeemed and cannot be cancelled.',
     );
   }
   if (session.status !== 'PENDING_REDEMPTION') {
     throw new ApplicationError(
       'FAILED_PRECONDITION',
       'CONNECT_SESSION_NOT_CANCELLABLE',
-      'This PackProof Connect session cannot be cancelled in its current state.',
+      'This PackProof API session cannot be cancelled in its current state.',
     );
   }
   const event: ApplicationEvent = {
@@ -109,7 +109,7 @@ export class MerchantConnectApplicationService {
       throw new ApplicationError(
         'FORBIDDEN',
         'INTEGRATION_NOT_BOUND',
-        'This API credential is not bound to an active PackProof Connect integration.',
+        'This API credential is not bound to an active PackProof API integration.',
       );
     }
     await this.callbacks.validate(input.callbackUrl, integration.callbackOrigins);

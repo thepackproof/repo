@@ -1,6 +1,6 @@
 # PackProof shared application services v1
 
-Status: active source/emulator migration slice on 2026-08-11. Selected merchant REST, consumer callable and PackProof Connect operations now invoke transport-neutral application services. This is not a deployed-environment or device claim.
+Status: active source/emulator migration slice on 2026-08-11. Selected merchant REST, consumer callable and PackProof API operations now invoke transport-neutral application services. This is not a deployed-environment or device claim.
 
 ## 1. Architectural result
 

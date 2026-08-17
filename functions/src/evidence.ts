@@ -511,7 +511,7 @@ export async function generateEvidencePacket(transactionId: string, generatedBy:
   if (data.conditionNotes) addLine(`Condition notes: ${data.conditionNotes}`);
   for (const identifier of data.identifiers ?? []) addLine(`${identifier.label}: ${identifier.value}`);
   addLine(`Sale type: ${data.terms.saleType}; returns: ${data.terms.returns}; return window: ${data.terms.returnWindowDays} days`);
-  if (data.source) addLine(`PackProof Connect: ${data.source.platform}; external order: ${data.source.externalOrderId}`);
+  if (data.source) addLine(`PackProof API: ${data.source.platform}; external order: ${data.source.externalOrderId}`);
   y -= 8;
 
   const observations = groupPackageSealObservations(evidence);

@@ -19,7 +19,7 @@ export const beginCaptureSession = onCall({ enforceAppCheck: true, consumeAppChe
     }
   }
   if (input.connectSessionId && data.source?.connectSessionId !== input.connectSessionId) {
-    throw new HttpsError('permission-denied', 'PackProof Connect session mismatch.');
+    throw new HttpsError('permission-denied', 'PackProof API session mismatch.');
   }
   if (input.requestedEvidenceCount > 1) {
     if (input.requestedEvidenceCount !== 15 || input.captureProfileId !== 'PP-PHYSICAL-MATTE-V1' || !input.captureGroupId) {

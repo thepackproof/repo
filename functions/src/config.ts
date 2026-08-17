@@ -16,7 +16,7 @@ export const storage = getStorage();
 
 export const connectLinkBaseUrl = defineString('CONNECT_LINK_BASE_URL', {
   default: 'https://packproof.link',
-  description: 'Verified App Link domain used for PackProof Connect capture handoff.',
+  description: 'Verified App Link domain used for PackProof API capture handoff.',
 });
 export const publicAppUrl = defineString('PUBLIC_APP_URL', {
   default: 'https://YOUR_PROJECT.web.app',

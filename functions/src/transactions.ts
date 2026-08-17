@@ -313,7 +313,7 @@ export const requestEvidenceUpload = onCall(uploadCallOptions, async (request) =
   }
 
   if (input.connectSessionId && data.source?.connectSessionId !== input.connectSessionId) {
-    throw new HttpsError('permission-denied', 'PackProof Connect session mismatch.');
+    throw new HttpsError('permission-denied', 'PackProof API session mismatch.');
   }
 
   const isPhysicalFrame = input.evidenceType === 'PHYSICAL_REFERENCE_FRAME' || input.evidenceType === 'PHYSICAL_VERIFICATION_FRAME';

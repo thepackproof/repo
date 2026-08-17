@@ -1,5 +1,5 @@
 /**
- * PackProof Connect partner reference — Node 18+.
+ * PackProof API partner reference — Node 18+.
  *
  * This is a copyable starting point, not a production service. Replace the
  * environment values, persist session IDs against your order records, download
@@ -99,5 +99,5 @@ const server = createServer(async (req, res) => {
 });
 
 server.listen(8787, '127.0.0.1', () => {
-  process.stdout.write('PackProof Connect partner reference listening on http://127.0.0.1:8787\n');
+  process.stdout.write('PackProof API partner reference listening on http://127.0.0.1:8787\n');
 });
