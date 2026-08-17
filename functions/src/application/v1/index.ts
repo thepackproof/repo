@@ -14,3 +14,8 @@ export * from './merchant-evidence-types';
 export * from './merchant-evidence-ports';
 export * from './merchant-evidence-service';
 export * from './merchant-connect-service';
+export * from './enterprise-ports';
+export * from './enterprise-fulfillment-service';
+export * from './enterprise-console-service';
+export * from './enterprise-wms-service';
+export * from './edge-authentication';

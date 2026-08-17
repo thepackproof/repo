@@ -10,6 +10,7 @@ const pdf_lib_1 = require("pdf-lib");
 const config_1 = require("./config");
 const evidence_format_1 = require("./evidence-format");
 const helpers_1 = require("./helpers");
+const evidence_finalization_1 = require("./evidence-finalization");
 const package_seal_protocol_1 = require("./package-seal-protocol");
 const validation_1 = require("./validation");
 const MAX_EVIDENCE_BYTES = 600 * 1024 * 1024;
@@ -30,44 +31,20 @@ async function readPrefix(file, length = 32) {
     });
     return Buffer.concat(chunks);
 }
-function assuranceFor(input) {
-    const byteMismatch = input.clientHashMatched === false || input.clientSizeMatched === false || !input.contentTypeMatched;
+function grantFieldsFromPending(pending) {
+    const mode = pending?.attestationSnapshot?.mode;
     return {
-        acquisitionQuality: {
-            status: input.clientManifest?.acquisitionQuality?.status ?? 'NOT_EVALUATED',
-            reasonCodes: input.clientManifest?.acquisitionQuality?.reasonCodes ?? ['NO_CALIBRATED_QUALITY_GATE'],
-        },
-        appDeviceContext: {
-            status: input.attestationStatus,
-            reasonCodes: [
-                ...(input.attestationStatus === 'OFFLINE_UNATTESTED'
-                    ? input.clientManifest?.attestation?.reasonCodes ?? ['NO_FRESH_ONLINE_ATTESTATION']
-                    : input.attestationStatus === 'ONLINE_APP_CHECK_ONLY'
-                        ? ['DEVICE_KEY_PROOF_NOT_AVAILABLE']
-                        : []),
-                ...(input.clientTimeConsistencyStatus === 'INCONSISTENT' ? ['CLIENT_WALL_MONOTONIC_DURATION_MISMATCH'] : []),
-            ],
-        },
-        byteIntegrity: {
-            status: byteMismatch ? 'MISMATCH' : input.clientHashMatched === true && input.clientSizeMatched === true ? 'MATCHED' : 'SERVER_HASH_ONLY',
-            reasonCodes: [
-                ...(input.clientHashMatched === false ? ['CLIENT_SERVER_HASH_MISMATCH'] : []),
-                ...(input.clientSizeMatched === false ? ['CLIENT_SERVER_SIZE_MISMATCH'] : []),
-                ...(!input.contentTypeMatched ? ['DECLARED_MEDIA_TYPE_MISMATCH'] : []),
-            ],
-        },
-        physicalCorrespondence: {
-            status: 'NOT_AVAILABLE',
-            reasonCodes: ['NO_VALIDATED_PHYSICAL_MATCHER_ENABLED'],
-        },
-        carrierContext: {
-            status: input.carrierStatus,
-            reasonCodes: input.carrierStatus === 'MISMATCH' ? ['OBSERVED_TRACKING_DOES_NOT_MATCH_EXPECTED_CONTEXT'] : [],
-        },
-        businessLegalRelevance: {
-            status: 'REVIEW_REQUIRED',
-            reasonCodes: ['EXTERNAL_POLICY_AND_HUMAN_INTERPRETATION_REQUIRED'],
-        },
+        acquisitionClass: (0, evidence_finalization_1.acquisitionClassOf)(pending?.acquisitionClass),
+        edgeAgentId: typeof pending?.edgeAgentId === 'string' ? pending.edgeAgentId : null,
+        clientManifest: pending?.clientManifest && typeof pending.clientManifest === 'object'
+            ? pending.clientManifest
+            : null,
+        attestationSnapshot: mode === 'ENTERPRISE_EDGE' || mode === 'JIT_APP_CHECK' || mode === 'OFFLINE_UNATTESTED'
+            ? {
+                mode,
+                deviceKeySignatureValid: pending?.attestationSnapshot?.deviceKeySignatureValid === true,
+            }
+            : null,
     };
 }
 function timestampIso(value) {
@@ -103,6 +80,58 @@ function normalizedAppDeviceContext(value) {
         maxEvidenceCount: typeof value.maxEvidenceCount === 'number' ? value.maxEvidenceCount : null,
         captureProfileId: typeof value.captureProfileId === 'string' ? value.captureProfileId : null,
         captureGroupId: typeof value.captureGroupId === 'string' ? value.captureGroupId : null,
+    };
+}
+function pendingDocumentToGrant(input) {
+    const pending = input.pending ?? {};
+    const fields = grantFieldsFromPending(pending);
+    const mode = input.appDeviceContext?.mode;
+    return {
+        transactionId: input.transactionId,
+        uploaderId: input.uploaderId,
+        uploadId: input.uploadId,
+        clientEvidenceId: typeof pending.clientEvidenceId === 'string' ? pending.clientEvidenceId : null,
+        evidenceType: String(pending.evidenceType ?? ''),
+        contentType: String(pending.contentType ?? ''),
+        originalName: String(pending.originalName ?? ''),
+        clientSha256: typeof pending.clientSha256 === 'string' ? pending.clientSha256 : null,
+        clientSizeBytes: typeof pending.clientSizeBytes === 'number' ? pending.clientSizeBytes : null,
+        storagePath: input.storagePath,
+        captureSessionId: typeof pending.captureSessionId === 'string' ? pending.captureSessionId : null,
+        returnPassportId: typeof pending.returnPassportId === 'string' ? pending.returnPassportId : null,
+        connectSessionId: typeof pending.connectSessionId === 'string' ? pending.connectSessionId : null,
+        clientManifest: fields.clientManifest,
+        attestationSnapshot: mode === 'ENTERPRISE_EDGE' || mode === 'JIT_APP_CHECK' || mode === 'OFFLINE_UNATTESTED'
+            ? {
+                mode,
+                deviceKeySignatureValid: input.appDeviceContext?.deviceKeySignatureValid ?? null,
+                deviceKeyProof: input.appDeviceContext?.deviceKeyProof ? {
+                    hardwareBacked: input.appDeviceContext.deviceKeyProof.hardwareBackedSignal,
+                } : null,
+                captureSessionId: input.appDeviceContext?.captureSessionId ?? null,
+                nonce: input.appDeviceContext?.nonce ?? null,
+                appId: input.appDeviceContext?.appId ?? null,
+                issuedAt: input.appDeviceContext?.issuedAt ?? null,
+                captureWindowEndsAt: input.appDeviceContext?.captureWindowEndsAt ?? null,
+                tokenReplayDetected: input.appDeviceContext?.tokenReplayDetected ?? null,
+                reasonCodes: input.appDeviceContext?.reasonCodes ?? [],
+                sessionMode: input.appDeviceContext?.sessionMode ?? null,
+                maxEvidenceCount: input.appDeviceContext?.maxEvidenceCount ?? null,
+                captureProfileId: input.appDeviceContext?.captureProfileId ?? null,
+                captureGroupId: input.appDeviceContext?.captureGroupId ?? null,
+            }
+            : fields.attestationSnapshot,
+        carrierContext: pending.carrierContext && typeof pending.carrierContext === 'object'
+            ? pending.carrierContext
+            : null,
+        requestFingerprint: typeof pending.requestFingerprint === 'string' ? pending.requestFingerprint : null,
+        acquisitionClass: fields.acquisitionClass,
+        edgeAgentId: fields.edgeAgentId,
+        organizationId: typeof pending.organizationId === 'string' ? pending.organizationId : null,
+        fulfillmentSessionId: typeof pending.fulfillmentSessionId === 'string' ? pending.fulfillmentSessionId : null,
+        ingressNetwork: pending.ingressNetwork && typeof pending.ingressNetwork === 'object'
+            ? pending.ingressNetwork
+            : null,
     };
 }
 exports.onEvidenceUploaded = (0, storage_1.onObjectFinalized)({ timeoutSeconds: 540, memory: '1GiB', secrets: [config_1.manifestSigningSecret] }, async (event) => {
@@ -146,48 +175,49 @@ exports.onEvidenceUploaded = (0, storage_1.onObjectFinalized)({ timeoutSeconds: 
         return;
     }
     const { data } = await (0, helpers_1.getTransaction)(transactionId);
-    if (!data.participantIds.includes(uploaderId)) {
+    const pendingGrant = grantFieldsFromPending(pending);
+    if (!(0, evidence_finalization_1.uploaderAuthorizedForGrant)({
+        participantIds: data.participantIds,
+        uploaderId,
+        pending: pendingGrant,
+    })) {
         await file.delete({ ignoreNotFound: true });
         await pendingRef.delete();
         return;
     }
     const digest = await sha256File(file);
     const detectedContentType = (0, evidence_format_1.detectSupportedMediaType)(await readPrefix(file));
-    const contentTypeMatched = detectedContentType === contentType;
-    const clientSha256 = typeof pending?.clientSha256 === 'string' ? pending.clientSha256 : null;
-    const clientHashMatched = clientSha256 ? clientSha256 === digest : null;
-    const clientSizeBytes = typeof pending?.clientSizeBytes === 'number' ? pending.clientSizeBytes : null;
-    const clientSizeMatched = clientSizeBytes !== null ? clientSizeBytes === size : null;
-    const evidenceType = pending.evidenceType;
-    const attestationStatus = pending?.attestationSnapshot?.mode === 'JIT_APP_CHECK'
-        ? pending?.attestationSnapshot?.deviceKeySignatureValid === true ? 'ONLINE_APP_CHECK_AND_KEY_POSSESSION' : 'ONLINE_APP_CHECK_ONLY'
-        : pending?.clientManifest
-            ? 'OFFLINE_UNATTESTED'
-            : 'NOT_PROVIDED';
-    const carrierTrackingMatchStatus = pending?.carrierContext?.matchStatus ?? 'NOT_SCANNED';
-    const clientWallDurationMs = pending?.clientManifest
-        ? Date.parse(String(pending.clientManifest.captureFinishedAt)) - Date.parse(String(pending.clientManifest.captureStartedAt))
-        : null;
-    const clientMonotonicElapsedMs = typeof pending?.clientManifest?.time?.monotonicElapsedMs === 'number'
-        ? pending.clientManifest.time.monotonicElapsedMs
-        : null;
-    const clientTimeConsistencyStatus = clientWallDurationMs === null
-        ? 'NOT_PROVIDED'
-        : clientMonotonicElapsedMs === null
-            ? 'NO_MONOTONIC_REFERENCE'
-            : Math.abs(clientWallDurationMs - clientMonotonicElapsedMs) <= 5_000
-                ? 'CONSISTENT_WITHIN_5_SECONDS'
-                : 'INCONSISTENT';
-    const assurance = assuranceFor({
-        clientManifest: pending?.clientManifest,
-        attestationStatus,
-        clientHashMatched,
-        clientSizeMatched,
-        contentTypeMatched,
-        carrierStatus: carrierTrackingMatchStatus,
-        clientTimeConsistencyStatus,
+    const grant = pendingDocumentToGrant({
+        pending,
+        transactionId,
+        uploaderId,
+        uploadId,
+        storagePath: path,
+        appDeviceContext: normalizedAppDeviceContext(pending?.attestationSnapshot),
     });
-    const appDeviceContext = normalizedAppDeviceContext(pending?.attestationSnapshot);
+    const finalized = (0, evidence_finalization_1.finalizeReceivedEvidence)({
+        pending: grant,
+        object: {
+            bucket: object.bucket,
+            storagePath: path,
+            generation: object.generation != null ? String(object.generation) : null,
+            timeCreated: typeof object.timeCreated === 'string' ? object.timeCreated : new Date().toISOString(),
+            size,
+            contentType,
+        },
+        uploaderRole: (0, evidence_finalization_1.uploaderRoleForGrant)({
+            sellerId: data.sellerId,
+            buyerId: data.buyerId ?? null,
+            uploaderId,
+            pending: pendingGrant,
+        }),
+        signer: (0, evidence_finalization_1.hmacManifestSigner)(config_1.manifestSigningSecret.value(), config_1.manifestSigningKeyId.value()),
+        digest,
+        detectedContentType,
+    });
+    const { clientHashMatched, clientSizeMatched, contentTypeMatched, attestationStatus, assurance, carrierTrackingMatchStatus, clientTimeConsistencyStatus, integrityAccepted, manifestJson, manifestSha256, evidenceBundleSha256, manifestMacBase64url, } = finalized;
+    const evidenceType = String(pending.evidenceType);
+    const clientSha256 = typeof pending?.clientSha256 === 'string' ? pending.clientSha256 : null;
     // Remove any client-upload download token and force private/no-store object
     // metadata. Participant reads remain available through authenticated Storage
     // rules; the app obtains only short-lived signed links from a callable.
@@ -196,72 +226,6 @@ exports.onEvidenceUploaded = (0, storage_1.onObjectFinalized)({ timeoutSeconds: 
         contentDisposition: 'attachment',
         metadata: { transactionId, uploaderId, uploadId, accessClass: 'TRANSACTION_PARTICIPANTS' },
     });
-    const manifest = {
-        schemaVersion: evidence_format_1.EVIDENCE_MANIFEST_SCHEMA_VERSION,
-        format: {
-            canonicalizationProfile: evidence_format_1.CANONICALIZATION_PROFILE,
-            canonicalizationStandard: 'RFC8785_JCS',
-            bundleBindingProfile: evidence_format_1.BUNDLE_BINDING_PROFILE,
-        },
-        evidence: {
-            uploadId,
-            clientEvidenceId: pending?.clientEvidenceId ?? null,
-            transactionId,
-            uploaderId,
-            uploaderRole: data.sellerId === uploaderId ? 'SELLER' : 'BUYER',
-            evidenceType,
-            returnPassportId: pending?.returnPassportId ?? null,
-            connectSessionId: pending?.connectSessionId ?? null,
-            originalName: pending.originalName,
-            declaredContentType: contentType,
-            detectedContentType,
-            sizeBytes: size,
-            sha256: digest,
-            storageGeneration: object.generation ?? null,
-        },
-        capture: pending?.clientManifest ?? null,
-        appDeviceContext,
-        carrierContext: pending?.carrierContext ?? null,
-        serverReceipt: {
-            bucket: object.bucket,
-            storagePath: path,
-            storageGeneration: object.generation ?? null,
-            receivedAt: object.timeCreated ?? new Date().toISOString(),
-            ingressNetwork: pending?.ingressNetwork ?? null,
-        },
-        verification: {
-            serverHashAlgorithm: 'SHA-256',
-            clientSha256,
-            clientHashMatched,
-            clientSizeBytes,
-            clientSizeMatched,
-            declaredContentType: contentType,
-            detectedContentType,
-            contentTypeMatched,
-            attestationStatus,
-            runtimeIntegrityScope: pending?.clientManifest?.runtimeIntegrity?.integrityScope ?? null,
-            clientWallDurationMs,
-            clientMonotonicElapsedMs,
-            clientTimeConsistencyStatus,
-        },
-        assurance,
-        governance: {
-            accessClass: 'TRANSACTION_PARTICIPANTS',
-            retentionPolicyId: 'DEFAULT_UNCONFIGURED',
-            legalHoldStatus: 'NOT_EVALUATED',
-        },
-        authentication: {
-            type: 'SERVICE_MAC',
-            algorithm: 'HMAC-SHA256',
-            keyId: config_1.manifestSigningKeyId.value(),
-            verificationScope: 'PACKPROOF_SERVICE_ONLY',
-            publicVerificationAvailable: false,
-        },
-    };
-    const manifestJson = (0, evidence_format_1.canonicalizeJson)(manifest);
-    const manifestSha256 = (0, evidence_format_1.sha256Hex)(manifestJson);
-    const evidenceBundleSha256 = (0, evidence_format_1.createEvidenceBundleSha256)(digest, manifestSha256);
-    const manifestMacBase64url = (0, node_crypto_1.createHmac)('sha256', config_1.manifestSigningSecret.value()).update(manifestJson).digest('base64url');
     const manifestPath = `manifests/${transactionId}/${uploadId}.json`;
     await bucket.file(manifestPath).save(Buffer.from(manifestJson), {
         contentType: 'application/json',
@@ -284,7 +248,12 @@ exports.onEvidenceUploaded = (0, storage_1.onObjectFinalized)({ timeoutSeconds: 
         id: uploadId,
         transactionId,
         uploaderId,
-        role: data.sellerId === uploaderId ? 'SELLER' : 'BUYER',
+        role: (0, evidence_finalization_1.uploaderRoleForGrant)({
+            sellerId: data.sellerId,
+            buyerId: data.buyerId ?? null,
+            uploaderId,
+            pending: pendingGrant,
+        }),
         type: evidenceType,
         storagePath: path,
         manifestPath,
@@ -320,6 +289,10 @@ exports.onEvidenceUploaded = (0, storage_1.onObjectFinalized)({ timeoutSeconds: 
         captureSessionId: pending?.captureSessionId ?? null,
         returnPassportId: pending?.returnPassportId ?? null,
         connectSessionId: pending?.connectSessionId ?? null,
+        acquisitionClass: pendingGrant.acquisitionClass,
+        edgeAgentId: pendingGrant.edgeAgentId,
+        fulfillmentSessionId: typeof pending?.fulfillmentSessionId === 'string' ? pending.fulfillmentSessionId : null,
+        organizationId: typeof pending?.organizationId === 'string' ? pending.organizationId : null,
         captureGroupId: pending?.clientManifest?.physicalCaptureProfile?.captureGroupId ?? null,
         physicalRegionId: pending?.clientManifest?.physicalCaptureProfile?.observedRegion ?? null,
         captureProfileId: pending?.clientManifest?.physicalCaptureProfile?.profileId ?? null,
@@ -337,7 +310,6 @@ exports.onEvidenceUploaded = (0, storage_1.onObjectFinalized)({ timeoutSeconds: 
                 : 'UNREVIEWED',
     };
     const returnPassportId = pending?.returnPassportId;
-    const integrityAccepted = clientHashMatched !== false && clientSizeMatched !== false && contentTypeMatched;
     const summary = integrityAccepted
         ? `${evidenceType.replaceAll('_', ' ').toLowerCase()} was server-hashed and sealed into a service-authenticated manifest.`
         : `${evidenceType.replaceAll('_', ' ').toLowerCase()} was preserved but quarantined because an integrity or media-type check failed.`;
@@ -360,7 +332,11 @@ exports.onEvidenceUploaded = (0, storage_1.onObjectFinalized)({ timeoutSeconds: 
         const freshPendingData = freshPending.data();
         const freshTransactionData = freshTransaction.data();
         if (freshPendingData?.storagePath !== path || freshPendingData?.uploaderId !== uploaderId
-            || !freshTransactionData?.participantIds?.includes(uploaderId)) {
+            || !(0, evidence_finalization_1.uploaderAuthorizedForGrant)({
+                participantIds: freshTransactionData?.participantIds ?? [],
+                uploaderId,
+                pending: grantFieldsFromPending(freshPendingData),
+            })) {
             throw new Error('Evidence finalization prerequisites no longer match the uploaded object.');
         }
         tx.create(evidenceRef, evidenceData);
@@ -368,7 +344,7 @@ exports.onEvidenceUploaded = (0, storage_1.onObjectFinalized)({ timeoutSeconds: 
         if (captureSessionRef) {
             tx.set(captureSessionRef, { finalizedAt: firestore_1.FieldValue.serverTimestamp(), evidenceId: uploadId }, { merge: true });
         }
-        if (integrityAccepted && evidenceType === 'PACKING_VIDEO' && freshTransactionData?.status === 'TERMS_LOCKED') {
+        if (integrityAccepted && (0, package_seal_protocol_1.isOutboundPackingEvidenceType)(evidenceType) && freshTransactionData?.status === 'TERMS_LOCKED') {
             tx.update(transactionRef, { status: 'PACKED', updatedAt: firestore_1.FieldValue.serverTimestamp() });
         }
         else if (integrityAccepted && evidenceType === 'UNBOXING_VIDEO' && freshTransactionData?.status === 'SHIPPED') {

@@ -7,3 +7,5 @@ export * from './fulfillment';
 export * from './platform';
 export * from './contracts';
 export * from './compatibility';
+export * from './enterprise';
+export * from './edge-protocol';

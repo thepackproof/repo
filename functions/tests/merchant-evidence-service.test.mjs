@@ -169,6 +169,35 @@ test('merchant evidence service isolates tenants and never emits a claims verdic
   assert.equal(shipment.shipment.labelEvidenceMatchStatus, 'NOT_SCANNED');
 });
 
+test('merchant shipment and review accept station packing and seal types without collapsing assurance', async () => {
+  const repository = new MemoryEvidenceRepo();
+  const transactionId = 'txn_stationstationstationstationstaa';
+  repository.seedTransaction({
+    id: transactionId, organizationId: 'org-a', integrationId: null,
+    merchantReference: 'order-station', title: 'Camera', description: '', category: null, status: 'CREATED',
+    consumerStatus: 'PACKED', amount: { currency: 'USD', minorUnits: 1000 }, terms: {
+      saleType: 'SHIPPED', shippingResponsibility: 'SELLER', returns: 'PLATFORM_POLICY', returnWindowDays: 0, customTerms: '',
+    }, shipment: null, delivery: null, sellerId: 'seller-1', buyerId: 'buyer-1',
+    participantIds: ['seller-1', 'buyer-1'], createdAt: now, updatedAt: now,
+  });
+  repository.seedEvidence({ ...finalized('STATION_PACKING_VIDEO', 'station-pack'), transactionId });
+  repository.seedEvidence({ ...finalized('STATION_SEAL_REFERENCE', 'station-seal'), transactionId });
+  const service = new MerchantEvidenceApplicationService(
+    repository, new MemoryIdempotency(), { append: async () => undefined }, new MerchantAuthorizationPolicy(),
+    { generate: async () => ({ reportId: 'report_2', storagePath: 'reports/y.pdf', sha256: 'd'.repeat(64), evidenceCount: 2 }) },
+    { sign: async () => 'https://files.example/y.pdf' },
+    { environment: 'sandbox' }, () => now,
+  );
+  const review = await service.getReviewPackage(orgA, transactionId);
+  assert.equal(review.protocolCompleteness.sellerPackingVideo, 'PRESENT');
+  assert.equal(review.protocolCompleteness.sellerSealReference, 'PRESENT');
+  const shipment = await service.associateShipment(orgA, transactionId, {
+    carrier: 'UPS', trackingNumber: '1Z999AA10123456784',
+  }, 'ship-station', 'req-station');
+  assert.equal(shipment.shipment.packingEvidenceId, 'station-pack');
+  assert.equal(shipment.shipment.sealEvidenceId, 'station-seal');
+});
+
 test('shipment association fails closed without packing and seal evidence', async () => {
   const repository = new MemoryEvidenceRepo();
   repository.seedTransaction({

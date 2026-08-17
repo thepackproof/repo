@@ -7,6 +7,9 @@ This directory records the controlled migration of the current PackProof 0.9.5.0
 ## Section 1 artifacts
 
 - [Architecture contract](ARCHITECTURE_CONTRACT.md) - mandatory dependency, security, evidence, API, provenance and claim boundaries.
+- [PackProof Enterprise architecture contract v1](ENTERPRISE_ARCHITECTURE_CONTRACT_V1.md) - Enterprise as a second acquisition surface around the same evidence core; Edge cannot finalize evidence.
+- [PackProof Enterprise domain v1](ENTERPRISE_DOMAIN_V1.md) - parallel warehouse catalog, fulfillment-session state machine, versioned policy, and Edge protocol.
+- [PackProof Enterprise product note](../PACKPROOF_ENTERPRISE.md) - product definition and current activation limits.
 - [Baseline evidence](BASELINE_2026-08-11.md) - exact local source/emulator results and known open risks for the uncommitted 0.3.0 working tree.
 - [Migration map](MIGRATION_MAP.md) - current modules, current coupling and their target architectural destinations.
 - [Checkpoint plan](CHECKPOINT_PLAN.md) - historical disposition of the now-resolved uncommitted-baseline problem.

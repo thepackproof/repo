@@ -641,8 +641,8 @@ exports.submitShipping = (0, https_1.onCall)(callOptions, async (request) => {
     const input = validation_1.shippingSchema.parse(request.data);
     const { ref, data } = await (0, helpers_1.getTransaction)(input.transactionId);
     (0, helpers_1.assertSeller)(data, uid);
-    const packingVideos = await ref.collection('evidence').where('type', '==', 'PACKING_VIDEO').get();
-    const sealPhotos = await ref.collection('evidence').where('type', '==', 'SHIPPING_LABEL').get();
+    const packingVideos = await ref.collection('evidence').where('type', 'in', [...package_seal_protocol_1.outboundPackingEvidenceTypes]).get();
+    const sealPhotos = await ref.collection('evidence').where('type', 'in', [...package_seal_protocol_1.outboundSealEvidenceTypes]).get();
     const packingVideo = packingVideos.docs.find((item) => (0, package_seal_protocol_1.evidenceReadyForWorkflow)(item.data()));
     const sealPhoto = sealPhotos.docs.find((item) => (0, package_seal_protocol_1.evidenceReadyForWorkflow)(item.data()));
     const shipmentDecision = (0, package_seal_protocol_1.shipmentEvidenceDecision)({ packingReady: Boolean(packingVideo), sealReady: Boolean(sealPhoto) });

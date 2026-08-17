@@ -1,4 +1,4 @@
-import { HUMAN_REVIEW_DISCLAIMER, evidenceReadyForWorkflow, shipmentEvidenceDecision, SHIPMENT_PRECONDITION_MESSAGES } from '../../package-seal-protocol';
+import { HUMAN_REVIEW_DISCLAIMER, evidenceReadyForWorkflow, shipmentEvidenceDecision, SHIPMENT_PRECONDITION_MESSAGES, isOutboundPackingEvidenceType, isOutboundSealEvidenceType, outboundPackingEvidenceTypes, outboundSealEvidenceTypes } from '../../package-seal-protocol';
 import type { AssuranceAssessment } from '../../domain/v1/evidence';
 import { ApplicationError } from './errors';
 import type { ApplicationEvent } from './events';
@@ -132,7 +132,12 @@ function presence(artifacts: readonly MerchantEvidenceArtifactDto[], types: read
 }
 
 function documentation(artifacts: readonly MerchantEvidenceArtifactDto[], transaction: AccessibleMerchantTransaction, returns: readonly MerchantReturnPassportDto[], timeline: readonly MerchantTimelineEventDto[]): ReviewDocumentationEntry[] {
-  const packing = artifacts.filter((item) => ['PACKING_VIDEO', 'SHIPPING_LABEL', 'RETURN_PACKING_VIDEO', 'RETURN_SHIPPING_LABEL'].includes(item.type));
+  const packing = artifacts.filter((item) => (
+    isOutboundPackingEvidenceType(item.type)
+    || isOutboundSealEvidenceType(item.type)
+    || item.type === 'RETURN_PACKING_VIDEO'
+    || item.type === 'RETURN_SHIPPING_LABEL'
+  ));
   const arrival = artifacts.filter((item) => ['DELIVERY_PHOTO', 'UNBOXING_VIDEO', 'RETURN_UNBOXING_VIDEO'].includes(item.type));
   const returning = artifacts.filter((item) => item.type.startsWith('RETURN_') || Boolean(returns.length));
   return [
@@ -272,8 +277,8 @@ export class MerchantEvidenceApplicationService {
       amount: transaction.amount,
       terms: transaction.terms,
       protocolCompleteness: {
-        sellerPackingVideo: presence(evidence.filter((item) => !item.type.startsWith('RETURN_')), ['PACKING_VIDEO']),
-        sellerSealReference: presence(evidence.filter((item) => !item.type.startsWith('RETURN_')), ['SHIPPING_LABEL']),
+        sellerPackingVideo: presence(evidence.filter((item) => !item.type.startsWith('RETURN_')), outboundPackingEvidenceTypes),
+        sellerSealReference: presence(evidence.filter((item) => !item.type.startsWith('RETURN_')), outboundSealEvidenceTypes),
         buyerArrivalObservation: presence(evidence, ['DELIVERY_PHOTO']),
         buyerUnboxing: presence(evidence, ['UNBOXING_VIDEO']),
         returnPackingVideo: presence(evidence, ['RETURN_PACKING_VIDEO']),
@@ -369,8 +374,8 @@ export class MerchantEvidenceApplicationService {
         await fence.assertOwned();
         const records = await this.repository.listEvidence(transactionId);
         const artifacts = records.map(toMerchantEvidenceArtifactDto);
-        const packing = artifacts.find((item) => item.type === 'PACKING_VIDEO' && item.workflowReady);
-        const seal = artifacts.find((item) => item.type === 'SHIPPING_LABEL' && item.workflowReady);
+        const packing = artifacts.find((item) => isOutboundPackingEvidenceType(item.type) && item.workflowReady);
+        const seal = artifacts.find((item) => isOutboundSealEvidenceType(item.type) && item.workflowReady);
         const decision = shipmentEvidenceDecision({ packingReady: Boolean(packing), sealReady: Boolean(seal) });
         if (!decision.ok || !packing || !seal) {
           throw new ApplicationError(

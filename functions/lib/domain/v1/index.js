@@ -23,4 +23,6 @@ __exportStar(require("./fulfillment"), exports);
 __exportStar(require("./platform"), exports);
 __exportStar(require("./contracts"), exports);
 __exportStar(require("./compatibility"), exports);
+__exportStar(require("./enterprise"), exports);
+__exportStar(require("./edge-protocol"), exports);
 //# sourceMappingURL=index.js.map

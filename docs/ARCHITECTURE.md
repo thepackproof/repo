@@ -6,6 +6,8 @@ The pure canonical v1 domain contracts are implemented under `functions/src/doma
 
 The REST transaction create/get/list paths, consumer draft save callable, Connect order-ingestion path, Connect redemption callable, public Button handoff, and Button redemption callable now invoke the shared application layer and legacy-compatible Firebase adapters. Their source gates pass; the final Section 4 completion record names the emulator evidence separately. Remaining transaction transitions, evidence, shipping, returns, reports, notifications, account operations and mobile reads have not yet migrated, so the architecture below continues to describe those active legacy paths. No Section 3 or Section 4 deployment, storefront, or device test has been performed.
 
+PackProof Enterprise™ is a parallel acquisition surface around this core. See [`docs/architecture/ENTERPRISE_ARCHITECTURE_CONTRACT_V1.md`](architecture/ENTERPRISE_ARCHITECTURE_CONTRACT_V1.md). It is `SOURCE_CHECKED` for domain, Edge protocol, a simulated single-station runtime, application-layer Evidence Format v2 finalization, an Enterprise console projection, and simulated WMS ingest. It is not a live warehouse deployment.
+
 ## Product boundary
 
 PackProof creates a participant-restricted transaction record for high-value sales and authorized returns. It stores participant-entered terms, original media as received, server-computed fingerprints, capture-context telemetry, label observations, and workflow events.

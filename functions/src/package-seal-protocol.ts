@@ -38,12 +38,23 @@ export function shipmentEvidenceDecision(input: { packingReady: boolean; sealRea
   return { ok: true };
 }
 
+export const outboundPackingEvidenceTypes = ['PACKING_VIDEO', 'STATION_PACKING_VIDEO'] as const;
+export const outboundSealEvidenceTypes = ['SHIPPING_LABEL', 'STATION_SEAL_REFERENCE'] as const;
+
+export function isOutboundPackingEvidenceType(type: string | undefined): boolean {
+  return Boolean(type && (outboundPackingEvidenceTypes as readonly string[]).includes(type));
+}
+
+export function isOutboundSealEvidenceType(type: string | undefined): boolean {
+  return Boolean(type && (outboundSealEvidenceTypes as readonly string[]).includes(type));
+}
+
 export function groupPackageSealObservations<T extends { type?: string; returnPassportId?: string | null }>(
   evidence: readonly T[],
 ): { sellerReference: T[]; buyerArrival: T[]; returnReference: T[]; returnArrival: T[] } {
   return {
     sellerReference: evidence.filter((item) => (
-      (item.type === 'PACKING_VIDEO' || item.type === 'SHIPPING_LABEL') && !item.returnPassportId
+      (isOutboundPackingEvidenceType(item.type) || isOutboundSealEvidenceType(item.type)) && !item.returnPassportId
     )),
     buyerArrival: evidence.filter((item) => (
       (item.type === 'DELIVERY_PHOTO' || item.type === 'UNBOXING_VIDEO') && !item.returnPassportId

@@ -13,6 +13,7 @@ import { apiEnvironment, connectLinkBaseUrl, db, publicHandoffSigningSecret, sto
 import { generateEvidencePacket } from './evidence';
 import { assertAccountActive, expiresIn, hash, randomToken, requireUid } from './helpers';
 import { applySecurityHeaders } from './http-security';
+import { isOutboundPackingEvidenceType } from './package-seal-protocol';
 import { HmacConnectSessionTokenIssuer } from './infrastructure/crypto/connect-session-token-issuer';
 import { HmacPublicHandoffTokenIssuer } from './infrastructure/crypto/public-handoff-token-issuer';
 import { Sha256TokenVerifier } from './infrastructure/crypto/sha256-token-verifier';
@@ -223,7 +224,7 @@ async function deliverCallback(deliveryRef: FirebaseFirestore.DocumentReference,
 
 export const onConnectEvidenceVerified = onDocumentCreated('transactions/{transactionId}/evidence/{evidenceId}', async (event) => {
   const evidence = event.data?.data();
-  if (!evidence || evidence.type !== 'PACKING_VIDEO') return;
+  if (!evidence || !isOutboundPackingEvidenceType(String(evidence.type))) return;
   const transactionId = event.params.transactionId;
   const transactionSnap = await db.collection('transactions').doc(transactionId).get();
   const transaction = transactionSnap.data();

@@ -1,0 +1,17 @@
+{
+  "name": "@packproof/edge-agent",
+  "private": true,
+  "version": "0.9.5.0",
+  "type": "module",
+  "engines": {
+    "node": "22"
+  },
+  "description": "PackProof Edge™ warehouse acquisition daemon. Submits observations; does not finalize evidence.",
+  "bin": {
+    "packproof-edge": "./src/main.mjs"
+  },
+  "scripts": {
+    "start": "node src/main.mjs status",
+    "simulate-pilot": "node src/main.mjs simulate-pilot"
+  }
+}
