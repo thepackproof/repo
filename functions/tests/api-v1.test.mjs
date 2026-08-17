@@ -574,6 +574,22 @@ describe('PackProof API v1 HTTP boundary', () => {
     assert.equal(ready.response.status, 200);
     assert.equal(ready.body.data.status, 'READY');
     assert.ok(health.response.headers.get('x-request-id'));
+    assert.equal(health.response.headers.get('x-content-type-options'), 'nosniff');
+    assert.equal(health.response.headers.get('x-frame-options'), 'DENY');
+    assert.equal(health.response.headers.get('referrer-policy'), 'no-referrer');
+    assert.equal(health.response.headers.get('strict-transport-security'), 'max-age=31536000; includeSubDomains');
+    assert.equal(health.response.headers.get('cross-origin-opener-policy'), 'same-origin');
+  });
+
+  test('rejects non-HTTPS and non-exact Origin headers before CORS reflection', async () => {
+    const httpOrigin = await publicHandoffRequest('button-request-http-origin', publicHandoffBody(), 'http://shop.example');
+    assert.equal(httpOrigin.response.status, 400);
+    assert.equal(httpOrigin.body.error.details[0].code, 'INVALID_ORIGIN');
+    assert.equal(httpOrigin.response.headers.get('access-control-allow-origin'), null);
+
+    const trailingSlash = await publicHandoffRequest('button-request-origin-slash', publicHandoffBody(), 'https://shop.example/');
+    assert.equal(trailingSlash.response.status, 400);
+    assert.equal(trailingSlash.body.error.details[0].code, 'INVALID_ORIGIN');
   });
 
   test('issues an exact-origin, page-declared public commerce handoff and replays it safely', async () => {

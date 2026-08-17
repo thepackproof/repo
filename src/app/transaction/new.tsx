@@ -28,7 +28,7 @@ export default function NewTransaction() {
   const [busy, setBusy] = useState(false);
   const [loadingExisting, setLoadingExisting] = useState(Boolean(transactionId));
   const [pageDeclaredSource, setPageDeclaredSource] = useState<string | null>(null);
-  const [listingImages, setListingImages] = useState<Array<{ url: string; altText?: string | null }>>([]);
+  const [listingImages, setListingImages] = useState<{ url: string; altText?: string | null }[]>([]);
   const valid = useMemo(() => title.trim().length > 2 && category.trim().length > 1 && Number.isFinite(Number(price)) && Number(price) >= 0, [category, price, title]);
 
   useEffect(() => {

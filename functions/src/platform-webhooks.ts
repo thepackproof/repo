@@ -1,6 +1,4 @@
 import { createHash, createHmac, randomUUID } from 'node:crypto';
-import { lookup } from 'node:dns/promises';
-import { isIP } from 'node:net';
 import { FieldValue } from 'firebase-admin/firestore';
 import { HttpsError, onCall, onRequest } from 'firebase-functions/v2/https';
 import { onDocumentCreated } from 'firebase-functions/v2/firestore';
@@ -14,6 +12,7 @@ import { ApplicationError } from './application/v1/errors';
 import { apiEnvironment, connectLinkBaseUrl, db, publicHandoffSigningSecret, storage } from './config';
 import { generateEvidencePacket } from './evidence';
 import { assertAccountActive, expiresIn, hash, randomToken, requireUid } from './helpers';
+import { applySecurityHeaders } from './http-security';
 import { HmacConnectSessionTokenIssuer } from './infrastructure/crypto/connect-session-token-issuer';
 import { HmacPublicHandoffTokenIssuer } from './infrastructure/crypto/public-handoff-token-issuer';
 import { Sha256TokenVerifier } from './infrastructure/crypto/sha256-token-verifier';
@@ -21,9 +20,11 @@ import { throwCallableError } from './infrastructure/firebase/v1/callable-errors
 import { FirestoreConnectHandoffRepository } from './infrastructure/firebase/v1/connect-handoff-repository';
 import { FirestoreCommerceContextRepository } from './infrastructure/firebase/v1/commerce-context-repository';
 import { FirestorePublicCommerceHandoffRepository } from './infrastructure/firebase/v1/public-commerce-handoff-repository';
+import { DnsPublicHttpsCallbackValidator } from './infrastructure/net/public-https-callback';
 import { connectOrderSchema, connectProvisionSchema, redeemConnectSchema, redeemPublicCommerceHandoffSchema, ValidationError } from './validation';
 
 const provisionSchema = connectProvisionSchema;
+const callbackUrlValidator = new DnsPublicHttpsCallbackValidator();
 const commerceContextService = new CommerceContextApplicationService(
   new FirestoreCommerceContextRepository(db),
   new HmacConnectSessionTokenIssuer(),
@@ -43,37 +44,19 @@ const publicCommerceHandoffService = new PublicCommerceHandoffApplicationService
   },
 );
 
-function isPrivateAddress(address: string): boolean {
-  const value = address.toLowerCase().replace(/^::ffff:/, '');
-  if (isIP(value) === 4) {
-    const parts = value.split('.').map(Number);
-    return parts[0] === 0 || parts[0] === 10 || parts[0] === 127 || parts[0] >= 224
-      || (parts[0] === 100 && parts[1] >= 64 && parts[1] <= 127)
-      || (parts[0] === 169 && parts[1] === 254)
-      || (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31)
-      || (parts[0] === 192 && parts[1] === 0)
-      || (parts[0] === 192 && parts[1] === 168)
-      || (parts[0] === 198 && (parts[1] === 18 || parts[1] === 19))
-      || (parts[0] === 198 && parts[1] === 51 && parts[2] === 100)
-      || (parts[0] === 203 && parts[1] === 0 && parts[2] === 113);
-  }
-  if (isIP(value) === 6) {
-    return value === '::' || value === '::1' || value.startsWith('fc') || value.startsWith('fd')
-      || /^fe[89ab]/.test(value) || value.startsWith('ff') || value.startsWith('2001:db8:');
-  }
-  return true;
-}
-
 async function validateCallbackUrl(callbackUrl: string, allowedOrigins?: string[]): Promise<URL> {
-  const parsed = new URL(callbackUrl);
-  if (parsed.protocol !== 'https:' || parsed.username || parsed.password) throw new HttpsError('invalid-argument', 'Callback URL must use public HTTPS without embedded credentials.');
-  if (allowedOrigins && !allowedOrigins.includes(parsed.origin)) throw new HttpsError('permission-denied', 'Callback origin is not allowlisted for this integration.');
-  if (parsed.hostname === 'localhost' || parsed.hostname.endsWith('.local')) throw new HttpsError('invalid-argument', 'Callback hostname is not public.');
-  const addresses = await lookup(parsed.hostname, { all: true, verbatim: true }).catch(() => []);
-  if (!addresses.length || addresses.some(({ address }) => isPrivateAddress(address))) {
-    throw new HttpsError('invalid-argument', 'Callback hostname must resolve only to public network addresses.');
+  try {
+    await callbackUrlValidator.validate(callbackUrl, allowedOrigins ?? []);
+  } catch (error) {
+    if (error instanceof ApplicationError) {
+      throw new HttpsError(
+        error.category === 'FORBIDDEN' ? 'permission-denied' : 'invalid-argument',
+        error.message,
+      );
+    }
+    throw error;
   }
-  return parsed;
+  return new URL(callbackUrl);
 }
 
 export const provisionConnectIntegration = onCall({ enforceAppCheck: true }, async (request) => {
@@ -105,6 +88,7 @@ export const provisionConnectIntegration = onCall({ enforceAppCheck: true }, asy
 });
 
 export const handleMarketplaceOrder = onRequest({ cors: false, timeoutSeconds: 30 }, async (req, res) => {
+  applySecurityHeaders(res);
   if (req.method !== 'POST') { res.status(405).json({ error: 'method_not_allowed' }); return; }
   try {
     const authorization = req.get('authorization') ?? '';
@@ -153,7 +137,11 @@ export const handleMarketplaceOrder = onRequest({ cors: false, timeoutSeconds: 3
       res.status(statusByCode[error.code] ?? 500).json({ error: error.code, message: error.message });
       return;
     }
-    console.error('PackProof Connect ingestion failed', error);
+    console.error(JSON.stringify({
+      severity: 'ERROR',
+      message: 'packproof_connect_ingestion_failed',
+      errorType: error instanceof Error ? error.name : typeof error,
+    }));
     res.status(500).json({ error: 'internal_error' });
   }
 });

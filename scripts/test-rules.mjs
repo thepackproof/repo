@@ -26,6 +26,8 @@ try {
     await setDoc(doc(db, 'evidenceSessions', 'es-security-001'), { transactionId: 'txn-security-001', status: 'READY' });
     await setDoc(doc(db, 'domainOutbox', 'evt-security-001'), { type: 'TRANSACTION_CREATED', deliveryState: 'PENDING' });
     await setDoc(doc(db, 'webhookDeliveries', 'delivery-security-001'), { targetUrl: 'https://example.com', state: 'PENDING', nextAttemptAt: Timestamp.fromMillis(Date.now() - 60_000), attemptCount: 0 });
+    await setDoc(doc(db, 'mail', 'mail-security-001'), { to: 'alice@example.test' });
+    await setDoc(doc(db, 'webDeletionTokens', 'token-security-001'), { uid: 'alice' });
     await setDoc(doc(db, 'apiIdempotencyRecords', 'idem-security-001'), { state: 'COMPLETE', createdAt: Timestamp.fromMillis(Date.now() - 60000) });
   });
 
@@ -56,7 +58,11 @@ try {
   await assertFails(getDocs(eveTransactionQuery));
   await assertFails(getDoc(doc(eve.firestore(), 'transactions', 'tx-security-001', 'evidence', 'upload001')));
   await assertSucceeds(getDoc(doc(alice.firestore(), 'publicProfiles', 'alice')));
+  await assertFails(getDocs(collection(alice.firestore(), 'publicProfiles')));
   await assertFails(getDoc(doc(guest.firestore(), 'publicProfiles', 'alice')));
+  await assertFails(getDoc(doc(alice.firestore(), 'mail', 'mail-security-001')));
+  await assertFails(getDoc(doc(alice.firestore(), 'webDeletionTokens', 'token-security-001')));
+  await assertFails(getDoc(doc(alice.firestore(), 'unlistedCollection', 'doc-security-001')));
   await assertFails(getDoc(doc(alice.firestore(), 'commerceContexts', 'ctx-security-001')));
   await assertFails(setDoc(doc(alice.firestore(), 'commerceContexts', 'ctx-security-001'), { status: 'REVOKED' }, { merge: true }));
   await assertFails(getDoc(doc(alice.firestore(), 'passportDrafts', 'draft-security-001')));

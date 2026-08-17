@@ -208,10 +208,19 @@ export function parsePublishableKey(value: unknown): string {
 }
 
 export function parseBrowserOrigin(value: unknown): string {
-  if (typeof value !== 'string' || value.length > 500) {
+  if (typeof value !== 'string' || value.length < 8 || value.length > 500) {
     throw new InputValidationError([{ field: 'Origin', code: 'ORIGIN_REQUIRED', message: 'A browser Origin header is required.' }]);
   }
-  return value;
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new InputValidationError([{ field: 'Origin', code: 'INVALID_ORIGIN', message: 'Origin must be an exact HTTPS origin.' }]);
+  }
+  if (parsed.protocol !== 'https:' || parsed.username || parsed.password || parsed.origin !== value) {
+    throw new InputValidationError([{ field: 'Origin', code: 'INVALID_ORIGIN', message: 'Origin must be an exact HTTPS origin.' }]);
+  }
+  return parsed.origin;
 }
 
 export function parseCreatePublicCommerceHandoff(value: unknown): PageCommerceContextInput {

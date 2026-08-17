@@ -8,6 +8,7 @@ const node_crypto_1 = require("node:crypto");
 const express_1 = __importDefault(require("express"));
 const errors_1 = require("../../application/v1/errors");
 const core_1 = require("./core");
+const http_security_1 = require("../../http-security");
 const validation_1 = require("./validation");
 const ratePolicies = {
     authentication: { name: 'authentication', limit: 120, windowSeconds: 60 },
@@ -103,9 +104,7 @@ function createApiV1App(dependencies) {
         const requestId = acceptedRequestId(req.get('x-request-id'));
         res.locals.requestId = requestId;
         res.setHeader('X-Request-Id', requestId);
-        res.setHeader('X-Content-Type-Options', 'nosniff');
-        res.setHeader('X-Frame-Options', 'DENY');
-        res.setHeader('Cache-Control', 'no-store');
+        (0, http_security_1.applySecurityHeaders)(res);
         const startedAt = process.hrtime.bigint();
         res.on('finish', () => {
             const durationMs = Number(process.hrtime.bigint() - startedAt) / 1_000_000;

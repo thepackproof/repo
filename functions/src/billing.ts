@@ -2,6 +2,7 @@ import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 import { onRequest } from 'firebase-functions/v2/https';
 import { db, revenueCatWebhookSecret } from './config';
 import { billingActions, shouldApplyBillingAction, type RevenueCatEvent } from './billing-state';
+import { applySecurityHeaders, constantTimeSecretEquals } from './http-security';
 
 const billingEnabled = process.env.ENABLE_REVENUECAT_BILLING === 'true';
 
@@ -9,11 +10,12 @@ function validEventId(value: unknown): value is string {
   return typeof value === 'string' && value.length >= 8 && value.length <= 200 && !value.includes('/');
 }
 
-export const revenueCatWebhook = onRequest({ secrets: billingEnabled ? [revenueCatWebhookSecret] : [] }, async (request, response) => {
+export const revenueCatWebhook = onRequest({ cors: false, secrets: billingEnabled ? [revenueCatWebhookSecret] : [] }, async (request, response) => {
+  applySecurityHeaders(response);
   if (!billingEnabled) { response.status(404).send('PackProof Pro billing is not enabled.'); return; }
   if (request.method !== 'POST') { response.status(405).send('Method not allowed'); return; }
   const expected = `Bearer ${revenueCatWebhookSecret.value()}`;
-  if (request.get('authorization') !== expected) { response.status(401).send('Unauthorized'); return; }
+  if (!constantTimeSecretEquals(request.get('authorization') ?? '', expected)) { response.status(401).send('Unauthorized'); return; }
   const event = request.body?.event as RevenueCatEvent | undefined;
   if (!event || !validEventId(event.id) || typeof event.type !== 'string') { response.status(400).send('Invalid event'); return; }
 
