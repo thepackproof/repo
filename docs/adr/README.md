@@ -15,3 +15,4 @@ Architecture decisions are immutable records. If a decision changes, add a new A
 | [0009](0009-neutral-sisv-observation-boundary.md) | SISV is neutral observation infrastructure, never an adjudication or fault engine | Accepted |
 | [0010](0010-evidence-vault-launch-before-sisv.md) | Launch the two-device evidence vault before consent-governed SISV research | Accepted |
 | [0011](0011-idempotency-side-effect-fencing.md) | Idempotency fencing for external side effects | Accepted |
+| [0012](0012-packproof-enterprise-acquisition-surface.md) | PackProof Enterprise is another acquisition surface, not a second evidence system | Accepted |

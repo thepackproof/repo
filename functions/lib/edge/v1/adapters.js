@@ -1,0 +1,136 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.RollingChunkBuffer = exports.SimulatedWmsAdapter = exports.SimulatedRtspCamera = exports.SimulatedUvcCamera = exports.SimulatedUsbScale = exports.SimulatedSerialScanner = exports.SimulatedHidScanner = void 0;
+exports.edgeSha256 = sha256;
+const node_crypto_1 = require("node:crypto");
+const edge_protocol_1 = require("../../domain/v1/edge-protocol");
+function sha256(value) {
+    return (0, node_crypto_1.createHash)('sha256').update(value).digest('hex');
+}
+function monotonic() {
+    return Date.now();
+}
+class SimulatedHidScanner {
+    deviceId;
+    stationId;
+    constructor(deviceId, stationId) {
+        this.deviceId = deviceId;
+        this.stationId = stationId;
+    }
+    observe(rawValue, format = 'CODE128') {
+        return edge_protocol_1.barcodeObservedEventSchema.parse({
+            type: 'BARCODE_OBSERVED',
+            format,
+            normalizedValue: rawValue.trim(),
+            rawValueHash: sha256(rawValue),
+            deviceId: this.deviceId,
+            stationId: this.stationId,
+            monotonicTimestamp: monotonic(),
+        });
+    }
+}
+exports.SimulatedHidScanner = SimulatedHidScanner;
+class SimulatedSerialScanner extends SimulatedHidScanner {
+}
+exports.SimulatedSerialScanner = SimulatedSerialScanner;
+class SimulatedUsbScale {
+    deviceId;
+    sequence = 0;
+    constructor(deviceId) {
+        this.deviceId = deviceId;
+    }
+    observeStable(grams) {
+        this.sequence += 1;
+        return edge_protocol_1.weightStableEventSchema.parse({
+            type: 'WEIGHT_STABLE',
+            grams,
+            deviceId: this.deviceId,
+            measurementSequence: this.sequence,
+            monotonicTimestamp: monotonic(),
+        });
+    }
+}
+exports.SimulatedUsbScale = SimulatedUsbScale;
+class SimulatedUvcCamera {
+    deviceId;
+    constructor(deviceId) {
+        this.deviceId = deviceId;
+    }
+    notifyStreamAvailable(sourceStreamId) {
+        return { type: 'VIDEO_STREAM_AVAILABLE', deviceId: this.deviceId, sourceStreamId, monotonicTimestamp: monotonic() };
+    }
+    startCapture(sourceStreamId, fulfillmentSessionId) {
+        return {
+            type: 'CAPTURE_STARTED',
+            deviceId: this.deviceId,
+            sourceStreamId,
+            fulfillmentSessionId,
+            monotonicTimestamp: monotonic(),
+        };
+    }
+    finalizeSegment(sourceStreamId, bytes, durationMs) {
+        return {
+            type: 'CAPTURE_SEGMENT_FINALIZED',
+            deviceId: this.deviceId,
+            sourceStreamId,
+            segmentSha256: sha256(bytes),
+            durationMs,
+            monotonicTimestamp: monotonic(),
+        };
+    }
+    captureStill(bytes) {
+        return { type: 'STILL_CAPTURED', deviceId: this.deviceId, sha256: sha256(bytes), monotonicTimestamp: monotonic() };
+    }
+    interrupt(sourceStreamId, reason) {
+        return { type: 'STREAM_INTERRUPTED', deviceId: this.deviceId, sourceStreamId, reason, monotonicTimestamp: monotonic() };
+    }
+}
+exports.SimulatedUvcCamera = SimulatedUvcCamera;
+class SimulatedRtspCamera extends SimulatedUvcCamera {
+}
+exports.SimulatedRtspCamera = SimulatedRtspCamera;
+class SimulatedWmsAdapter {
+    assignOrder(input) {
+        return { type: 'ORDER_ASSIGNED', ...input };
+    }
+}
+exports.SimulatedWmsAdapter = SimulatedWmsAdapter;
+class RollingChunkBuffer {
+    chunkBytes;
+    chunks = [];
+    constructor(chunkBytes = Buffer.from('packproof-edge-rolling-chunk')) {
+        this.chunkBytes = chunkBytes;
+    }
+    retainPreRoll(count = 1) {
+        const retained = [];
+        for (let index = 0; index < count; index += 1) {
+            const bytes = Buffer.concat([this.chunkBytes, Buffer.from(`pre:${index}:${(0, node_crypto_1.randomUUID)()}`)]);
+            const digest = sha256(bytes);
+            const chunk = { sha256: digest, bytes };
+            this.chunks.push(chunk);
+            retained.push(chunk);
+        }
+        return retained;
+    }
+    appendLive(count = 1) {
+        const added = [];
+        for (let index = 0; index < count; index += 1) {
+            const bytes = Buffer.concat([this.chunkBytes, Buffer.from(`live:${index}:${(0, node_crypto_1.randomUUID)()}`)]);
+            const chunk = { sha256: sha256(bytes), bytes };
+            this.chunks.push(chunk);
+            added.push(chunk);
+        }
+        return added;
+    }
+    retainPostRoll(count = 1) {
+        return this.appendLive(count);
+    }
+    assemble() {
+        return {
+            bytes: Buffer.concat(this.chunks.map((chunk) => chunk.bytes)),
+            originalSegmentHashes: this.chunks.map((chunk) => chunk.sha256),
+        };
+    }
+}
+exports.RollingChunkBuffer = RollingChunkBuffer;
+//# sourceMappingURL=adapters.js.map
