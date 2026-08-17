@@ -1,6 +1,6 @@
 # PackProof evidence format v2
 
-This specification defines the evidence manifest produced by PackProof 0.9.0. It is an implementation contract, not a certification, a physical-authenticity result, or a legal conclusion.
+This specification defines the evidence manifest produced by PackProof 0.9.5.0. It is an implementation contract, not a certification, a physical-authenticity result, or a legal conclusion.
 
 ## Profiles
 
@@ -44,7 +44,7 @@ The manifest reports these dimensions independently:
 - carrier context;
 - business/legal relevance.
 
-PackProof 0.9.0 reports physical correspondence as `NOT_AVAILABLE` with reason `NO_VALIDATED_PHYSICAL_MATCHER_ENABLED`. It does not produce a production `MATCH` or `NON_MATCH` result.
+PackProof 0.9.5.0 reports physical correspondence as `NOT_AVAILABLE` with reason `NO_VALIDATED_PHYSICAL_MATCHER_ENABLED`. It does not produce a production `MATCH` or `NON_MATCH` result.
 
 ## Verification
 

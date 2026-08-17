@@ -29,7 +29,7 @@ Return evidence types are:
 
 Return shipping requires a server-finalized return packing video with no recorded byte-integrity mismatch. A hash/length/media mismatch is retained for review but cannot advance the return state.
 
-The original-hash snapshot binds digital source records; it does not by itself show that the same physical item was returned. Version 0.9.0 reports physical correspondence as `NOT_AVAILABLE`.
+The original-hash snapshot binds digital source records; it does not by itself show that the same physical item was returned. Version 0.9.5.0 reports physical correspondence as `NOT_AVAILABLE`.
 
 ## Carrier and dossier semantics
 

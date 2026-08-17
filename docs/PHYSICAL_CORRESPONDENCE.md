@@ -1,6 +1,6 @@
 # SISV physical observations - neutral, validation-gated evidence architecture
 
-PackProof 0.9.0 includes the acquisition and evidence architecture required to research the whitepaper's proposed Stochastic Ink Spread Verification (SISV) layer. PackProof is neutral, evidence-based infrastructure for e-commerce. SISV is limited to preserving physical observations and, after separate validation, reporting bounded comparison measurements. It is not a fraud detector, tamper detector, authenticity service, custody proof, participant risk model, or dispute-adjudication system.
+PackProof 0.9.5.0 includes the acquisition and evidence architecture required to research the whitepaper's proposed Stochastic Ink Spread Verification (SISV) layer. PackProof is neutral, evidence-based infrastructure for e-commerce. SISV is limited to preserving physical observations and, after separate validation, reporting bounded comparison measurements. It is not a fraud detector, tamper detector, authenticity service, custody proof, participant risk model, or dispute-adjudication system.
 
 The current production API intentionally returns no similarity measurement or physical-comparison outcome because no frozen comparison engine, quality policy, observation policy, supported-population statement, or PackProof-specific blind validation corpus has passed the required gates.
 

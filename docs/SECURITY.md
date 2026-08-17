@@ -41,7 +41,7 @@ This is an implementation threat model, not a certification, external audit, pen
 - SHA-256 and GCM detect byte/container changes under their stated assumptions. They do not prove that the scene was truthful, complete, contemporaneous, or unmanipulated before capture.
 - HMAC service MACs are not publicly verifiable signatures. The service must retain and govern historical key versions.
 - A normalized barcode equality result is not live carrier acceptance, route, weight, possession, delivery, or custody evidence.
-- There is no calibrated acquisition-quality gate and no validated physical correspondence matcher in 0.9.0.
+- There is no calibrated acquisition-quality gate and no validated physical correspondence matcher in 0.9.5.0.
 - A PDF dossier is a presentation derivative. Native media and manifests remain the source records.
 
 ## Failure behavior
