@@ -15,6 +15,7 @@ exports.requirementSatisfier = requirementSatisfier;
 exports.evaluateEnterprisePolicy = evaluateEnterprisePolicy;
 exports.formatNeutralEnterpriseStatements = formatNeutralEnterpriseStatements;
 exports.assertNeutralEnterpriseStatement = assertNeutralEnterpriseStatement;
+exports.enterpriseStationHealthLabel = enterpriseStationHealthLabel;
 exports.assertEnterpriseResourceCatalogComplete = assertEnterpriseResourceCatalogComplete;
 const common_1 = require("./common");
 const runtime_1 = require("./runtime");
@@ -317,6 +318,23 @@ function assertNeutralEnterpriseStatement(statement) {
             integrityMismatch: false,
             detail: statement,
         }])[0];
+}
+function enterpriseStationHealthLabel(input) {
+    const offline = (kind) => input.devices.some((device) => device.kind === kind && (device.status === 'OFFLINE' || device.status === 'FAULTED'));
+    if (offline('OVERHEAD_CAMERA') || offline('LABEL_CAMERA'))
+        return 'Camera offline';
+    if (offline('SCALE'))
+        return 'Scale disconnected';
+    if (offline('BARCODE_SCANNER'))
+        return 'Scanner disconnected';
+    if (input.attention > 0)
+        return `${input.attention} evidence objects need attention`;
+    const awaitingSync = input.pending + input.uploading;
+    if (awaitingSync > 0)
+        return `${awaitingSync} evidence objects awaiting sync`;
+    if (input.awaitingFinalization > 0)
+        return `${input.awaitingFinalization} evidence objects awaiting finalization`;
+    return 'Healthy';
 }
 exports.enterpriseOrganizationDtoSchema = (0, runtime_1.schema)((value) => {
     const input = (0, runtime_1.strictObject)(value, 'enterpriseOrganization', [

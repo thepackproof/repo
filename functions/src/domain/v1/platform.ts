@@ -287,7 +287,7 @@ export const webhookDeliveryDtoSchema = schema<WebhookDeliveryDto>((value) => {
 
 export type AuditEvent = OrganizationScopedResource<'audit_event'> & {
   type: string;
-  actorType: 'USER' | 'MERCHANT_API_CLIENT' | 'SYSTEM' | 'EDGE_AGENT';
+  actorType: 'USER' | 'MERCHANT_API_CLIENT' | 'SYSTEM' | 'EDGE_AGENT' | 'CONSOLE_OPERATOR' | 'WMS_INTEGRATION';
   actorId: string;
   resourceType: string;
   resourceId: string;
@@ -320,7 +320,7 @@ export const auditEventDtoSchema = schema<AuditEventDto>((value) => {
     object: 'audit_event',
     schemaVersion: 1,
     type: stringValue(input.type, 'auditEvent.type', { min: 3, max: 160, pattern: /^[A-Z][A-Z0-9_]+$/ }),
-    actorType: enumValue(input.actorType, 'auditEvent.actorType', ['USER', 'MERCHANT_API_CLIENT', 'SYSTEM', 'EDGE_AGENT'] as const),
+    actorType: enumValue(input.actorType, 'auditEvent.actorType', ['USER', 'MERCHANT_API_CLIENT', 'SYSTEM', 'EDGE_AGENT', 'CONSOLE_OPERATOR', 'WMS_INTEGRATION'] as const),
     actorId: stringValue(input.actorId, 'auditEvent.actorId', { min: 1, max: 200 }),
     resourceType: stringValue(input.resourceType, 'auditEvent.resourceType', { min: 1, max: 120, pattern: /^[a-z][a-z0-9_]+$/ }),
     resourceId: stringValue(input.resourceId, 'auditEvent.resourceId', { min: 8, max: 160 }),

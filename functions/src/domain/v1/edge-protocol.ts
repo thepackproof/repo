@@ -79,6 +79,14 @@ export type WmsOrderAssignedEvent = {
   transactionId: string | null;
 };
 
+export type WmsOrderUnassignedEvent = {
+  type: 'ORDER_UNASSIGNED';
+  externalOrderId: string;
+  stationCode: string;
+};
+
+export type WmsInboundEvent = WmsOrderAssignedEvent | WmsOrderUnassignedEvent;
+
 export type EdgeQueueObject = {
   clientEvidenceId: string;
   fulfillmentSessionId: string;

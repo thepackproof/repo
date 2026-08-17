@@ -18,6 +18,7 @@ import {
   requirementSatisfier,
   resolveWorkflowPolicy,
   stationDeviceDtoSchema,
+  canTransitionFulfillment,
   type EnterpriseArtifactDto,
   type FulfillmentSessionStatus,
   type HardwareObservationDto,
@@ -563,6 +564,49 @@ export class EnterpriseFulfillmentApplicationService {
     ));
     await this.repository.saveSession(released);
     return released;
+  }
+
+  async unassignOrder(command: Pick<AssignOrderCommand, 'organizationId' | 'siteCode' | 'stationCode' | 'externalOrderId' | 'requestId'>, actor: ActorRef): Promise<EnterpriseSessionRecord> {
+    const station = await this.repository.findStationByCode(command.organizationId, command.siteCode, command.stationCode);
+    if (!station) throw new ApplicationError('NOT_FOUND', 'STATION_NOT_FOUND', 'Packing station was not found for this organization.');
+    const existing = await this.repository.findSessionByOrder(command.organizationId, station.station.id, command.externalOrderId);
+    if (!existing) throw new ApplicationError('NOT_FOUND', 'WMS_SESSION_NOT_FOUND', 'No fulfillment session exists for that WMS order.');
+    if (existing.fulfillment.state === 'CANCELLED') return existing;
+    if (!canTransitionFulfillment(existing.fulfillment.state, 'CANCELLED')) {
+      throw new ApplicationError('FAILED_PRECONDITION', 'WMS_UNASSIGN_TOO_LATE', 'The fulfillment session can no longer be cancelled from a WMS unassignment.');
+    }
+    return this.transition(existing.fulfillment.id, undefined, 'CANCELLED', command.requestId, actor);
+  }
+
+  async setDeviceStatus(
+    organizationId: string,
+    stationId: string,
+    deviceId: string,
+    status: EnterpriseStationGraph['devices'][number]['status'],
+    actor: ActorRef,
+    requestId: string,
+  ): Promise<EnterpriseStationGraph> {
+    const graph = await this.repository.getStation(organizationId, stationId);
+    if (!graph) throw new ApplicationError('NOT_FOUND', 'STATION_NOT_FOUND', 'Packing station was not found for this organization.');
+    const now = iso(this.clock());
+    const devices = graph.devices.map((device) => (
+      device.id === deviceId
+        ? stationDeviceDtoSchema.parse({ ...device, status, updatedAt: now })
+        : device
+    ));
+    if (!devices.some((device) => device.id === deviceId)) {
+      throw new ApplicationError('NOT_FOUND', 'DEVICE_NOT_FOUND', 'The station device was not found.');
+    }
+    const next = { ...graph, devices };
+    await this.repository.saveStation(next);
+    const open = (await this.repository.listSessions(organizationId)).find((item) => (
+      item.fulfillment.stationId === stationId && !['RELEASED', 'CANCELLED', 'EXPIRED'].includes(item.fulfillment.state)
+    ));
+    if (open) {
+      open.events.push(event('STATION_DEVICE_STATUS', actor, 'station_device', deviceId, requestId, organizationId, this.clock(), { status }));
+      await this.repository.saveSession(open);
+    }
+    return next;
   }
 
   private facts(record: EnterpriseSessionRecord): PolicyEvidenceFact[] {

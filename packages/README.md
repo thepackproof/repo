@@ -6,6 +6,7 @@ Target layout after a later extraction checkpoint:
 apps/mobile            existing Expo application (not moved in this slice)
 apps/enterprise-console
 apps/edge-agent        OS-service entry (activated)
+apps/enterprise-console  operator console entry (activated; not a hosted production console)
 
 packages/evidence-contracts
 packages/enterprise-domain

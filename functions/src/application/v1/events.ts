@@ -1,5 +1,5 @@
 export type ApplicationActor = {
-  type: 'USER' | 'MERCHANT_API_CLIENT' | 'SYSTEM' | 'EDGE_AGENT';
+  type: 'USER' | 'MERCHANT_API_CLIENT' | 'SYSTEM' | 'EDGE_AGENT' | 'CONSOLE_OPERATOR' | 'WMS_INTEGRATION';
   id: string;
 };
 

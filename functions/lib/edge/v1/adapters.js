@@ -92,8 +92,16 @@ class SimulatedRtspCamera extends SimulatedUvcCamera {
 }
 exports.SimulatedRtspCamera = SimulatedRtspCamera;
 class SimulatedWmsAdapter {
+    lastEvidenceReady = null;
     assignOrder(input) {
         return { type: 'ORDER_ASSIGNED', ...input };
+    }
+    unassignOrder(input) {
+        return { type: 'ORDER_UNASSIGNED', ...input };
+    }
+    recordEvidenceReady(payload) {
+        this.lastEvidenceReady = payload;
+        return payload;
     }
 }
 exports.SimulatedWmsAdapter = SimulatedWmsAdapter;

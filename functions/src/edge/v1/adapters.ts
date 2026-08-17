@@ -5,6 +5,7 @@ import {
   type BarcodeObservedEvent,
   type CameraEvent,
   type WmsOrderAssignedEvent,
+  type WmsOrderUnassignedEvent,
   type WeightStableEvent,
 } from '../../domain/v1/edge-protocol';
 
@@ -36,6 +37,8 @@ export interface WmsAdapter {
     expectedTrackingNumber: string | null;
     transactionId: string | null;
   }): WmsOrderAssignedEvent;
+  unassignOrder(input: { externalOrderId: string; stationCode: string }): WmsOrderUnassignedEvent;
+  recordEvidenceReady(payload: { type: 'PACKPROOF_EVIDENCE_READY'; externalOrderId: string }): { type: 'PACKPROOF_EVIDENCE_READY'; externalOrderId: string };
 }
 
 export interface PrinterEventAdapter {
@@ -125,6 +128,8 @@ export class SimulatedUvcCamera implements CameraAdapter {
 export class SimulatedRtspCamera extends SimulatedUvcCamera {}
 
 export class SimulatedWmsAdapter implements WmsAdapter {
+  lastEvidenceReady: { type: 'PACKPROOF_EVIDENCE_READY'; externalOrderId: string } | null = null;
+
   assignOrder(input: {
     externalOrderId: string;
     stationCode: string;
@@ -133,6 +138,15 @@ export class SimulatedWmsAdapter implements WmsAdapter {
     transactionId: string | null;
   }): WmsOrderAssignedEvent {
     return { type: 'ORDER_ASSIGNED', ...input };
+  }
+
+  unassignOrder(input: { externalOrderId: string; stationCode: string }): WmsOrderUnassignedEvent {
+    return { type: 'ORDER_UNASSIGNED', ...input };
+  }
+
+  recordEvidenceReady(payload: { type: 'PACKPROOF_EVIDENCE_READY'; externalOrderId: string }) {
+    this.lastEvidenceReady = payload;
+    return payload;
   }
 }
 

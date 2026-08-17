@@ -155,7 +155,7 @@ exports.auditEventDtoSchema = (0, runtime_1.schema)((value) => {
         object: 'audit_event',
         schemaVersion: 1,
         type: (0, runtime_1.stringValue)(input.type, 'auditEvent.type', { min: 3, max: 160, pattern: /^[A-Z][A-Z0-9_]+$/ }),
-        actorType: (0, runtime_1.enumValue)(input.actorType, 'auditEvent.actorType', ['USER', 'MERCHANT_API_CLIENT', 'SYSTEM', 'EDGE_AGENT']),
+        actorType: (0, runtime_1.enumValue)(input.actorType, 'auditEvent.actorType', ['USER', 'MERCHANT_API_CLIENT', 'SYSTEM', 'EDGE_AGENT', 'CONSOLE_OPERATOR', 'WMS_INTEGRATION']),
         actorId: (0, runtime_1.stringValue)(input.actorId, 'auditEvent.actorId', { min: 1, max: 200 }),
         resourceType: (0, runtime_1.stringValue)(input.resourceType, 'auditEvent.resourceType', { min: 1, max: 120, pattern: /^[a-z][a-z0-9_]+$/ }),
         resourceId: (0, runtime_1.stringValue)(input.resourceId, 'auditEvent.resourceId', { min: 8, max: 160 }),

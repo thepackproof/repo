@@ -39,4 +39,4 @@ Existing secrets stay purpose-separated. Edge credentials must not reuse `API_CR
 - New warehouse concepts live in a dedicated Enterprise domain, not inside `transactions`.
 - Camera, scanner, and scale vendors can be added behind adapters without changing fulfillment or finalization policy.
 - Assurance dimensions stay independent. An Enterprise packing video does not inherit native App Check context, and an external file drop does not inherit Edge station binding.
-- HTTP ingestion, the Enterprise console, WMS enforcement, and multi-station scale-out are later activation slices. This ADR authorizes the architecture and the executable domain/Edge foundation; it does not claim a live warehouse deployment.
+- HTTP ingestion, a hosted production console, live WMS enforcement, and multi-station scale-out remain later activation slices. A SOURCE_CHECKED console projection and simulated WMS ingest are in the working tree; this ADR does not claim a live warehouse deployment.

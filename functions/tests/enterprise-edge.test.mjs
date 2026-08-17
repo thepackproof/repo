@@ -10,6 +10,7 @@ class MemoryEnterpriseRepository {
   sessions = new Map();
   byOrder = new Map();
   ingress = new Map();
+  mappings = new Map();
 
   async saveStation(graph) {
     this.stations.set(`${graph.organization.organizationId}:${graph.station.id}`, graph);
@@ -46,6 +47,31 @@ class MemoryEnterpriseRepository {
   async getIngress(uploadId) {
     const bytes = this.ingress.get(uploadId);
     return bytes ? Buffer.from(bytes) : null;
+  }
+
+  async listStations(organizationId) {
+    const unique = new Map();
+    for (const graph of this.stations.values()) {
+      if (graph.organization.organizationId === organizationId) unique.set(graph.station.id, graph);
+    }
+    return [...unique.values()].map((item) => structuredClone(item));
+  }
+
+  async listSessions(organizationId) {
+    return [...this.sessions.values()].filter((item) => item.fulfillment.organizationId === organizationId).map((item) => structuredClone(item));
+  }
+
+  async saveWmsMapping(mapping) {
+    this.mappings.set(`${mapping.organizationId}:${mapping.externalStationCode}`, structuredClone(mapping));
+  }
+
+  async listWmsMappings(organizationId) {
+    return [...this.mappings.values()].filter((item) => item.organizationId === organizationId).map((item) => structuredClone(item));
+  }
+
+  async findWmsMapping(organizationId, externalStationCode) {
+    const mapping = this.mappings.get(`${organizationId}:${externalStationCode}`);
+    return mapping ? structuredClone(mapping) : null;
   }
 }
 

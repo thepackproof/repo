@@ -426,6 +426,24 @@ export function assertNeutralEnterpriseStatement(statement: string): string {
   }])[0];
 }
 
+export function enterpriseStationHealthLabel(input: {
+  devices: readonly { kind: string; status: string }[];
+  pending: number;
+  uploading: number;
+  awaitingFinalization: number;
+  attention: number;
+}): string {
+  const offline = (kind: string) => input.devices.some((device) => device.kind === kind && (device.status === 'OFFLINE' || device.status === 'FAULTED'));
+  if (offline('OVERHEAD_CAMERA') || offline('LABEL_CAMERA')) return 'Camera offline';
+  if (offline('SCALE')) return 'Scale disconnected';
+  if (offline('BARCODE_SCANNER')) return 'Scanner disconnected';
+  if (input.attention > 0) return `${input.attention} evidence objects need attention`;
+  const awaitingSync = input.pending + input.uploading;
+  if (awaitingSync > 0) return `${awaitingSync} evidence objects awaiting sync`;
+  if (input.awaitingFinalization > 0) return `${input.awaitingFinalization} evidence objects awaiting finalization`;
+  return 'Healthy';
+}
+
 export type EnterpriseOrganizationDto = EnterprisePublicResource<'enterprise_organization', 'enterprise_organization'> & {
   organizationId: ResourceId<'organization'>;
   status: (typeof enterpriseOrganizationStatuses)[number];

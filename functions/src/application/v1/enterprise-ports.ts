@@ -60,6 +60,11 @@ export interface EnterpriseFulfillmentRepository {
   findSessionByOrder(organizationId: string, stationId: string, externalOrderId: string): Promise<EnterpriseSessionRecord | null>;
   saveIngress(uploadId: string, bytes: Buffer): Promise<void>;
   getIngress(uploadId: string): Promise<Buffer | null>;
+  listStations(organizationId: string): Promise<EnterpriseStationGraph[]>;
+  listSessions(organizationId: string): Promise<EnterpriseSessionRecord[]>;
+  saveWmsMapping(mapping: WmsStationMapping): Promise<void>;
+  listWmsMappings(organizationId: string): Promise<WmsStationMapping[]>;
+  findWmsMapping(organizationId: string, externalStationCode: string): Promise<WmsStationMapping | null>;
 }
 
 export type BootstrapStationCommand = {
@@ -111,4 +116,47 @@ export type ReserveArtifactCommand = {
   requestId: string;
 };
 
-export type ActorRef = { type: 'MERCHANT_API_CLIENT' | 'EDGE_AGENT' | 'SYSTEM'; id: string };
+export type ActorRef = { type: 'MERCHANT_API_CLIENT' | 'EDGE_AGENT' | 'SYSTEM' | 'CONSOLE_OPERATOR' | 'WMS_INTEGRATION'; id: string };
+
+export type WmsStationMapping = {
+  organizationId: string;
+  siteCode: string;
+  stationCode: string;
+  externalStationCode: string;
+  inboundEvents: readonly ['ORDER_ASSIGNED', 'ORDER_UNASSIGNED'];
+  outboundEvents: readonly ['PACKPROOF_EVIDENCE_READY'];
+};
+
+export type EdgeQueueHealth = {
+  stationId: string;
+  pending: number;
+  uploading: number;
+  awaitingFinalization: number;
+  finalized: number;
+  attention: number;
+};
+
+export type WmsEvidenceReadyCallback = {
+  type: 'PACKPROOF_EVIDENCE_READY';
+  externalOrderId: string;
+  stationCode: string;
+  transactionId: string;
+  fulfillmentSessionId: string;
+  operatingMode: EnterpriseOperatingMode;
+  statements: string[];
+  acquisitionClass: 'ENTERPRISE_EDGE';
+};
+
+export type WmsIngestCommand = {
+  type: 'ORDER_ASSIGNED' | 'ORDER_UNASSIGNED';
+  organizationId: string;
+  siteCode?: string;
+  stationCode?: string;
+  externalStationCode?: string;
+  externalOrderId: string;
+  transactionId: string | null;
+  expectedItems: { sku: string; quantity: number }[];
+  expectedTrackingNumber: string | null;
+  commandKey: string;
+  requestId: string;
+};

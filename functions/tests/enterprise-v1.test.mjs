@@ -33,6 +33,7 @@ import {
   parseEnterpriseResourceId,
   syncLabelForQueueObject,
   uploadSuccessIsServerFinalization,
+  enterpriseStationHealthLabel,
 } from '../lib/domain/v1/index.js';
 
 const now = '2026-08-17T12:00:00.000Z';
@@ -216,4 +217,19 @@ test('Edge credentials cannot reuse purpose-separated PackProof secrets', () => 
   }
   assert.throws(() => assertEdgeSecretIsPurposeSeparated('APP_CHECK'), DomainValidationError);
   assert.doesNotThrow(() => assertEdgeSecretIsPurposeSeparated('EDGE_DEVICE_CA_SECRET'));
+});
+
+test('console health labels stay observational and distinguish sync from finalization', () => {
+  const devices = [
+    { kind: 'OVERHEAD_CAMERA', status: 'ONLINE' },
+    { kind: 'SCALE', status: 'ONLINE' },
+    { kind: 'BARCODE_SCANNER', status: 'ONLINE' },
+  ];
+  assert.equal(enterpriseStationHealthLabel({ devices, pending: 0, uploading: 0, awaitingFinalization: 0, attention: 0 }), 'Healthy');
+  assert.equal(enterpriseStationHealthLabel({
+    devices: [{ kind: 'OVERHEAD_CAMERA', status: 'OFFLINE' }, { kind: 'SCALE', status: 'ONLINE' }],
+    pending: 0, uploading: 0, awaitingFinalization: 0, attention: 0,
+  }), 'Camera offline');
+  assert.equal(enterpriseStationHealthLabel({ devices, pending: 14, uploading: 0, awaitingFinalization: 0, attention: 0 }), '14 evidence objects awaiting sync');
+  assert.equal(enterpriseStationHealthLabel({ devices, pending: 0, uploading: 0, awaitingFinalization: 2, attention: 0 }), '2 evidence objects awaiting finalization');
 });

@@ -45,7 +45,7 @@ These controls are not certification, scientific validation, a penetration test,
 - Private native evidence and manifests plus separately labeled, source-linked PDF presentation dossiers.
 - PackProof Connect order ingestion, idempotent handoff, exact-body webhook HMAC, and retry delivery.
 - Contract-first PackProof Merchant API v1 foundation with scoped merchant credentials, organization-isolated transaction create/read/list, idempotency, rate controls, structured errors/logs, and hash-linked audit events. See [`docs/API_ARCHITECTURE.md`](docs/API_ARCHITECTURE.md).
-- PackProof Enterprise™ architecture, warehouse domain, Edge protocol, simulated single-station Edge runtime, and application-layer Evidence Format v2 finalization (`SOURCE_CHECKED` only). See [`docs/PACKPROOF_ENTERPRISE.md`](docs/PACKPROOF_ENTERPRISE.md).
+- PackProof Enterprise™ architecture, warehouse domain, Edge protocol, simulated single-station Edge runtime, application-layer Evidence Format v2 finalization, Enterprise console projection, and simulated WMS ingest (`SOURCE_CHECKED` only). See [`docs/PACKPROOF_ENTERPRISE.md`](docs/PACKPROOF_ENTERPRISE.md).
 - Google Play / RevenueCat subscription scaffolding and policy templates.
 
 ## Start here
