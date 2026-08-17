@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import { Alert, AppState, Linking, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { Alert, Animated, AppState, Linking, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { CameraView, useCameraPermissions, useMicrophonePermissions, type FlashMode } from 'expo-camera';
+import * as Haptics from 'expo-haptics';
 import * as Crypto from 'expo-crypto';
 import * as FileSystem from 'expo-file-system/legacy';
 import { Image } from 'expo-image';
@@ -38,6 +39,16 @@ import type { CaptureAttestation, CaptureManifestInput, ShippingLabelTelemetry }
 
 const zoomSteps = [0, 0.15, 0.3] as const;
 const MAX_VIDEO_DURATION_SECONDS = 15 * 60;
+const BARCODE_FLASH_MS = 1400;
+
+function giveCaptureHaptic(kind: 'press' | 'recording' | 'barcode'): void {
+  const task = kind === 'barcode'
+    ? Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
+    : kind === 'recording'
+      ? Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning)
+      : Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+  void task.catch(() => undefined);
+}
 
 type ReviewSummary = { durationMs: number; sizeBytes: number | null; widthPixels: number | null; heightPixels: number | null };
 
@@ -94,6 +105,8 @@ export default function CaptureScreen() {
   const [reviewSummary, setReviewSummary] = useState<ReviewSummary | null>(null);
   const [progress, setProgress] = useState(0);
   const [shippingLabel, setShippingLabel] = useState<ShippingLabelTelemetry | null>(null);
+  const [barcodeFlash, setBarcodeFlash] = useState(false);
+  const shutterScale = useRef(new Animated.Value(1)).current;
   const shippingLabelRef = useRef<ShippingLabelTelemetry | null>(null);
   const captureAttemptRef = useRef(0);
   const mountedRef = useRef(true);
@@ -142,6 +155,18 @@ export default function CaptureScreen() {
     return () => clearInterval(timer);
   }, [recording]);
 
+  useEffect(() => {
+    if (!barcodeFlash) return;
+    const timer = setTimeout(() => setBarcodeFlash(false), BARCODE_FLASH_MS);
+    return () => clearTimeout(timer);
+  }, [barcodeFlash]);
+
+  const pulseShutter = () => {
+    shutterScale.setValue(0.86);
+    Animated.spring(shutterScale, { toValue: 1, friction: 5, tension: 220, useNativeDriver: true }).start();
+    giveCaptureHaptic('press');
+  };
+
   const handleBarcodeScanned = ({ data, type: symbology }: { data: string; type: string }) => {
     if (!labelAwareTypes.has(type)) return;
     if (!data || data.length > 512) return;
@@ -158,6 +183,8 @@ export default function CaptureScreen() {
     if (shippingLabelRef.current?.trackingNumber === trackingNumber) return;
     shippingLabelRef.current = next;
     setShippingLabel(next);
+    setBarcodeFlash(true);
+    giveCaptureHaptic('barcode');
   };
 
   const cycleFlash = () => {
@@ -263,6 +290,7 @@ export default function CaptureScreen() {
         setRecordingSeconds(0);
         setRecording(true);
         setPreparing(false);
+        giveCaptureHaptic('recording');
         result = await activeCamera.recordAsync({ maxDuration: MAX_VIDEO_DURATION_SECONDS });
         recordingRef.current = false;
         stopRecordingRef.current = null;
@@ -386,6 +414,7 @@ export default function CaptureScreen() {
     setReviewSummary(null);
     shippingLabelRef.current = null;
     setShippingLabel(null);
+    setBarcodeFlash(false);
     setCameraReady(false);
     setCameraError(null);
     goTo('CAMERA');
@@ -464,26 +493,73 @@ export default function CaptureScreen() {
     }
   };
 
+  const shutterDisabled = !recording && !preparing && (!cameraReady || Boolean(cameraError));
+  const cameraHelp = cameraError
+    ? `The camera preview could not start: ${cameraError}`
+    : !cameraReady
+      ? 'Waiting for the native camera preview before capture is enabled.'
+      : preparing
+        ? 'Button pressed. Refreshing online app-integrity context, then recording will start.'
+        : recording
+          ? (type === 'PACKING_VIDEO' || type === 'RETURN_PACKING_VIDEO'
+            ? 'Recording. Keep the item-to-seal sequence in frame. Hold steady on the marked boundary for the final seconds.'
+            : 'Recording. Keep every relevant item and the package in frame. Hold steady for the final three seconds.')
+          : isVideo
+            ? (labelAwareTypes.has(type)
+              ? 'Tap the shutter to begin a continuous recording. Scanning a tracking barcode is optional.'
+              : 'Tap the shutter to begin a continuous recording.')
+            : type === 'SHIPPING_LABEL' || type === 'RETURN_SHIPPING_LABEL' || type === 'DELIVERY_PHOTO'
+              ? 'Hold steady on the marked boundary, tape or seal, and nearby cardboard.'
+              : 'Frame the evidence clearly, then capture.';
+  const barcodeBadgeLabel = barcodeFlash && shippingLabel
+    ? `BARCODE CAPTURED · ${shippingLabel.trackingNumber}`
+    : shippingLabel
+      ? `LABEL READ · ${shippingLabel.trackingNumber}`
+      : 'OPTIONAL · AIM AT THE TRACKING BARCODE';
+
   if (stage === 'CAMERA') return <View style={styles.cameraPage}>
     <CameraView ref={camera} style={StyleSheet.absoluteFill} facing="back" mode={isVideo ? 'video' : 'picture'} flash={isVideo ? 'off' : flashMode} enableTorch={isVideo && torchEnabled} zoom={zoom} videoQuality="720p" mute={false} onCameraReady={() => { setCameraReady(true); setCameraError(null); }} onMountError={({ message }) => { setCameraReady(false); setCameraError(message); }} onBarcodeScanned={labelAwareTypes.has(type) ? handleBarcodeScanned : undefined} barcodeScannerSettings={{ barcodeTypes: ['code128', 'code39', 'code93', 'qr', 'pdf417', 'aztec', 'ean13', 'ean8', 'upc_a', 'upc_e', 'itf14', 'datamatrix'] }} />
     <SafeAreaView style={styles.overlay}>
-      <View style={styles.cameraHeader}><Pressable disabled={recording || preparing} onPress={() => { void close(); }} style={styles.circleButton}><AppIcon name="xmark" size={18} tintColor={colors.white} /></Pressable><View style={styles.captureLabel}><View style={[styles.liveDot, recording && { backgroundColor: colors.danger }, cameraError && { backgroundColor: colors.danger }]} /><Text style={styles.captureLabelText}>{cameraError ? 'CAMERA UNAVAILABLE' : preparing ? 'CHECKING APP CONTEXT…' : recording ? `REC ${formatCaptureDuration(recordingSeconds)} · CONTINUOUS` : cameraReady ? captureTitles[type].toUpperCase() : 'STARTING CAMERA…'}</Text></View></View>
-      <View pointerEvents="none" style={styles.guideArea}>
-        <View style={[styles.frameGuide, { aspectRatio: guide.aspectRatio }]} />
-        <Text style={styles.guideTitle}>{guide.title}</Text>
-        <Text style={styles.guideInstruction}>{guide.instruction}</Text>
-        <Text style={styles.guideDisclaimer}>GUIDE ONLY · COVERAGE IS NOT MACHINE-CONFIRMED</Text>
+      <View style={styles.cameraHeader}>
+        <Pressable disabled={recording || preparing} onPress={() => { void close(); }} style={styles.circleButton}><AppIcon name="xmark" size={18} tintColor={colors.white} /></Pressable>
+        <View style={[styles.captureLabel, preparing && styles.captureLabelPreparing, recording && styles.captureLabelRecording, cameraError && styles.captureLabelError]}>
+          <View style={[styles.liveDot, (preparing || recording || cameraError) && styles.liveDotOnColor]} />
+          <Text style={styles.captureLabelText}>{cameraError ? 'CAMERA UNAVAILABLE' : preparing ? 'STARTING…' : recording ? `REC ${formatCaptureDuration(recordingSeconds)} · CONTINUOUS` : cameraReady ? captureTitles[type].toUpperCase() : 'STARTING CAMERA…'}</Text>
+        </View>
       </View>
+      {isVideo ? <View pointerEvents="none" style={styles.guideArea} /> : (
+        <View pointerEvents="none" style={styles.guideArea}>
+          <View style={[styles.frameGuide, { aspectRatio: guide.aspectRatio }]} />
+          <Text style={styles.guideTitle}>{guide.title}</Text>
+          <Text style={styles.guideInstruction}>{guide.instruction}</Text>
+          <Text style={styles.guideDisclaimer}>GUIDE ONLY · COVERAGE IS NOT MACHINE-CONFIRMED</Text>
+        </View>
+      )}
       <View style={styles.cameraFooter}>
         <View style={styles.cameraControls}>
           <Pressable accessibilityLabel={isVideo ? `${torchEnabled ? 'Disable' : 'Enable'} camera light` : `Change flash mode, currently ${flashMode}`} disabled={recording || preparing || !cameraReady} onPress={cycleFlash} style={[styles.controlPill, (recording || preparing || !cameraReady) && styles.controlDisabled]}><Text style={styles.controlText}>{isVideo ? `LIGHT ${torchEnabled ? 'ON' : 'OFF'}` : `FLASH ${flashMode.toUpperCase()}`}</Text></Pressable>
           <Pressable accessibilityLabel={`Change camera zoom, currently ${Math.round(zoom * 100)} percent of device maximum`} disabled={recording || preparing || !cameraReady} onPress={cycleZoom} style={[styles.controlPill, (recording || preparing || !cameraReady) && styles.controlDisabled]}><Text style={styles.controlText}>ZOOM {Math.round(zoom * 100)}%</Text></Pressable>
         </View>
-        {labelAwareTypes.has(type) ? <View style={styles.barcodeBadge}><AppIcon name={shippingLabel ? 'checkmark.circle.fill' : 'barcode.viewfinder'} size={16} tintColor={shippingLabel ? colors.teal : colors.white} /><Text style={styles.barcodeText}>{shippingLabel ? `LABEL READ · ${shippingLabel.trackingNumber}` : 'AIM AT THE TRACKING BARCODE'}</Text></View> : null}
-        <Text style={styles.cameraHelp}>{cameraError ? `The camera preview could not start: ${cameraError}` : !cameraReady ? 'Waiting for the native camera preview before capture is enabled.' : preparing ? 'Refreshing online app-integrity context and starting capture telemetry.' : recording ? (type === 'PACKING_VIDEO' || type === 'RETURN_PACKING_VIDEO' ? 'Keep the item-to-seal sequence in frame. Hold steady on the marked boundary for the final seconds.' : 'Keep every relevant item and the package in frame. Hold steady for the final three seconds.') : isVideo ? 'Tap once to begin a continuous recording.' : type === 'SHIPPING_LABEL' || type === 'RETURN_SHIPPING_LABEL' || type === 'DELIVERY_PHOTO' ? 'Hold steady on the marked boundary, tape or seal, and nearby cardboard.' : 'Frame the evidence clearly, then capture.'}</Text>
-        <Pressable accessibilityLabel={recording ? 'Stop recording' : 'Start capture'} disabled={preparing || (!recording && (!cameraReady || Boolean(cameraError)))} onPress={recording ? stop : capture} style={[styles.shutter, recording && styles.shutterRecording, (preparing || (!recording && (!cameraReady || Boolean(cameraError)))) && { opacity: 0.55 }]}><View style={[styles.shutterInner, recording && styles.stopInner]} /></Pressable>
+        {labelAwareTypes.has(type) ? (
+          <View style={[styles.barcodeBadge, shippingLabel && styles.barcodeBadgeRead, barcodeFlash && styles.barcodeBadgeFlash]}>
+            <AppIcon name={shippingLabel ? 'checkmark.circle.fill' : 'barcode.viewfinder'} size={16} tintColor={colors.white} />
+            <Text style={styles.barcodeText}>{barcodeBadgeLabel}</Text>
+          </View>
+        ) : null}
+        <Text style={styles.cameraHelp}>{cameraHelp}</Text>
+        <Pressable
+          accessibilityLabel={recording ? 'Stop recording' : 'Start capture'}
+          disabled={shutterDisabled}
+          onPressIn={shutterDisabled ? undefined : pulseShutter}
+          onPress={recording ? stop : capture}
+          style={[styles.shutter, preparing && styles.shutterPreparing, recording && styles.shutterRecording, shutterDisabled && { opacity: 0.55 }]}
+        >
+          <Animated.View style={[styles.shutterInner, preparing && styles.shutterInnerPreparing, recording && styles.stopInner, { transform: [{ scale: shutterScale }] }]} />
+        </Pressable>
       </View>
     </SafeAreaView>
+    {isVideo && preparing ? <View pointerEvents="none" style={styles.preparingFrame} /> : null}
+    {recording ? <View pointerEvents="none" style={styles.recordingFrame} /> : null}
   </View>;
 
   return <SafeAreaView style={styles.safe}><ScrollView contentContainerStyle={styles.container}>
@@ -512,8 +588,8 @@ const styles = StyleSheet.create({
   checklist: { gap: 17 }, check: { flexDirection: 'row', gap: 12, alignItems: 'flex-start' }, number: { width: 28, height: 28, borderRadius: 14, backgroundColor: 'rgba(70,124,99,0.1)', alignItems: 'center', justifyContent: 'center' }, numberText: { color: colors.teal, fontSize: 12, fontWeight: '900' }, checkText: { flex: 1, color: colors.ink, fontSize: 13, lineHeight: 20 },
   locationCard: { flexDirection: 'row', gap: 12, alignItems: 'center' }, locationTitle: { color: colors.ink, fontSize: 13, fontWeight: '800' }, locationText: { color: colors.muted, fontSize: 10, lineHeight: 15 },
   caution: { flexDirection: 'row', gap: 11, backgroundColor: 'rgba(138,91,0,0.06)' }, cautionText: { flex: 1, color: colors.amber, fontSize: 11, lineHeight: 17 },
-  cameraPage: { flex: 1, backgroundColor: colors.black }, overlay: { flex: 1, justifyContent: 'space-between' }, cameraHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 18 }, circleButton: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(0,0,0,0.55)', alignItems: 'center', justifyContent: 'center' }, captureLabel: { flexDirection: 'row', gap: 7, alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.55)', paddingHorizontal: 12, paddingVertical: 9, borderRadius: 999 }, liveDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.teal }, captureLabelText: { color: colors.white, fontSize: 10, fontWeight: '900', letterSpacing: 0.7 }, guideArea: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 28, gap: 7 }, frameGuide: { width: '88%', maxHeight: '70%', borderWidth: 2, borderColor: 'rgba(255,255,255,0.9)', borderRadius: 18, backgroundColor: 'rgba(0,0,0,0.03)' }, guideTitle: { color: colors.white, fontSize: 15, fontWeight: '900', textAlign: 'center', textShadowColor: colors.black, textShadowRadius: 4 }, guideInstruction: { color: colors.white, maxWidth: 340, fontSize: 10, lineHeight: 15, textAlign: 'center', textShadowColor: colors.black, textShadowRadius: 4 }, guideDisclaimer: { color: colors.white, opacity: 0.78, fontSize: 8, fontWeight: '900', letterSpacing: 0.7, textAlign: 'center' },
-  cameraFooter: { alignItems: 'center', gap: 18, padding: 24, paddingBottom: 32, backgroundColor: 'rgba(0,0,0,0.38)' }, cameraControls: { flexDirection: 'row', gap: 10 }, controlPill: { minWidth: 100, alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.62)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.35)', borderRadius: 999, paddingHorizontal: 13, paddingVertical: 9 }, controlDisabled: { opacity: 0.45 }, controlText: { color: colors.white, fontSize: 9, fontWeight: '900', letterSpacing: 0.6 }, barcodeBadge: { maxWidth: '100%', flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: 'rgba(0,0,0,0.62)', borderRadius: 999, paddingHorizontal: 12, paddingVertical: 8 }, barcodeText: { color: colors.white, fontSize: 9, fontWeight: '900', letterSpacing: 0.4 }, cameraHelp: { color: colors.white, fontSize: 12, lineHeight: 18, textAlign: 'center' }, shutter: { width: 82, height: 82, borderRadius: 41, borderWidth: 5, borderColor: colors.white, alignItems: 'center', justifyContent: 'center' }, shutterInner: { width: 62, height: 62, borderRadius: 31, backgroundColor: colors.white }, shutterRecording: { borderColor: colors.danger }, stopInner: { width: 31, height: 31, borderRadius: 7, backgroundColor: colors.danger },
+  cameraPage: { flex: 1, backgroundColor: colors.black }, overlay: { flex: 1, justifyContent: 'space-between' }, cameraHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 18 }, circleButton: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(0,0,0,0.55)', alignItems: 'center', justifyContent: 'center' }, captureLabel: { flexDirection: 'row', gap: 7, alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.55)', paddingHorizontal: 12, paddingVertical: 9, borderRadius: 999 }, captureLabelPreparing: { backgroundColor: colors.amber }, captureLabelRecording: { backgroundColor: colors.danger }, captureLabelError: { backgroundColor: colors.danger }, liveDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.teal }, liveDotOnColor: { backgroundColor: colors.white }, captureLabelText: { color: colors.white, fontSize: 10, fontWeight: '900', letterSpacing: 0.7 }, recordingFrame: { ...StyleSheet.absoluteFillObject, borderWidth: 6, borderColor: colors.danger, zIndex: 20 }, preparingFrame: { ...StyleSheet.absoluteFillObject, borderWidth: 6, borderColor: colors.amber, zIndex: 20 }, guideArea: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 28, gap: 7 }, frameGuide: { width: '88%', maxHeight: '70%', borderWidth: 2, borderColor: 'rgba(255,255,255,0.9)', borderRadius: 18, backgroundColor: 'rgba(0,0,0,0.03)' }, guideTitle: { color: colors.white, fontSize: 15, fontWeight: '900', textAlign: 'center', textShadowColor: colors.black, textShadowRadius: 4 }, guideInstruction: { color: colors.white, maxWidth: 340, fontSize: 10, lineHeight: 15, textAlign: 'center', textShadowColor: colors.black, textShadowRadius: 4 }, guideDisclaimer: { color: colors.white, opacity: 0.78, fontSize: 8, fontWeight: '900', letterSpacing: 0.7, textAlign: 'center' },
+  cameraFooter: { alignItems: 'center', gap: 18, padding: 24, paddingBottom: 32, backgroundColor: 'rgba(0,0,0,0.38)' }, cameraControls: { flexDirection: 'row', gap: 10 }, controlPill: { minWidth: 100, alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.62)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.35)', borderRadius: 999, paddingHorizontal: 13, paddingVertical: 9 }, controlDisabled: { opacity: 0.45 }, controlText: { color: colors.white, fontSize: 9, fontWeight: '900', letterSpacing: 0.6 }, barcodeBadge: { maxWidth: '100%', flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: 'rgba(0,0,0,0.62)', borderRadius: 999, paddingHorizontal: 12, paddingVertical: 8, borderWidth: 1, borderColor: 'transparent' }, barcodeBadgeRead: { backgroundColor: 'rgba(70,124,99,0.92)', borderColor: colors.teal }, barcodeBadgeFlash: { backgroundColor: colors.teal, borderColor: colors.white }, barcodeText: { color: colors.white, fontSize: 9, fontWeight: '900', letterSpacing: 0.4 }, cameraHelp: { color: colors.white, fontSize: 12, lineHeight: 18, textAlign: 'center' }, shutter: { width: 82, height: 82, borderRadius: 41, borderWidth: 5, borderColor: colors.white, alignItems: 'center', justifyContent: 'center' }, shutterInner: { width: 62, height: 62, borderRadius: 31, backgroundColor: colors.white }, shutterPreparing: { borderColor: colors.amber }, shutterInnerPreparing: { backgroundColor: colors.amber }, shutterRecording: { borderColor: colors.danger }, stopInner: { width: 31, height: 31, borderRadius: 7, backgroundColor: colors.danger },
   reviewImage: { width: '100%', aspectRatio: 3 / 4, borderRadius: 18, backgroundColor: colors.black }, review: { alignItems: 'center', gap: 9, paddingVertical: 32 }, reviewTitle: { color: colors.ink, fontSize: 20, fontWeight: '900' }, reviewFacts: { width: '100%', flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 7 }, reviewFact: { color: colors.tealDark, backgroundColor: colors.accent, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6, fontSize: 9, fontWeight: '900' }, reviewText: { color: colors.muted, fontSize: 12, lineHeight: 18, textAlign: 'center' },
   uploading: { flex: 1, justifyContent: 'center', gap: 16, paddingVertical: 80 }, uploadTitle: { color: colors.ink, fontSize: 25, fontWeight: '900', textAlign: 'center' }, uploadPercent: { color: colors.teal, fontSize: 36, fontWeight: '900', textAlign: 'center' }, uploadText: { color: colors.muted, fontSize: 12, lineHeight: 18, textAlign: 'center' },
 });

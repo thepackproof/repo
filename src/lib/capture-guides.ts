@@ -58,7 +58,7 @@ export const captureChecklists: Partial<Record<EvidenceType, string[]>> = {
   PACKING_VIDEO: [
     'Begin with the unpacked item and included accessories visible in one continuous take.',
     'Place the item into the package on camera, then close the package.',
-    'Apply the shipping label so the label and adjacent package surface remain visible.',
+    'Apply a shipping label so the label and adjacent package surface remain visible. A printed or sample label is enough — paid postage is not required. Scanning the tracking barcode is optional.',
     'Draw the designated PP mark across the label/package boundary so it spans both surfaces.',
     'Apply the prescribed clear tape or seal over the mark and seams.',
     'Finish with a steady, high-resolution view of the marked boundary, tape, and nearby cardboard.',
@@ -73,6 +73,7 @@ export const captureChecklists: Partial<Record<EvidenceType, string[]>> = {
     'Begin with the returned item, accessories, and identifiers visible in one continuous take.',
     'Document the current visible condition before packing.',
     'Keep the item in frame while adding every packing layer and sealing the package.',
+    'Apply a return shipping label so the label and adjacent package remain visible. A printed or sample label is enough — paid postage is not required. Scanning the tracking barcode is optional.',
     'Draw the PP mark across the return label/package boundary, apply tape or seal, and finish on a steady view of that boundary.',
   ],
   RETURN_UNBOXING_VIDEO: [

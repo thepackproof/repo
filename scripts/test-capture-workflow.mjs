@@ -11,7 +11,7 @@ import {
   shouldDeletePhysicalOriginalsAfterSeriesCommit,
   shouldDeletePhysicalSourceAfterEachEncrypt,
 } from '../src/lib/capture-workflow.ts';
-import { captureGuideFor, captureTitles, formatCaptureBytes, formatCaptureDuration, videoTypes } from '../src/lib/capture-guides.ts';
+import { captureGuideFor, captureChecklists, captureTitles, formatCaptureBytes, formatCaptureDuration, videoTypes } from '../src/lib/capture-guides.ts';
 import {
   canDiscardQueuedEvidence,
   isStaleQueueTempFileName,
@@ -52,6 +52,9 @@ assert.equal(captureForegroundInterruption(false).stopRecording, false);
 assert.equal(captureTitles.PACKING_VIDEO.includes('packing'), true);
 assert.equal(videoTypes.has('PACKING_VIDEO'), true);
 assert.match(captureGuideFor('PACKING_VIDEO', true).instruction, /PP mark/);
+assert.match(captureChecklists.PACKING_VIDEO.join(' '), /paid postage is not required/i);
+assert.match(captureChecklists.PACKING_VIDEO.join(' '), /Scanning the tracking barcode is optional/);
+assert.match(captureChecklists.RETURN_PACKING_VIDEO.join(' '), /paid postage is not required/i);
 assert.equal(formatCaptureDuration(75), '01:15');
 assert.equal(formatCaptureBytes(2048), '2 KB');
 
