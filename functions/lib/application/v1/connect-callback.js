@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.strongestAppDeviceContextStatuses = exports.connectEvidenceStatusReasonCodes = exports.connectEvidenceStatuses = void 0;
+exports.connectAcquisitionProfiles = exports.strongestAppDeviceContextStatuses = exports.connectEvidenceStatusReasonCodes = exports.connectEvidenceStatuses = void 0;
 exports.connectEvidenceIsReady = connectEvidenceIsReady;
 exports.connectEvidenceReasonCodes = connectEvidenceReasonCodes;
 exports.buildConnectEvidenceFinalizedCallback = buildConnectEvidenceFinalizedCallback;
@@ -22,6 +22,18 @@ exports.strongestAppDeviceContextStatuses = [
     'ONLINE_APP_CHECK_AND_KEY_POSSESSION',
     'JIT_VERIFIED',
 ];
+exports.connectAcquisitionProfiles = {
+    NATIVE_MOBILE: {
+        strongestAttestation: exports.strongestAppDeviceContextStatuses,
+    },
+    ENTERPRISE_EDGE: {
+        strongestAttestation: ['ENTERPRISE_EDGE_CERTIFICATE'],
+        additionalRequirements: ['station binding', 'registered device', 'session capability'],
+    },
+    EXTERNAL_DECLARED: {
+        strongestAttestation: [],
+    },
+};
 function connectEvidenceIsReady(input) {
     const trackingSatisfied = input.trackingNumberWasSupplied
         ? input.carrierTrackingMatchStatus === 'MATCHED'

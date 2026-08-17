@@ -49,14 +49,29 @@ function sha256(value: string | Buffer): string {
   return createHash('sha256').update(value).digest('hex');
 }
 
-function monotonic(): number {
-  return Date.now();
+const processBootId = randomUUID();
+let processEventSequence = 0;
+
+export function edgeCaptureClock(wallClock: () => Date = () => new Date()): {
+  wallClockUtc: string;
+  monotonicElapsed: number;
+  bootId: string;
+  eventSequence: number;
+} {
+  processEventSequence += 1;
+  return {
+    wallClockUtc: wallClock().toISOString(),
+    monotonicElapsed: Number(process.hrtime.bigint() / 1_000_000n),
+    bootId: processBootId,
+    eventSequence: processEventSequence,
+  };
 }
 
 export class SimulatedHidScanner implements BarcodeScannerAdapter {
   constructor(readonly deviceId: string, readonly stationId: string) {}
 
   observe(rawValue: string, format = 'CODE128'): BarcodeObservedEvent {
+    const clock = edgeCaptureClock();
     return barcodeObservedEventSchema.parse({
       type: 'BARCODE_OBSERVED',
       format,
@@ -64,7 +79,10 @@ export class SimulatedHidScanner implements BarcodeScannerAdapter {
       rawValueHash: sha256(rawValue),
       deviceId: this.deviceId,
       stationId: this.stationId,
-      monotonicTimestamp: monotonic(),
+      monotonicTimestamp: clock.monotonicElapsed,
+      wallClockUtc: clock.wallClockUtc,
+      bootId: clock.bootId,
+      eventSequence: clock.eventSequence,
     });
   }
 }
@@ -78,12 +96,16 @@ export class SimulatedUsbScale implements ScaleAdapter {
 
   observeStable(grams: number): WeightStableEvent {
     this.sequence += 1;
+    const clock = edgeCaptureClock();
     return weightStableEventSchema.parse({
       type: 'WEIGHT_STABLE',
       grams,
       deviceId: this.deviceId,
       measurementSequence: this.sequence,
-      monotonicTimestamp: monotonic(),
+      monotonicTimestamp: clock.monotonicElapsed,
+      wallClockUtc: clock.wallClockUtc,
+      bootId: clock.bootId,
+      eventSequence: clock.eventSequence,
     });
   }
 }
@@ -92,36 +114,41 @@ export class SimulatedUvcCamera implements CameraAdapter {
   constructor(readonly deviceId: string) {}
 
   notifyStreamAvailable(sourceStreamId: string): CameraEvent {
-    return { type: 'VIDEO_STREAM_AVAILABLE', deviceId: this.deviceId, sourceStreamId, monotonicTimestamp: monotonic() };
+    const clock = edgeCaptureClock();
+    return { type: 'VIDEO_STREAM_AVAILABLE', deviceId: this.deviceId, sourceStreamId, monotonicTimestamp: clock.monotonicElapsed };
   }
 
   startCapture(sourceStreamId: string, fulfillmentSessionId: string | null): CameraEvent {
+    const clock = edgeCaptureClock();
     return {
       type: 'CAPTURE_STARTED',
       deviceId: this.deviceId,
       sourceStreamId,
       fulfillmentSessionId,
-      monotonicTimestamp: monotonic(),
+      monotonicTimestamp: clock.monotonicElapsed,
     };
   }
 
   finalizeSegment(sourceStreamId: string, bytes: Buffer, durationMs: number): CameraEvent {
+    const clock = edgeCaptureClock();
     return {
       type: 'CAPTURE_SEGMENT_FINALIZED',
       deviceId: this.deviceId,
       sourceStreamId,
       segmentSha256: sha256(bytes),
       durationMs,
-      monotonicTimestamp: monotonic(),
+      monotonicTimestamp: clock.monotonicElapsed,
     };
   }
 
   captureStill(bytes: Buffer): CameraEvent {
-    return { type: 'STILL_CAPTURED', deviceId: this.deviceId, sha256: sha256(bytes), monotonicTimestamp: monotonic() };
+    const clock = edgeCaptureClock();
+    return { type: 'STILL_CAPTURED', deviceId: this.deviceId, sha256: sha256(bytes), monotonicTimestamp: clock.monotonicElapsed };
   }
 
   interrupt(sourceStreamId: string, reason: string): CameraEvent {
-    return { type: 'STREAM_INTERRUPTED', deviceId: this.deviceId, sourceStreamId, reason, monotonicTimestamp: monotonic() };
+    const clock = edgeCaptureClock();
+    return { type: 'STREAM_INTERRUPTED', deviceId: this.deviceId, sourceStreamId, reason, monotonicTimestamp: clock.monotonicElapsed };
   }
 }
 

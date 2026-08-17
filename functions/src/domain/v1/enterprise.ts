@@ -85,6 +85,18 @@ export const stationDeviceKinds = ['OVERHEAD_CAMERA', 'LABEL_CAMERA', 'BARCODE_S
 export const stationDeviceStatuses = ['REGISTERED', 'ONLINE', 'OFFLINE', 'FAULTED'] as const;
 export const deviceCredentialKeyStorage = ['TPM', 'PLATFORM_KEYSTORE', 'SOFTWARE_WRAPPED'] as const;
 export const deviceCredentialStatuses = ['ACTIVE', 'ROTATING', 'REVOKED'] as const;
+export const observationClassifications = [
+  'EXPECTED_ITEM',
+  'EXPECTED_TRACKING',
+  'UNEXPECTED_ITEM',
+  'UNEXPECTED_TRACKING',
+  'UNRECOGNIZED',
+  'NOT_APPLICABLE',
+] as const;
+export type ObservationClassification = (typeof observationClassifications)[number];
+export const observationMatchStatuses = ['MATCHED', 'MISMATCH', 'NOT_APPLICABLE'] as const;
+export type ObservationMatchStatus = (typeof observationMatchStatuses)[number];
+export const acquisitionCompatibleFulfillmentStates = ['ACQUIRING', 'PACKING_COMPLETE', 'INTERRUPTED'] as const;
 
 export const fulfillmentSessionStatuses = [
   'CREATED',
@@ -347,6 +359,52 @@ export function requirementSatisfier(key: EnterpriseRequirementKey): { artifact?
   return requirementSatisfiers[key];
 }
 
+export type ItemBarcodeCompleteness = {
+  complete: boolean;
+  expected: ExpectedItem[];
+  observed: ExpectedItem[];
+  missing: ExpectedItem[];
+};
+
+export function matchedItemBarcodeCounts(observations: readonly Pick<HardwareObservationDto, 'type' | 'classification' | 'matchStatus' | 'normalizedValue'>[]): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const observation of observations) {
+    if (observation.type !== 'ITEM_BARCODE_OBSERVATION') continue;
+    if (observation.classification !== 'EXPECTED_ITEM' || observation.matchStatus !== 'MATCHED') continue;
+    if (!observation.normalizedValue) continue;
+    counts.set(observation.normalizedValue, (counts.get(observation.normalizedValue) ?? 0) + 1);
+  }
+  return counts;
+}
+
+export function itemBarcodeObservationCompleteness(
+  expectedItems: readonly ExpectedItem[],
+  observations: readonly Pick<HardwareObservationDto, 'type' | 'classification' | 'matchStatus' | 'normalizedValue'>[],
+): ItemBarcodeCompleteness {
+  const observedCounts = matchedItemBarcodeCounts(observations);
+  const observed = [...observedCounts.entries()]
+    .map(([sku, quantity]) => ({ sku, quantity }))
+    .sort((left, right) => left.sku.localeCompare(right.sku));
+  const expected = expectedItems.map((item) => ({ sku: item.sku, quantity: item.quantity }));
+  const missing = expected
+    .map((item) => ({ sku: item.sku, quantity: Math.max(0, item.quantity - (observedCounts.get(item.sku) ?? 0)) }))
+    .filter((item) => item.quantity > 0);
+  return {
+    complete: missing.length === 0 && (expected.length === 0 || expected.every((item) => (observedCounts.get(item.sku) ?? 0) >= item.quantity)),
+    expected,
+    observed,
+    missing,
+  };
+}
+
+export function trackingObservationSatisfied(observations: readonly Pick<HardwareObservationDto, 'type' | 'classification' | 'matchStatus'>[]): boolean {
+  return observations.some((item) => (
+    item.type === 'TRACKING_BARCODE_OBSERVATION'
+    && item.classification === 'EXPECTED_TRACKING'
+    && item.matchStatus === 'MATCHED'
+  ));
+}
+
 export function evaluateEnterprisePolicy(input: PolicyEvaluationInput): PolicyEvaluation {
   const policy = resolveWorkflowPolicy(input.policyId);
   const capturePresent: EnterpriseRequirementKey[] = [];
@@ -375,6 +433,7 @@ export function evaluateEnterprisePolicy(input: PolicyEvaluationInput): PolicyEv
       if (fact?.detail) statements.push(fact.detail);
     } else {
       workflowMissing.push(requirement.key);
+      if (fact?.detail) statements.push(fact.detail);
     }
   }
 
@@ -540,10 +599,15 @@ export type HardwareObservationDto = EnterprisePublicResource<'hardware_observat
   deviceId: EnterpriseResourceId<'station_device'>;
   type: EnterpriseObservationType;
   acquisitionClass: AcquisitionClass;
+  classification: ObservationClassification;
+  matchStatus: ObservationMatchStatus;
   normalizedValue: string | null;
   grams: number | null;
   rawValueHash: string;
   monotonicTimestampMs: number;
+  wallClockUtc: string | null;
+  bootId: string | null;
+  eventSequence: number | null;
 };
 
 export type WorkflowPolicyDto = EnterprisePublicResource<'workflow_policy', 'workflow_policy'> & {
@@ -855,8 +919,9 @@ export const enterpriseArtifactDtoSchema = schema<EnterpriseArtifactDto>((value)
 
 export const hardwareObservationDtoSchema = schema<HardwareObservationDto>((value) => {
   const input = strictObject(value, 'hardwareObservation', [
-    'id', 'object', 'schemaVersion', 'fulfillmentSessionId', 'deviceId', 'type', 'acquisitionClass', 'normalizedValue',
-    'grams', 'rawValueHash', 'monotonicTimestampMs', 'createdAt', 'updatedAt',
+    'id', 'object', 'schemaVersion', 'fulfillmentSessionId', 'deviceId', 'type', 'acquisitionClass', 'classification',
+    'matchStatus', 'normalizedValue', 'grams', 'rawValueHash', 'monotonicTimestampMs', 'wallClockUtc', 'bootId',
+    'eventSequence', 'createdAt', 'updatedAt',
   ]);
   literalValue(input.object, 'hardwareObservation.object', 'hardware_observation');
   literalValue(input.schemaVersion, 'hardwareObservation.schemaVersion', 1);
@@ -868,10 +933,17 @@ export const hardwareObservationDtoSchema = schema<HardwareObservationDto>((valu
     deviceId: parseEnterpriseResourceId('station_device', input.deviceId, 'hardwareObservation.deviceId'),
     type: enumValue(input.type, 'hardwareObservation.type', enterpriseObservationTypes),
     acquisitionClass: enumValue(input.acquisitionClass, 'hardwareObservation.acquisitionClass', acquisitionClasses),
+    classification: enumValue(input.classification, 'hardwareObservation.classification', observationClassifications),
+    matchStatus: enumValue(input.matchStatus, 'hardwareObservation.matchStatus', observationMatchStatuses),
     normalizedValue: optionalString(input.normalizedValue, 'hardwareObservation.normalizedValue', { min: 1, max: 160 }),
     grams: input.grams === undefined || input.grams === null ? null : integerValue(input.grams, 'hardwareObservation.grams', 0, 1_000_000_000),
     rawValueHash: sha256Value(input.rawValueHash, 'hardwareObservation.rawValueHash'),
     monotonicTimestampMs: integerValue(input.monotonicTimestampMs, 'hardwareObservation.monotonicTimestampMs', 0, Number.MAX_SAFE_INTEGER),
+    wallClockUtc: optionalIsoDateTime(input.wallClockUtc, 'hardwareObservation.wallClockUtc'),
+    bootId: optionalString(input.bootId, 'hardwareObservation.bootId', { min: 8, max: 80, pattern: /^[A-Za-z0-9._:-]+$/ }),
+    eventSequence: input.eventSequence === undefined || input.eventSequence === null
+      ? null
+      : integerValue(input.eventSequence, 'hardwareObservation.eventSequence', 1, Number.MAX_SAFE_INTEGER),
     createdAt: isoDateTime(input.createdAt, 'hardwareObservation.createdAt'),
     updatedAt: isoDateTime(input.updatedAt, 'hardwareObservation.updatedAt'),
   };
@@ -880,6 +952,15 @@ export const hardwareObservationDtoSchema = schema<HardwareObservationDto>((valu
   }
   if (result.type !== 'PACKAGE_WEIGHT_OBSERVATION' && !result.normalizedValue) {
     throw new DomainValidationError({ path: 'hardwareObservation.normalizedValue', code: 'REQUIRED', message: 'barcode observations require a normalized value' });
+  }
+  if (result.type === 'PACKAGE_WEIGHT_OBSERVATION' && (result.classification !== 'NOT_APPLICABLE' || result.matchStatus !== 'NOT_APPLICABLE')) {
+    throw new DomainValidationError({ path: 'hardwareObservation.classification', code: 'FORMAT', message: 'weight observations do not carry barcode classification' });
+  }
+  if (result.type === 'ITEM_BARCODE_OBSERVATION' && !['EXPECTED_ITEM', 'UNEXPECTED_ITEM', 'UNRECOGNIZED'].includes(result.classification)) {
+    throw new DomainValidationError({ path: 'hardwareObservation.classification', code: 'FORMAT', message: 'item barcode classification does not match observation type' });
+  }
+  if (result.type === 'TRACKING_BARCODE_OBSERVATION' && !['EXPECTED_TRACKING', 'UNEXPECTED_TRACKING'].includes(result.classification)) {
+    throw new DomainValidationError({ path: 'hardwareObservation.classification', code: 'FORMAT', message: 'tracking barcode classification does not match observation type' });
   }
   return result;
 });

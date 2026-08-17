@@ -5,7 +5,9 @@ import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 const {
   buildConnectEvidenceFinalizedCallback,
+  connectAcquisitionProfiles,
   connectEvidenceIsReady,
+  strongestAppDeviceContextStatuses,
 } = require('../lib/application/v1/connect-callback.js');
 
 const readyInput = {
@@ -89,4 +91,6 @@ test('Enterprise Edge attestation is DIGITAL_EVIDENCE_WITH_LIMITATIONS', () => {
   });
   assert.equal(payload.evidenceStatus, 'DIGITAL_EVIDENCE_WITH_LIMITATIONS');
   assert.ok(payload.statusReasonCodes.includes('STRONGEST_APP_DEVICE_CONTEXT_NOT_AVAILABLE'));
+  assert.equal(strongestAppDeviceContextStatuses.includes('ENTERPRISE_EDGE_CERTIFICATE'), false);
+  assert.deepEqual(connectAcquisitionProfiles.ENTERPRISE_EDGE.strongestAttestation, ['ENTERPRISE_EDGE_CERTIFICATE']);
 });

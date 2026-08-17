@@ -44,6 +44,9 @@ export type BarcodeObservedEvent = {
   deviceId: string;
   stationId: string;
   monotonicTimestamp: number;
+  wallClockUtc: string;
+  bootId: string;
+  eventSequence: number;
 };
 
 export type WeightStableEvent = {
@@ -52,6 +55,9 @@ export type WeightStableEvent = {
   deviceId: string;
   measurementSequence: number;
   monotonicTimestamp: number;
+  wallClockUtc: string;
+  bootId: string;
+  eventSequence: number;
 };
 
 export type CameraEvent =
@@ -145,6 +151,7 @@ export const edgeRequestBindingSchema = schema<EdgeRequestBinding>((value) => {
 export const barcodeObservedEventSchema = schema<BarcodeObservedEvent>((value) => {
   const input = strictObject(value, 'barcodeObserved', [
     'type', 'format', 'normalizedValue', 'rawValueHash', 'deviceId', 'stationId', 'monotonicTimestamp',
+    'wallClockUtc', 'bootId', 'eventSequence',
   ]);
   literalValue(input.type, 'barcodeObserved.type', 'BARCODE_OBSERVED');
   return {
@@ -155,11 +162,16 @@ export const barcodeObservedEventSchema = schema<BarcodeObservedEvent>((value) =
     deviceId: stringValue(input.deviceId, 'barcodeObserved.deviceId', { min: 2, max: 160 }),
     stationId: stringValue(input.stationId, 'barcodeObserved.stationId', { min: 2, max: 160 }),
     monotonicTimestamp: integerValue(input.monotonicTimestamp, 'barcodeObserved.monotonicTimestamp', 0, Number.MAX_SAFE_INTEGER),
+    wallClockUtc: isoDateTime(input.wallClockUtc, 'barcodeObserved.wallClockUtc'),
+    bootId: stringValue(input.bootId, 'barcodeObserved.bootId', { min: 8, max: 80, pattern: /^[A-Za-z0-9._:-]+$/ }),
+    eventSequence: integerValue(input.eventSequence, 'barcodeObserved.eventSequence', 1, Number.MAX_SAFE_INTEGER),
   };
 });
 
 export const weightStableEventSchema = schema<WeightStableEvent>((value) => {
-  const input = strictObject(value, 'weightStable', ['type', 'grams', 'deviceId', 'measurementSequence', 'monotonicTimestamp']);
+  const input = strictObject(value, 'weightStable', [
+    'type', 'grams', 'deviceId', 'measurementSequence', 'monotonicTimestamp', 'wallClockUtc', 'bootId', 'eventSequence',
+  ]);
   literalValue(input.type, 'weightStable.type', 'WEIGHT_STABLE');
   return {
     type: 'WEIGHT_STABLE',
@@ -167,16 +179,89 @@ export const weightStableEventSchema = schema<WeightStableEvent>((value) => {
     deviceId: stringValue(input.deviceId, 'weightStable.deviceId', { min: 2, max: 160 }),
     measurementSequence: integerValue(input.measurementSequence, 'weightStable.measurementSequence', 1, 1_000_000_000),
     monotonicTimestamp: integerValue(input.monotonicTimestamp, 'weightStable.monotonicTimestamp', 0, Number.MAX_SAFE_INTEGER),
+    wallClockUtc: isoDateTime(input.wallClockUtc, 'weightStable.wallClockUtc'),
+    bootId: stringValue(input.bootId, 'weightStable.bootId', { min: 8, max: 80, pattern: /^[A-Za-z0-9._:-]+$/ }),
+    eventSequence: integerValue(input.eventSequence, 'weightStable.eventSequence', 1, Number.MAX_SAFE_INTEGER),
   };
 });
 
-export function classifyBarcode(normalizedValue: string, expectedSkus: readonly string[], expectedTrackingNumber: string | null):
-  | 'ITEM_OBSERVED'
-  | 'TRACKING_OBSERVED'
-  | 'UNRECOGNIZED' {
-  if (expectedTrackingNumber && normalizedValue === expectedTrackingNumber) return 'TRACKING_OBSERVED';
-  if (expectedSkus.includes(normalizedValue)) return 'ITEM_OBSERVED';
-  return 'UNRECOGNIZED';
+export const barcodeClassifications = [
+  'EXPECTED_ITEM',
+  'EXPECTED_TRACKING',
+  'UNEXPECTED_ITEM',
+  'UNEXPECTED_TRACKING',
+  'UNRECOGNIZED',
+] as const;
+export type BarcodeClassification = (typeof barcodeClassifications)[number];
+
+export type BarcodeClassificationResult = {
+  classification: BarcodeClassification;
+  matchStatus: 'MATCHED' | 'MISMATCH' | 'NOT_APPLICABLE';
+  observationType: 'ITEM_BARCODE_OBSERVATION' | 'TRACKING_BARCODE_OBSERVATION';
+};
+
+function looksLikeTracking(value: string): boolean {
+  return /^1Z[A-Z0-9]+$/i.test(value);
+}
+
+export function classifyBarcode(
+  normalizedValue: string,
+  expectedSkus: readonly string[],
+  expectedTrackingNumber: string | null,
+): BarcodeClassificationResult {
+  if (expectedTrackingNumber && normalizedValue === expectedTrackingNumber) {
+    return { classification: 'EXPECTED_TRACKING', matchStatus: 'MATCHED', observationType: 'TRACKING_BARCODE_OBSERVATION' };
+  }
+  if (expectedSkus.includes(normalizedValue)) {
+    return { classification: 'EXPECTED_ITEM', matchStatus: 'MATCHED', observationType: 'ITEM_BARCODE_OBSERVATION' };
+  }
+  if (expectedTrackingNumber && looksLikeTracking(normalizedValue)) {
+    return { classification: 'UNEXPECTED_TRACKING', matchStatus: 'MISMATCH', observationType: 'TRACKING_BARCODE_OBSERVATION' };
+  }
+  if (expectedSkus.length) {
+    return { classification: 'UNEXPECTED_ITEM', matchStatus: 'MISMATCH', observationType: 'ITEM_BARCODE_OBSERVATION' };
+  }
+  return { classification: 'UNRECOGNIZED', matchStatus: 'NOT_APPLICABLE', observationType: 'ITEM_BARCODE_OBSERVATION' };
+}
+
+export type SignedEdgeRequest = {
+  binding: EdgeRequestBinding;
+  bodySha256: string;
+  signatureBase64: string;
+};
+
+export function edgeRequestSignedPayload(binding: EdgeRequestBinding, bodySha256: string): Buffer {
+  return Buffer.from([
+    'packproof-edge-request-v1',
+    binding.organizationId,
+    binding.siteId,
+    binding.edgeAgentId,
+    binding.stationId,
+    binding.sessionId ?? '',
+    binding.requestId,
+    binding.timestamp,
+    binding.nonce,
+    bodySha256,
+  ].join('\n'));
+}
+
+export function edgeSpoolAad(input: {
+  clientEvidenceId: string;
+  fulfillmentSessionId: string;
+  artifactType: string;
+  plaintextSha256: string;
+  sizeBytes: number;
+  acquisitionAssurance: EdgeAcquisitionAssurance;
+}): Buffer {
+  return Buffer.from([
+    'packproof-edge-spool-aad-v1',
+    input.clientEvidenceId,
+    input.fulfillmentSessionId,
+    input.artifactType,
+    input.plaintextSha256,
+    String(input.sizeBytes),
+    input.acquisitionAssurance,
+  ].join('\n'));
 }
 
 export type EdgeCapabilityScope = {

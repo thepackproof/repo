@@ -21,6 +21,19 @@ export const strongestAppDeviceContextStatuses = [
   'JIT_VERIFIED',
 ] as const;
 
+export const connectAcquisitionProfiles = {
+  NATIVE_MOBILE: {
+    strongestAttestation: strongestAppDeviceContextStatuses,
+  },
+  ENTERPRISE_EDGE: {
+    strongestAttestation: ['ENTERPRISE_EDGE_CERTIFICATE'] as const,
+    additionalRequirements: ['station binding', 'registered device', 'session capability'] as const,
+  },
+  EXTERNAL_DECLARED: {
+    strongestAttestation: [] as const,
+  },
+} as const;
+
 export type ConnectManifestAuthentication = {
   type: 'SERVICE_MAC' | 'LEGACY_SERVICE_MAC';
   algorithm?: 'HMAC-SHA256';

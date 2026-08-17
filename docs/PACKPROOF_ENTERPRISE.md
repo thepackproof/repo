@@ -14,11 +14,11 @@ Authoritative architecture: [`docs/architecture/ENTERPRISE_ARCHITECTURE_CONTRACT
 |---|---|
 | Architecture contract and ADR | Accepted |
 | Enterprise domain and Edge protocol | `SOURCE_CHECKED` |
-| Single-station Edge runtime with simulated adapters and encrypted spool | `SOURCE_CHECKED` |
-| Bounded Enterprise evidence sessions (in-process application service) | `SOURCE_CHECKED` |
+| Single-station Edge runtime with simulated adapters and restart-safe encrypted spool (file-backed software key; DPAPI/TPM not activated) | `SOURCE_CHECKED` |
+| Bounded Enterprise evidence sessions with signed Edge principals (in-process application service) | `SOURCE_CHECKED` |
 | Application-layer Evidence Format v2 finalization for Enterprise artifacts | `SOURCE_CHECKED` |
 | Enterprise console projection (station/queue health; cannot alter finalized evidence) | `SOURCE_CHECKED` |
-| WMS ingest (`ORDER_ASSIGNED` / `ORDER_UNASSIGNED`) and `PACKPROOF_EVIDENCE_READY` callback payload | `SOURCE_CHECKED` |
+| WMS ingest (`ORDER_ASSIGNED` / `ORDER_UNASSIGNED`) and `PACKPROOF_EVIDENCE_READY` only after complete evidence | `SOURCE_CHECKED` |
 | HTTP Enterprise API, Pub/Sub ingestion, hosted console, live WMS, real hardware | Not yet activated |
 | Live Cloud Storage trigger path for Enterprise grants | Not yet emulator-checked |
 | Customer `OBSERVE` / `ASSIST` / `ENFORCE` pilots | Not yet tested |

@@ -34,4 +34,5 @@ __exportStar(require("./enterprise-ports"), exports);
 __exportStar(require("./enterprise-fulfillment-service"), exports);
 __exportStar(require("./enterprise-console-service"), exports);
 __exportStar(require("./enterprise-wms-service"), exports);
+__exportStar(require("./edge-authentication"), exports);
 //# sourceMappingURL=index.js.map

@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   ApplicationError,
+  createEnterpriseTestService,
   EnterpriseConsoleApplicationService,
-  EnterpriseFulfillmentApplicationService,
   EnterpriseWmsApplicationService,
 } from '../lib/application/v1/index.js';
 import { createSoftwareWrappedSpoolKey, EncryptedEdgeQueue, PackProofEdgeStationRuntime } from '../lib/edge/v1/index.js';
@@ -71,7 +71,7 @@ class MemoryEnterpriseRepository {
 async function boot(mode = 'OBSERVE') {
   const repository = new MemoryEnterpriseRepository();
   let current = now;
-  const fulfillment = new EnterpriseFulfillmentApplicationService(repository, () => current);
+  const fulfillment = createEnterpriseTestService(repository, () => current);
   const consoleService = new EnterpriseConsoleApplicationService(fulfillment, repository, () => current);
   const wms = new EnterpriseWmsApplicationService(fulfillment, repository);
   const station = await fulfillment.bootstrapStation({
@@ -91,6 +91,7 @@ async function boot(mode = 'OBSERVE') {
     queue,
     online: () => true,
     clock: () => current,
+    edgePrivateKeyPkcs8: station.edgePrivateKeyPkcs8,
   });
   return { repository, fulfillment, consoleService, wms, station, queue, runtime };
 }

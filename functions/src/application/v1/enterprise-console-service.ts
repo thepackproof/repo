@@ -86,7 +86,7 @@ export class EnterpriseConsoleApplicationService {
     const recorded: WmsStationMapping = {
       ...mapping,
       inboundEvents: ['ORDER_ASSIGNED', 'ORDER_UNASSIGNED'],
-      outboundEvents: ['PACKPROOF_EVIDENCE_READY'],
+      outboundEvents: ['PACKPROOF_EVIDENCE_READY', 'FULFILLMENT_RELEASED', 'FULFILLMENT_RELEASED_WITH_EVIDENCE_LIMITATIONS'],
     };
     await this.repository.saveWmsMapping(recorded);
     const open = (await this.repository.listSessions(mapping.organizationId)).find((item) => item.fulfillment.stationId === station.station.id);

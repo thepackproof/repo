@@ -123,7 +123,7 @@ test('server finalization hashes received bytes into Evidence Format v2 without 
   assert.equal(manifest.authentication.type, 'SERVICE_MAC');
 });
 
-test('hash mismatch is preserved as an integrity failure, not App Check context', () => {
+  test('hash mismatch is preserved as an integrity failure, not App Check context', () => {
   const bytes = jpegStill();
   const pending = enterprisePending(bytes, { clientSha256: 'd'.repeat(64) });
   const result = finalizeReceivedEvidence({
@@ -144,4 +144,40 @@ test('hash mismatch is preserved as an integrity failure, not App Check context'
   assert.equal(result.clientHashMatched, false);
   assert.equal(result.attestationStatus, 'ENTERPRISE_EDGE_INSTALLATION');
   assert.equal(result.assurance.byteIntegrity.status, 'MISMATCH');
+});
+
+test('precomputed digest path matches byte hashing for the shared finalizer', () => {
+  const bytes = jpegStill();
+  const pending = enterprisePending(bytes);
+  const fromBytes = finalizeReceivedEvidence({
+    bytes,
+    pending,
+    object: {
+      bucket: 'packproof-enterprise-ingress',
+      storagePath: pending.storagePath,
+      generation: '1',
+      timeCreated: '2026-08-17T12:01:00.000Z',
+      size: bytes.length,
+      contentType: 'image/jpeg',
+    },
+    uploaderRole: 'ENTERPRISE_STATION',
+    signer,
+  });
+  const fromDigest = finalizeReceivedEvidence({
+    digest: sha256Hex(bytes),
+    detectedContentType: 'image/jpeg',
+    pending,
+    object: {
+      bucket: 'packproof-enterprise-ingress',
+      storagePath: pending.storagePath,
+      generation: '1',
+      timeCreated: '2026-08-17T12:01:00.000Z',
+      size: bytes.length,
+      contentType: 'image/jpeg',
+    },
+    uploaderRole: 'ENTERPRISE_STATION',
+    signer,
+  });
+  assert.equal(fromDigest.manifestSha256, fromBytes.manifestSha256);
+  assert.equal(fromDigest.digest, fromBytes.digest);
 });

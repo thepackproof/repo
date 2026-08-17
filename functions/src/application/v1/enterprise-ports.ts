@@ -1,10 +1,9 @@
 import type { ApplicationEvent } from './events';
 import type {
-  AcquisitionClass,
+  DeviceCredentialDto,
   EnterpriseArtifactDto,
   EnterpriseArtifactType,
   EnterpriseEvidenceSessionDto,
-  EnterpriseObservationType,
   EnterpriseOperatingMode,
   EnterpriseOrganizationDto,
   EdgeAgentDto,
@@ -21,6 +20,11 @@ export type EnterpriseStationGraph = {
   station: PackingStationDto;
   edgeAgent: EdgeAgentDto;
   devices: StationDeviceDto[];
+  credential: DeviceCredentialDto;
+};
+
+export type BootstrapStationResult = EnterpriseStationGraph & {
+  edgePrivateKeyPkcs8: Buffer;
 };
 
 export type EnterpriseUploadGrant = {
@@ -92,20 +96,21 @@ export type AssignOrderCommand = {
 
 export type RecordObservationCommand = {
   fulfillmentSessionId: string;
-  edgeAgentId: string;
   deviceId: string;
-  type: EnterpriseObservationType;
-  acquisitionClass: AcquisitionClass;
+  source: 'BARCODE_OBSERVED' | 'WEIGHT_STABLE';
+  format?: string | null;
   normalizedValue: string | null;
   grams: number | null;
   rawValueHash: string;
   monotonicTimestampMs: number;
+  wallClockUtc?: string | null;
+  bootId?: string | null;
+  eventSequence?: number | null;
   requestId: string;
 };
 
 export type ReserveArtifactCommand = {
   fulfillmentSessionId: string;
-  edgeAgentId: string;
   deviceId: string;
   clientEvidenceId: string;
   type: EnterpriseArtifactType;
@@ -124,7 +129,7 @@ export type WmsStationMapping = {
   stationCode: string;
   externalStationCode: string;
   inboundEvents: readonly ['ORDER_ASSIGNED', 'ORDER_UNASSIGNED'];
-  outboundEvents: readonly ['PACKPROOF_EVIDENCE_READY'];
+  outboundEvents: readonly ['PACKPROOF_EVIDENCE_READY', 'FULFILLMENT_RELEASED', 'FULFILLMENT_RELEASED_WITH_EVIDENCE_LIMITATIONS'];
 };
 
 export type EdgeQueueHealth = {

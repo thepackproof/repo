@@ -1,6 +1,7 @@
-import { createCipheriv, createDecipheriv, randomBytes, randomUUID } from 'node:crypto';
+import { createCipheriv, createDecipheriv, createHmac, randomBytes, randomUUID } from 'node:crypto';
 import {
   edgeQueueFolderForTransport,
+  edgeSpoolAad,
   syncLabelForQueueObject,
   uploadSuccessIsServerFinalization,
   type EdgeAcquisitionAssurance,
@@ -13,6 +14,7 @@ export type EncryptedSpoolRecord = EdgeQueueObject & {
   iv: string;
   ciphertext: string;
   authTag: string;
+  metadataMac: string;
 };
 
 function assertTransition(from: EdgeTransportState, to: EdgeTransportState): void {
@@ -28,10 +30,68 @@ function assertTransition(from: EdgeTransportState, to: EdgeTransportState): voi
   }
 }
 
-export class EncryptedEdgeQueue {
+export function edgeSpoolMetadataMac(key: Buffer, record: Omit<EncryptedSpoolRecord, 'metadataMac'>): string {
+  return createHmac('sha256', key).update([
+    'packproof-edge-spool-meta-v1',
+    record.clientEvidenceId,
+    record.fulfillmentSessionId,
+    record.artifactType,
+    record.folder,
+    record.acquisitionAssurance,
+    record.transportState,
+    record.plaintextSha256,
+    String(record.sizeBytes),
+    record.iv,
+    record.authTag,
+  ].join('\n')).digest('base64url');
+}
+
+export function encryptEdgeSpool(key: Buffer, plaintext: Buffer, aad: Buffer): { iv: string; ciphertext: string; authTag: string } {
+  const iv = randomBytes(12);
+  const cipher = createCipheriv('aes-256-gcm', key, iv);
+  cipher.setAAD(aad);
+  const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final()]);
+  return {
+    iv: iv.toString('base64url'),
+    ciphertext: ciphertext.toString('base64url'),
+    authTag: cipher.getAuthTag().toString('base64url'),
+  };
+}
+
+export function decryptEdgeSpool(key: Buffer, record: Pick<EncryptedSpoolRecord, 'iv' | 'ciphertext' | 'authTag'>, aad: Buffer): Buffer {
+  const decipher = createDecipheriv('aes-256-gcm', key, Buffer.from(record.iv, 'base64url'));
+  decipher.setAAD(aad);
+  decipher.setAuthTag(Buffer.from(record.authTag, 'base64url'));
+  return Buffer.concat([decipher.update(Buffer.from(record.ciphertext, 'base64url')), decipher.final()]);
+}
+
+export interface EdgeSpoolStore {
+  get(clientEvidenceId: string): EncryptedSpoolRecord | null;
+  put(record: EncryptedSpoolRecord): void;
+  list(): EncryptedSpoolRecord[];
+}
+
+export class MemoryEdgeSpoolStore implements EdgeSpoolStore {
   private readonly records = new Map<string, EncryptedSpoolRecord>();
 
-  constructor(private readonly key: Buffer) {
+  get(clientEvidenceId: string): EncryptedSpoolRecord | null {
+    return this.records.get(clientEvidenceId) ?? null;
+  }
+
+  put(record: EncryptedSpoolRecord): void {
+    this.records.set(record.clientEvidenceId, record);
+  }
+
+  list(): EncryptedSpoolRecord[] {
+    return [...this.records.values()];
+  }
+}
+
+export class EncryptedEdgeQueue {
+  constructor(
+    private readonly key: Buffer,
+    private readonly store: EdgeSpoolStore = new MemoryEdgeSpoolStore(),
+  ) {
     if (key.length !== 32) throw new Error('Edge spool key must be 32 bytes.');
   }
 
@@ -44,35 +104,46 @@ export class EncryptedEdgeQueue {
     clientEvidenceId?: string;
   }): EncryptedSpoolRecord {
     const clientEvidenceId = input.clientEvidenceId ?? randomUUID();
-    const existing = this.records.get(clientEvidenceId);
-    if (existing) return existing;
-    const iv = randomBytes(12);
-    const cipher = createCipheriv('aes-256-gcm', this.key, iv);
-    cipher.setAAD(Buffer.from(clientEvidenceId));
-    const ciphertext = Buffer.concat([cipher.update(input.plaintext), cipher.final()]);
-    const record: EncryptedSpoolRecord = {
+    const existing = this.store.get(clientEvidenceId);
+    if (existing) {
+      this.assertMetadataMac(existing);
+      return existing;
+    }
+    const acquisitionAssurance: EdgeAcquisitionAssurance = input.onlineAtCapture ? 'ONLINE_ASSURED' : 'OFFLINE_CAPTURED';
+    const aad = edgeSpoolAad({
+      clientEvidenceId,
+      fulfillmentSessionId: input.fulfillmentSessionId,
+      artifactType: input.artifactType,
+      plaintextSha256: input.plaintextSha256,
+      sizeBytes: input.plaintext.length,
+      acquisitionAssurance,
+    });
+    const encrypted = encryptEdgeSpool(this.key, input.plaintext, aad);
+    const unsigned: Omit<EncryptedSpoolRecord, 'metadataMac'> = {
       clientEvidenceId,
       fulfillmentSessionId: input.fulfillmentSessionId,
       artifactType: input.artifactType,
       folder: 'pending',
-      acquisitionAssurance: input.onlineAtCapture ? 'ONLINE_ASSURED' : 'OFFLINE_CAPTURED',
+      acquisitionAssurance,
       transportState: 'PENDING',
       plaintextSha256: input.plaintextSha256,
       sizeBytes: input.plaintext.length,
-      iv: iv.toString('base64url'),
-      ciphertext: ciphertext.toString('base64url'),
-      authTag: cipher.getAuthTag().toString('base64url'),
+      iv: encrypted.iv,
+      ciphertext: encrypted.ciphertext,
+      authTag: encrypted.authTag,
     };
-    this.records.set(clientEvidenceId, record);
+    const record: EncryptedSpoolRecord = {
+      ...unsigned,
+      metadataMac: edgeSpoolMetadataMac(this.key, unsigned),
+    };
+    this.store.put(record);
     return record;
   }
 
   decrypt(clientEvidenceId: string): Buffer {
     const record = this.require(clientEvidenceId);
-    const decipher = createDecipheriv('aes-256-gcm', this.key, Buffer.from(record.iv, 'base64url'));
-    decipher.setAAD(Buffer.from(clientEvidenceId));
-    decipher.setAuthTag(Buffer.from(record.authTag, 'base64url'));
-    return Buffer.concat([decipher.update(Buffer.from(record.ciphertext, 'base64url')), decipher.final()]);
+    const aad = edgeSpoolAad(record);
+    return decryptEdgeSpool(this.key, record, aad);
   }
 
   markUploading(clientEvidenceId: string): EncryptedSpoolRecord {
@@ -99,7 +170,7 @@ export class EncryptedEdgeQueue {
   }
 
   list(folder?: EdgeQueueFolder): EncryptedSpoolRecord[] {
-    return [...this.records.values()].filter((record) => folder === undefined || record.folder === folder);
+    return this.store.list().filter((record) => folder === undefined || record.folder === folder);
   }
 
   label(clientEvidenceId: string): ReturnType<typeof syncLabelForQueueObject> {
@@ -109,19 +180,31 @@ export class EncryptedEdgeQueue {
   private move(clientEvidenceId: string, to: EdgeTransportState): EncryptedSpoolRecord {
     const record = this.require(clientEvidenceId);
     assertTransition(record.transportState, to);
-    const next: EncryptedSpoolRecord = {
+    const unsigned: Omit<EncryptedSpoolRecord, 'metadataMac'> = {
       ...record,
       transportState: to,
       folder: edgeQueueFolderForTransport[to],
     };
-    this.records.set(clientEvidenceId, next);
+    const next: EncryptedSpoolRecord = {
+      ...unsigned,
+      metadataMac: edgeSpoolMetadataMac(this.key, unsigned),
+    };
+    this.store.put(next);
     return next;
   }
 
   private require(clientEvidenceId: string): EncryptedSpoolRecord {
-    const record = this.records.get(clientEvidenceId);
+    const record = this.store.get(clientEvidenceId);
     if (!record) throw new Error(`Edge queue object ${clientEvidenceId} was not found.`);
+    this.assertMetadataMac(record);
     return record;
+  }
+
+  private assertMetadataMac(record: EncryptedSpoolRecord): void {
+    const expected = edgeSpoolMetadataMac(this.key, record);
+    if (expected !== record.metadataMac) {
+      throw new Error(`Edge spool metadata MAC mismatch for ${record.clientEvidenceId}.`);
+    }
   }
 }
 

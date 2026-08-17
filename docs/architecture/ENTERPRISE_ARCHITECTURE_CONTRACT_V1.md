@@ -168,6 +168,8 @@ Edge spool folders:
 
 Each evidence object receives a retry-stable identity before its first network attempt. Acquisition assurance (`ONLINE_ASSURED` / `OFFLINE_CAPTURED`) stays separate from transport state. Warehouse fulfillment is not required to stop because PackProof is offline; policy records the limitation instead of upgrading it later.
 
+The SOURCE_CHECKED Edge spool is durable across process restart: AES-256-GCM artifact files plus SQLite (or crash-safe JSON) metadata, authenticated AAD over immutable binding fields, a separate metadata MAC, and a file-backed software key store. Windows DPAPI/TPM and Linux TPM/keyring wrapping are not activated.
+
 ## 10. Bounded Enterprise evidence sessions
 
 Edge must not impersonate a seller on the participant API. Merchant identity and PackProof user identity remain different trust domains.
@@ -185,7 +187,7 @@ The backend issues exact upload reservations. Open-ended permission to upload ar
 
 Do not overload `PACKING_VIDEO` with station telemetry.
 
-File artifacts include `STATION_PACKING_VIDEO` and `STATION_SEAL_REFERENCE`. Structured observations include item barcode, tracking barcode, and package weight. A scale reading is not a fake evidence file. Observations are provenance-bound and included in the session/manifest record.
+File artifacts include `STATION_PACKING_VIDEO` and `STATION_SEAL_REFERENCE`. Structured observations include item barcode, tracking barcode, and package weight. A scale reading is not a fake evidence file. Observations are provenance-bound and included in the session/manifest record. Edge submits raw barcode/weight events; PackProof classifies them against the fulfillment composition. One matching SKU does not satisfy a multi-quantity item-barcode requirement.
 
 ## 12. Versioned workflow policy
 
@@ -249,7 +251,7 @@ Fencing tokens already prevent a stale worker from publishing a late result afte
 
 The first proof is one Windows packing station, one overhead camera, one barcode scanner, one USB scale, one WMS (simulated or real), and one shipping transaction—including connectivity loss, queue preservation, independent server finalization, and a Connect review package. No PackProof mobile UI is required during that fulfillment flow.
 
-Current slice: steps 1–11 for the in-process application layer, Edge spool, console projection, and simulated WMS ingest. The Storage trigger accepts Enterprise grants when those fields are present, but live GCS / emulator finalization is not yet checked. A hosted production console and live WMS are not claimed. Steps 12–13 remain not yet activated.
+Current slice: steps 1–11 for the in-process application layer, restart-safe Edge spool, signed Edge principals, server-authoritative observations, console projection, and simulated WMS ingest. `PACKPROOF_EVIDENCE_READY` is emitted only when required workflow evidence passed. The Storage trigger uses the shared `finalizeReceivedEvidence()` engine when those fields are present, but live GCS / emulator finalization is not yet checked. A hosted production console, live WMS, DPAPI/TPM key wrapping, and Firestore Enterprise persistence are not claimed. Steps 12–13 remain not yet activated.
 
 ## 17. Test vocabulary
 

@@ -42,6 +42,8 @@ Exceptional states are explicit: `INTERRUPTED`, `DEVICE_FAULT`, `EVIDENCE_INCOMP
 
 `INTEGRITY_FAILURE` is terminal. Byte-integrity mismatch is never converted into `EVIDENCE_READY`.
 
+`EVIDENCE_INCOMPLETE` may still `RELEASE` in `OBSERVE` / `ASSIST`. Warehouse release is not PackProof evidence readiness. The application layer emits `FULFILLMENT_RELEASED` whenever fulfillment progresses, `PACKPROOF_EVIDENCE_READY` only when required workflow evidence passed, and `FULFILLMENT_RELEASED_WITH_EVIDENCE_LIMITATIONS` when an `OBSERVE`/`ASSIST` release has gaps.
+
 ## Policy and modes
 
 Frozen policies:
@@ -55,7 +57,7 @@ Policy evaluation records missing requirements. Only `ENFORCE` converts those ga
 
 ## Edge protocol
 
-Normalized hardware events are defined in `edge-protocol.ts`. Adapter implementations live under `functions/src/edge/v1` and are driven by `apps/edge-agent`. They emit protocol events; they do not own fulfillment or finalization policy.
+Normalized hardware events are defined in `edge-protocol.ts`. Adapter implementations live under `functions/src/edge/v1` and are driven by `apps/edge-agent`. They emit protocol events (`BARCODE_OBSERVED`, `WEIGHT_STABLE`); they do not classify SKU vs tracking and they do not own fulfillment or finalization policy. The trusted application/domain layer derives `EXPECTED_ITEM` / `EXPECTED_TRACKING` / mismatch classifications and creates typed observations. High-value item barcode satisfaction is quantity-aware against `expectedItems`.
 
 ## Verification
 

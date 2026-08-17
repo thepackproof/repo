@@ -11,6 +11,7 @@ import {
   assertRollingCaptureProvenance,
   canTransitionFulfillment,
   classifyBarcode,
+  itemBarcodeObservationCompleteness,
   deviceCredentialDtoSchema,
   DomainValidationError,
   edgeCapabilityAllows,
@@ -92,7 +93,9 @@ const samples = {
   observation: {
     id: 'hob_12345678', object: 'hardware_observation', schemaVersion: 1, fulfillmentSessionId: 'fs_12345678',
     deviceId: 'sdev_12345678', type: 'PACKAGE_WEIGHT_OBSERVATION', acquisitionClass: 'ENTERPRISE_EDGE',
-    normalizedValue: null, grams: 842, rawValueHash: sha, monotonicTimestampMs: 1, createdAt: now, updatedAt: now,
+    classification: 'NOT_APPLICABLE', matchStatus: 'NOT_APPLICABLE',
+    normalizedValue: null, grams: 842, rawValueHash: sha, monotonicTimestampMs: 1,
+    wallClockUtc: now, bootId: 'boot-test-1', eventSequence: 1, createdAt: now, updatedAt: now,
   },
   credential: {
     id: 'dcred_12345678', object: 'device_credential', schemaVersion: 1, edgeAgentId: 'edge_12345678',
@@ -202,10 +205,33 @@ test('Edge request binding and capability scope stay exact, not open-ended', () 
   }), false);
 });
 
-test('barcode classification and queue labels keep acquisition and transport separate', () => {
-  assert.equal(classifyBarcode('SKU-1', ['SKU-1'], '1Z999'), 'ITEM_OBSERVED');
-  assert.equal(classifyBarcode('1Z999', ['SKU-1'], '1Z999'), 'TRACKING_OBSERVED');
-  assert.equal(classifyBarcode('NOPE', ['SKU-1'], '1Z999'), 'UNRECOGNIZED');
+test('barcode classification is server-authoritative and quantity-aware', () => {
+  assert.deepEqual(classifyBarcode('SKU-1', ['SKU-1'], '1Z999'), {
+    classification: 'EXPECTED_ITEM', matchStatus: 'MATCHED', observationType: 'ITEM_BARCODE_OBSERVATION',
+  });
+  assert.deepEqual(classifyBarcode('1Z999', ['SKU-1'], '1Z999'), {
+    classification: 'EXPECTED_TRACKING', matchStatus: 'MATCHED', observationType: 'TRACKING_BARCODE_OBSERVATION',
+  });
+  assert.deepEqual(classifyBarcode('1ZWRONG', ['SKU-1'], '1Z999'), {
+    classification: 'UNEXPECTED_TRACKING', matchStatus: 'MISMATCH', observationType: 'TRACKING_BARCODE_OBSERVATION',
+  });
+  assert.deepEqual(classifyBarcode('NOPE', ['SKU-1'], '1Z999'), {
+    classification: 'UNEXPECTED_ITEM', matchStatus: 'MISMATCH', observationType: 'ITEM_BARCODE_OBSERVATION',
+  });
+  const completeness = itemBarcodeObservationCompleteness(
+    [{ sku: 'SKU-A', quantity: 3 }, { sku: 'SKU-B', quantity: 2 }],
+    [
+      { type: 'ITEM_BARCODE_OBSERVATION', classification: 'EXPECTED_ITEM', matchStatus: 'MATCHED', normalizedValue: 'SKU-A' },
+      { type: 'ITEM_BARCODE_OBSERVATION', classification: 'EXPECTED_ITEM', matchStatus: 'MATCHED', normalizedValue: 'SKU-A' },
+      { type: 'ITEM_BARCODE_OBSERVATION', classification: 'EXPECTED_ITEM', matchStatus: 'MATCHED', normalizedValue: 'SKU-A' },
+      { type: 'ITEM_BARCODE_OBSERVATION', classification: 'EXPECTED_ITEM', matchStatus: 'MATCHED', normalizedValue: 'SKU-B' },
+    ],
+  );
+  assert.equal(completeness.complete, false);
+  assert.deepEqual(completeness.missing, [{ sku: 'SKU-B', quantity: 1 }]);
+});
+
+test('queue labels keep acquisition and transport separate', () => {
   assert.equal(syncLabelForQueueObject({ acquisitionAssurance: 'OFFLINE_CAPTURED', transportState: 'PENDING' }), 'OFFLINE_PENDING_SYNC');
   assert.equal(syncLabelForQueueObject({ acquisitionAssurance: 'ONLINE_ASSURED', transportState: 'AWAITING_FINALIZATION' }), 'SYNCED');
   assert.equal(syncLabelForQueueObject({ acquisitionAssurance: 'ONLINE_ASSURED', transportState: 'SERVER_FINALIZED' }), 'SERVER_FINALIZED');

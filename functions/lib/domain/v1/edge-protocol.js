@@ -1,9 +1,11 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.weightStableEventSchema = exports.barcodeObservedEventSchema = exports.edgeRequestBindingSchema = exports.edgeQueueFolderForTransport = exports.edgeTransportStates = exports.edgeAcquisitionAssurances = exports.edgeQueueFolders = exports.wmsEventTypes = exports.hardwareEventTypes = void 0;
+exports.barcodeClassifications = exports.weightStableEventSchema = exports.barcodeObservedEventSchema = exports.edgeRequestBindingSchema = exports.edgeQueueFolderForTransport = exports.edgeTransportStates = exports.edgeAcquisitionAssurances = exports.edgeQueueFolders = exports.wmsEventTypes = exports.hardwareEventTypes = void 0;
 exports.syncLabelForQueueObject = syncLabelForQueueObject;
 exports.uploadSuccessIsServerFinalization = uploadSuccessIsServerFinalization;
 exports.classifyBarcode = classifyBarcode;
+exports.edgeRequestSignedPayload = edgeRequestSignedPayload;
+exports.edgeSpoolAad = edgeSpoolAad;
 exports.edgeCapabilityAllows = edgeCapabilityAllows;
 exports.assertOpenEndedEdgeCapabilityRejected = assertOpenEndedEdgeCapabilityRejected;
 const runtime_1 = require("./runtime");
@@ -62,6 +64,7 @@ exports.edgeRequestBindingSchema = (0, runtime_1.schema)((value) => {
 exports.barcodeObservedEventSchema = (0, runtime_1.schema)((value) => {
     const input = (0, runtime_1.strictObject)(value, 'barcodeObserved', [
         'type', 'format', 'normalizedValue', 'rawValueHash', 'deviceId', 'stationId', 'monotonicTimestamp',
+        'wallClockUtc', 'bootId', 'eventSequence',
     ]);
     (0, runtime_1.literalValue)(input.type, 'barcodeObserved.type', 'BARCODE_OBSERVED');
     return {
@@ -72,10 +75,15 @@ exports.barcodeObservedEventSchema = (0, runtime_1.schema)((value) => {
         deviceId: (0, runtime_1.stringValue)(input.deviceId, 'barcodeObserved.deviceId', { min: 2, max: 160 }),
         stationId: (0, runtime_1.stringValue)(input.stationId, 'barcodeObserved.stationId', { min: 2, max: 160 }),
         monotonicTimestamp: (0, runtime_1.integerValue)(input.monotonicTimestamp, 'barcodeObserved.monotonicTimestamp', 0, Number.MAX_SAFE_INTEGER),
+        wallClockUtc: (0, runtime_1.isoDateTime)(input.wallClockUtc, 'barcodeObserved.wallClockUtc'),
+        bootId: (0, runtime_1.stringValue)(input.bootId, 'barcodeObserved.bootId', { min: 8, max: 80, pattern: /^[A-Za-z0-9._:-]+$/ }),
+        eventSequence: (0, runtime_1.integerValue)(input.eventSequence, 'barcodeObserved.eventSequence', 1, Number.MAX_SAFE_INTEGER),
     };
 });
 exports.weightStableEventSchema = (0, runtime_1.schema)((value) => {
-    const input = (0, runtime_1.strictObject)(value, 'weightStable', ['type', 'grams', 'deviceId', 'measurementSequence', 'monotonicTimestamp']);
+    const input = (0, runtime_1.strictObject)(value, 'weightStable', [
+        'type', 'grams', 'deviceId', 'measurementSequence', 'monotonicTimestamp', 'wallClockUtc', 'bootId', 'eventSequence',
+    ]);
     (0, runtime_1.literalValue)(input.type, 'weightStable.type', 'WEIGHT_STABLE');
     return {
         type: 'WEIGHT_STABLE',
@@ -83,14 +91,60 @@ exports.weightStableEventSchema = (0, runtime_1.schema)((value) => {
         deviceId: (0, runtime_1.stringValue)(input.deviceId, 'weightStable.deviceId', { min: 2, max: 160 }),
         measurementSequence: (0, runtime_1.integerValue)(input.measurementSequence, 'weightStable.measurementSequence', 1, 1_000_000_000),
         monotonicTimestamp: (0, runtime_1.integerValue)(input.monotonicTimestamp, 'weightStable.monotonicTimestamp', 0, Number.MAX_SAFE_INTEGER),
+        wallClockUtc: (0, runtime_1.isoDateTime)(input.wallClockUtc, 'weightStable.wallClockUtc'),
+        bootId: (0, runtime_1.stringValue)(input.bootId, 'weightStable.bootId', { min: 8, max: 80, pattern: /^[A-Za-z0-9._:-]+$/ }),
+        eventSequence: (0, runtime_1.integerValue)(input.eventSequence, 'weightStable.eventSequence', 1, Number.MAX_SAFE_INTEGER),
     };
 });
+exports.barcodeClassifications = [
+    'EXPECTED_ITEM',
+    'EXPECTED_TRACKING',
+    'UNEXPECTED_ITEM',
+    'UNEXPECTED_TRACKING',
+    'UNRECOGNIZED',
+];
+function looksLikeTracking(value) {
+    return /^1Z[A-Z0-9]+$/i.test(value);
+}
 function classifyBarcode(normalizedValue, expectedSkus, expectedTrackingNumber) {
-    if (expectedTrackingNumber && normalizedValue === expectedTrackingNumber)
-        return 'TRACKING_OBSERVED';
-    if (expectedSkus.includes(normalizedValue))
-        return 'ITEM_OBSERVED';
-    return 'UNRECOGNIZED';
+    if (expectedTrackingNumber && normalizedValue === expectedTrackingNumber) {
+        return { classification: 'EXPECTED_TRACKING', matchStatus: 'MATCHED', observationType: 'TRACKING_BARCODE_OBSERVATION' };
+    }
+    if (expectedSkus.includes(normalizedValue)) {
+        return { classification: 'EXPECTED_ITEM', matchStatus: 'MATCHED', observationType: 'ITEM_BARCODE_OBSERVATION' };
+    }
+    if (expectedTrackingNumber && looksLikeTracking(normalizedValue)) {
+        return { classification: 'UNEXPECTED_TRACKING', matchStatus: 'MISMATCH', observationType: 'TRACKING_BARCODE_OBSERVATION' };
+    }
+    if (expectedSkus.length) {
+        return { classification: 'UNEXPECTED_ITEM', matchStatus: 'MISMATCH', observationType: 'ITEM_BARCODE_OBSERVATION' };
+    }
+    return { classification: 'UNRECOGNIZED', matchStatus: 'NOT_APPLICABLE', observationType: 'ITEM_BARCODE_OBSERVATION' };
+}
+function edgeRequestSignedPayload(binding, bodySha256) {
+    return Buffer.from([
+        'packproof-edge-request-v1',
+        binding.organizationId,
+        binding.siteId,
+        binding.edgeAgentId,
+        binding.stationId,
+        binding.sessionId ?? '',
+        binding.requestId,
+        binding.timestamp,
+        binding.nonce,
+        bodySha256,
+    ].join('\n'));
+}
+function edgeSpoolAad(input) {
+    return Buffer.from([
+        'packproof-edge-spool-aad-v1',
+        input.clientEvidenceId,
+        input.fulfillmentSessionId,
+        input.artifactType,
+        input.plaintextSha256,
+        String(input.sizeBytes),
+        input.acquisitionAssurance,
+    ].join('\n'));
 }
 function edgeCapabilityAllows(scope, input) {
     return scope.organizationId === input.organizationId

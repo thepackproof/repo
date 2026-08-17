@@ -3,7 +3,7 @@ name: PackProof quality gates
 on:
   pull_request:
   push:
-    branches: [master]
+    branches: [master, 'cursor/**']
 
 permissions:
   contents: read
@@ -68,6 +68,9 @@ jobs:
 
       - name: Shared application service tests
         run: npm run test:application
+
+      - name: PackProof Enterprise tests
+        run: npm run test:enterprise
 
       - name: Merchant API Firestore integration tests
         run: npm run test:api:firestore

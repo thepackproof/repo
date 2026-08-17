@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { ApplicationError, EnterpriseFulfillmentApplicationService } from '../lib/application/v1/index.js';
+import { ApplicationError, createEnterpriseTestService } from '../lib/application/v1/index.js';
 import { createSoftwareWrappedSpoolKey, EncryptedEdgeQueue, PackProofEdgeStationRuntime, simulatedMp4Container } from '../lib/edge/v1/index.js';
 
 const now = new Date('2026-08-17T12:00:00.000Z');
@@ -78,7 +78,7 @@ class MemoryEnterpriseRepository {
 async function boot(mode = 'OBSERVE') {
   const repository = new MemoryEnterpriseRepository();
   let current = now;
-  const service = new EnterpriseFulfillmentApplicationService(repository, () => current);
+  const service = createEnterpriseTestService(repository, () => current);
   const station = await service.bootstrapStation({
     organizationId: 'org_12345678',
     siteCode: 'CMH-FC-01',
@@ -97,6 +97,7 @@ async function boot(mode = 'OBSERVE') {
     queue,
     online: () => network.online,
     clock: () => current,
+    edgePrivateKeyPkcs8: station.edgePrivateKeyPkcs8,
   });
   return { repository, service, station, queue, network, runtime, advance: (ms) => { current = new Date(current.getTime() + ms); } };
 }
@@ -147,7 +148,9 @@ test('single-station OBSERVE pilot preserves offline capture and requires indepe
   assert.equal(ready.fulfillment.state, 'EVIDENCE_READY');
   const released = await service.release(captured.session.fulfillment.id, { type: 'SYSTEM', id: 'evidence-finalizer' }, 'request-release');
   assert.equal(released.fulfillment.state, 'RELEASED');
+  assert.ok(released.events.some((item) => item.type === 'FULFILLMENT_RELEASED'));
   assert.ok(released.events.some((item) => item.type === 'PACKPROOF_EVIDENCE_READY'));
+  assert.ok(!released.events.some((item) => item.type === 'FULFILLMENT_RELEASED_WITH_EVIDENCE_LIMITATIONS'));
   const { evaluation } = service.evaluate(released);
   assert.ok(evaluation.statements.includes('Packing video server-finalized'));
   assert.ok(evaluation.statements.includes('Seal reference server-finalized'));
@@ -193,6 +196,9 @@ test('ENFORCE mode will not release an incomplete session while OBSERVE still re
   assert.equal(incompleteObserve.fulfillment.state, 'EVIDENCE_INCOMPLETE');
   const released = await observe.service.release(packedObserve.session.fulfillment.id, { type: 'SYSTEM', id: 'finalizer' }, 'request-release-observe');
   assert.equal(released.fulfillment.state, 'RELEASED');
+  assert.ok(released.events.some((item) => item.type === 'FULFILLMENT_RELEASED'));
+  assert.ok(released.events.some((item) => item.type === 'FULFILLMENT_RELEASED_WITH_EVIDENCE_LIMITATIONS'));
+  assert.ok(!released.events.some((item) => item.type === 'PACKPROOF_EVIDENCE_READY'));
 
   const enforce = await boot('ENFORCE');
   await enforce.runtime.assignOrder({
@@ -250,4 +256,91 @@ test('byte-integrity mismatch quarantines the artifact without App Check attesta
   assert.equal(quarantined.attestationStatus, 'ENTERPRISE_EDGE_INSTALLATION');
   assert.equal((await service.getSession(captured.session.fulfillment.id)).fulfillment.state, 'INTEGRITY_FAILURE');
   assert.ok(!String(quarantined.attestationStatus).includes('APP_CHECK'));
+});
+
+test('server classification rejects a tracking value that does not match the fulfillment', async () => {
+  const { service, runtime } = await boot('OBSERVE');
+  await runtime.assignOrder({
+    externalOrderId: '84724',
+    transactionId: 'txn_12345678',
+    expectedItems: [{ sku: 'SKU-1', quantity: 1 }],
+    expectedTrackingNumber: '1Z999AA',
+  });
+  const scanned = await runtime.scan('1ZWRONG99');
+  const tracking = scanned.observations.find((item) => item.type === 'TRACKING_BARCODE_OBSERVATION');
+  assert.equal(tracking.classification, 'UNEXPECTED_TRACKING');
+  assert.equal(tracking.matchStatus, 'MISMATCH');
+  const { evaluation } = service.evaluate(scanned);
+  assert.ok(evaluation.workflowMissing.includes('TRACKING_OBSERVATION'));
+  assert.ok(!evaluation.statements.some((item) => item.includes('1ZWRONG99')));
+});
+
+test('high-value item barcode requires expected quantities, not a single SKU presence', async () => {
+  const repository = new MemoryEnterpriseRepository();
+  let current = now;
+  const service = createEnterpriseTestService(repository, () => current);
+  const station = await service.bootstrapStation({
+    organizationId: 'org_12345678',
+    siteCode: 'CMH-FC-01',
+    siteName: 'Columbus',
+    stationCode: 'PACK-042',
+    edgeInstallationIdentity: 'EDGE-CMH-03',
+    policyId: 'ENTERPRISE_HIGH_VALUE_V1',
+    operatingMode: 'ENFORCE',
+    requestId: 'request-boot-hv',
+  }, { type: 'MERCHANT_API_CLIENT', id: 'client_12345678' });
+  const runtime = new PackProofEdgeStationRuntime({
+    service,
+    station,
+    queue: new EncryptedEdgeQueue(createSoftwareWrappedSpoolKey()),
+    online: () => true,
+    clock: () => current,
+    edgePrivateKeyPkcs8: station.edgePrivateKeyPkcs8,
+  });
+  await runtime.assignOrder({
+    externalOrderId: '84725',
+    transactionId: 'txn_12345678',
+    expectedItems: [{ sku: 'SKU-A', quantity: 3 }, { sku: 'SKU-B', quantity: 2 }],
+    expectedTrackingNumber: '1Z999AA',
+  });
+  await runtime.scan('SKU-A');
+  await runtime.scan('SKU-A');
+  await runtime.scan('SKU-A');
+  await runtime.scan('SKU-B');
+  const session = runtime.currentSession;
+  const { evaluation } = service.evaluate(session);
+  assert.ok(evaluation.workflowMissing.includes('ITEM_BARCODE'));
+  assert.ok(evaluation.statements.some((item) => item.includes('SKU-B × 1 remaining')));
+});
+
+test('forged Edge principal cannot authorize capture', async () => {
+  const { service, runtime, station } = await boot('OBSERVE');
+  const assigned = await runtime.assignOrder({
+    externalOrderId: '84726',
+    transactionId: 'txn_12345678',
+    expectedItems: [{ sku: 'SKU-1', quantity: 1 }],
+    expectedTrackingNumber: '1Z1',
+  });
+  await assert.rejects(
+    () => service.recordObservation({
+      edgeAgentId: station.edgeAgent.id,
+      organizationId: station.organization.organizationId,
+      siteId: station.site.id,
+      stationId: station.station.id,
+      sessionId: assigned.fulfillment.id,
+      credentialId: station.credential.id,
+      credentialStatus: 'ACTIVE',
+      publicKeySpkiSha256: station.credential.publicKeySpkiSha256,
+    }, {
+      fulfillmentSessionId: assigned.fulfillment.id,
+      deviceId: station.devices.find((item) => item.kind === 'BARCODE_SCANNER').id,
+      source: 'BARCODE_OBSERVED',
+      normalizedValue: 'SKU-1',
+      grams: null,
+      rawValueHash: 'a'.repeat(64),
+      monotonicTimestampMs: 1,
+      requestId: 'forged',
+    }),
+    (error) => error instanceof ApplicationError && error.code === 'EDGE_PRINCIPAL_REQUIRED',
+  );
 });

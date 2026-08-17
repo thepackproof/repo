@@ -93,8 +93,10 @@ function assuranceForFinalization(input) {
     };
 }
 function finalizeReceivedEvidence(input) {
-    const digest = (0, evidence_format_1.sha256Hex)(input.bytes);
-    const detectedContentType = (0, evidence_format_1.detectSupportedMediaType)(input.bytes.subarray(0, 32));
+    const digest = input.digest ?? (input.bytes ? (0, evidence_format_1.sha256Hex)(input.bytes) : '');
+    if (!digest)
+        throw new Error('finalizeReceivedEvidence requires received bytes or a precomputed digest.');
+    const detectedContentType = input.detectedContentType ?? (input.bytes ? (0, evidence_format_1.detectSupportedMediaType)(input.bytes.subarray(0, 32)) : null);
     const contentTypeMatched = detectedContentType === input.object.contentType;
     const clientSha256 = input.pending.clientSha256;
     const clientHashMatched = clientSha256 ? clientSha256 === digest : null;
@@ -125,6 +127,9 @@ function finalizeReceivedEvidence(input) {
         carrierStatus: carrierTrackingMatchStatus,
         clientTimeConsistencyStatus,
     });
+    const runtimeIntegrity = clientManifest && typeof clientManifest.runtimeIntegrity === 'object' && clientManifest.runtimeIntegrity
+        ? clientManifest.runtimeIntegrity
+        : null;
     const unsignedManifest = {
         schemaVersion: evidence_format_1.EVIDENCE_MANIFEST_SCHEMA_VERSION,
         format: {
@@ -169,7 +174,7 @@ function finalizeReceivedEvidence(input) {
             detectedContentType,
             contentTypeMatched,
             attestationStatus,
-            runtimeIntegrityScope: null,
+            runtimeIntegrityScope: runtimeIntegrity?.integrityScope ?? null,
             clientWallDurationMs,
             clientMonotonicElapsedMs,
             clientTimeConsistencyStatus,

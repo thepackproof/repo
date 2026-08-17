@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.enterpriseResourceContracts = exports.hardwareObservationDtoSchema = exports.enterpriseArtifactDtoSchema = exports.enterpriseEvidenceSessionDtoSchema = exports.fulfillmentSessionDtoSchema = exports.deviceCredentialDtoSchema = exports.stationDeviceDtoSchema = exports.edgeAgentDtoSchema = exports.packingStationDtoSchema = exports.enterpriseSiteDtoSchema = exports.enterpriseOrganizationDtoSchema = exports.enterpriseWorkflowPolicies = exports.enterpriseV1ComputerVisionRequired = exports.forbiddenEdgeSecretNames = exports.enterpriseRequirementKeys = exports.enterpriseObservationTypes = exports.enterpriseArtifactTransitions = exports.enterpriseArtifactStatuses = exports.enterpriseArtifactTypes = exports.fulfillmentSessionTransitions = exports.fulfillmentSessionStatuses = exports.deviceCredentialStatuses = exports.deviceCredentialKeyStorage = exports.stationDeviceStatuses = exports.stationDeviceKinds = exports.edgeAgentStatuses = exports.packingStationStatuses = exports.enterpriseSiteStatuses = exports.enterpriseOrganizationStatuses = exports.enterpriseOperatingModes = exports.acquisitionClasses = exports.enterpriseResourceIdPrefixes = exports.enterpriseResourceKinds = void 0;
+exports.enterpriseResourceContracts = exports.hardwareObservationDtoSchema = exports.enterpriseArtifactDtoSchema = exports.enterpriseEvidenceSessionDtoSchema = exports.fulfillmentSessionDtoSchema = exports.deviceCredentialDtoSchema = exports.stationDeviceDtoSchema = exports.edgeAgentDtoSchema = exports.packingStationDtoSchema = exports.enterpriseSiteDtoSchema = exports.enterpriseOrganizationDtoSchema = exports.enterpriseWorkflowPolicies = exports.enterpriseV1ComputerVisionRequired = exports.forbiddenEdgeSecretNames = exports.enterpriseRequirementKeys = exports.enterpriseObservationTypes = exports.enterpriseArtifactTransitions = exports.enterpriseArtifactStatuses = exports.enterpriseArtifactTypes = exports.fulfillmentSessionTransitions = exports.fulfillmentSessionStatuses = exports.acquisitionCompatibleFulfillmentStates = exports.observationMatchStatuses = exports.observationClassifications = exports.deviceCredentialStatuses = exports.deviceCredentialKeyStorage = exports.stationDeviceStatuses = exports.stationDeviceKinds = exports.edgeAgentStatuses = exports.packingStationStatuses = exports.enterpriseSiteStatuses = exports.enterpriseOrganizationStatuses = exports.enterpriseOperatingModes = exports.acquisitionClasses = exports.enterpriseResourceIdPrefixes = exports.enterpriseResourceKinds = void 0;
 exports.parseEnterpriseResourceId = parseEnterpriseResourceId;
 exports.resolveWorkflowPolicy = resolveWorkflowPolicy;
 exports.acquisitionClassesHaveEqualAssurance = acquisitionClassesHaveEqualAssurance;
@@ -12,6 +12,9 @@ exports.assertRollingCaptureProvenance = assertRollingCaptureProvenance;
 exports.canTransitionFulfillment = canTransitionFulfillment;
 exports.assertFulfillmentTransition = assertFulfillmentTransition;
 exports.requirementSatisfier = requirementSatisfier;
+exports.matchedItemBarcodeCounts = matchedItemBarcodeCounts;
+exports.itemBarcodeObservationCompleteness = itemBarcodeObservationCompleteness;
+exports.trackingObservationSatisfied = trackingObservationSatisfied;
 exports.evaluateEnterprisePolicy = evaluateEnterprisePolicy;
 exports.formatNeutralEnterpriseStatements = formatNeutralEnterpriseStatements;
 exports.assertNeutralEnterpriseStatement = assertNeutralEnterpriseStatement;
@@ -66,6 +69,16 @@ exports.stationDeviceKinds = ['OVERHEAD_CAMERA', 'LABEL_CAMERA', 'BARCODE_SCANNE
 exports.stationDeviceStatuses = ['REGISTERED', 'ONLINE', 'OFFLINE', 'FAULTED'];
 exports.deviceCredentialKeyStorage = ['TPM', 'PLATFORM_KEYSTORE', 'SOFTWARE_WRAPPED'];
 exports.deviceCredentialStatuses = ['ACTIVE', 'ROTATING', 'REVOKED'];
+exports.observationClassifications = [
+    'EXPECTED_ITEM',
+    'EXPECTED_TRACKING',
+    'UNEXPECTED_ITEM',
+    'UNEXPECTED_TRACKING',
+    'UNRECOGNIZED',
+    'NOT_APPLICABLE',
+];
+exports.observationMatchStatuses = ['MATCHED', 'MISMATCH', 'NOT_APPLICABLE'];
+exports.acquisitionCompatibleFulfillmentStates = ['ACQUIRING', 'PACKING_COMPLETE', 'INTERRUPTED'];
 exports.fulfillmentSessionStatuses = [
     'CREATED',
     'STATION_BOUND',
@@ -239,6 +252,40 @@ const requirementSatisfiers = {
 function requirementSatisfier(key) {
     return requirementSatisfiers[key];
 }
+function matchedItemBarcodeCounts(observations) {
+    const counts = new Map();
+    for (const observation of observations) {
+        if (observation.type !== 'ITEM_BARCODE_OBSERVATION')
+            continue;
+        if (observation.classification !== 'EXPECTED_ITEM' || observation.matchStatus !== 'MATCHED')
+            continue;
+        if (!observation.normalizedValue)
+            continue;
+        counts.set(observation.normalizedValue, (counts.get(observation.normalizedValue) ?? 0) + 1);
+    }
+    return counts;
+}
+function itemBarcodeObservationCompleteness(expectedItems, observations) {
+    const observedCounts = matchedItemBarcodeCounts(observations);
+    const observed = [...observedCounts.entries()]
+        .map(([sku, quantity]) => ({ sku, quantity }))
+        .sort((left, right) => left.sku.localeCompare(right.sku));
+    const expected = expectedItems.map((item) => ({ sku: item.sku, quantity: item.quantity }));
+    const missing = expected
+        .map((item) => ({ sku: item.sku, quantity: Math.max(0, item.quantity - (observedCounts.get(item.sku) ?? 0)) }))
+        .filter((item) => item.quantity > 0);
+    return {
+        complete: missing.length === 0 && (expected.length === 0 || expected.every((item) => (observedCounts.get(item.sku) ?? 0) >= item.quantity)),
+        expected,
+        observed,
+        missing,
+    };
+}
+function trackingObservationSatisfied(observations) {
+    return observations.some((item) => (item.type === 'TRACKING_BARCODE_OBSERVATION'
+        && item.classification === 'EXPECTED_TRACKING'
+        && item.matchStatus === 'MATCHED'));
+}
 function evaluateEnterprisePolicy(input) {
     const policy = resolveWorkflowPolicy(input.policyId);
     const capturePresent = [];
@@ -272,6 +319,8 @@ function evaluateEnterprisePolicy(input) {
         }
         else {
             workflowMissing.push(requirement.key);
+            if (fact?.detail)
+                statements.push(fact.detail);
         }
     }
     const satisfied = workflowMissing.length === 0;
@@ -614,8 +663,9 @@ exports.enterpriseArtifactDtoSchema = (0, runtime_1.schema)((value) => {
 });
 exports.hardwareObservationDtoSchema = (0, runtime_1.schema)((value) => {
     const input = (0, runtime_1.strictObject)(value, 'hardwareObservation', [
-        'id', 'object', 'schemaVersion', 'fulfillmentSessionId', 'deviceId', 'type', 'acquisitionClass', 'normalizedValue',
-        'grams', 'rawValueHash', 'monotonicTimestampMs', 'createdAt', 'updatedAt',
+        'id', 'object', 'schemaVersion', 'fulfillmentSessionId', 'deviceId', 'type', 'acquisitionClass', 'classification',
+        'matchStatus', 'normalizedValue', 'grams', 'rawValueHash', 'monotonicTimestampMs', 'wallClockUtc', 'bootId',
+        'eventSequence', 'createdAt', 'updatedAt',
     ]);
     (0, runtime_1.literalValue)(input.object, 'hardwareObservation.object', 'hardware_observation');
     (0, runtime_1.literalValue)(input.schemaVersion, 'hardwareObservation.schemaVersion', 1);
@@ -627,10 +677,17 @@ exports.hardwareObservationDtoSchema = (0, runtime_1.schema)((value) => {
         deviceId: parseEnterpriseResourceId('station_device', input.deviceId, 'hardwareObservation.deviceId'),
         type: (0, runtime_1.enumValue)(input.type, 'hardwareObservation.type', exports.enterpriseObservationTypes),
         acquisitionClass: (0, runtime_1.enumValue)(input.acquisitionClass, 'hardwareObservation.acquisitionClass', exports.acquisitionClasses),
+        classification: (0, runtime_1.enumValue)(input.classification, 'hardwareObservation.classification', exports.observationClassifications),
+        matchStatus: (0, runtime_1.enumValue)(input.matchStatus, 'hardwareObservation.matchStatus', exports.observationMatchStatuses),
         normalizedValue: (0, runtime_1.optionalString)(input.normalizedValue, 'hardwareObservation.normalizedValue', { min: 1, max: 160 }),
         grams: input.grams === undefined || input.grams === null ? null : (0, runtime_1.integerValue)(input.grams, 'hardwareObservation.grams', 0, 1_000_000_000),
         rawValueHash: (0, runtime_1.sha256Value)(input.rawValueHash, 'hardwareObservation.rawValueHash'),
         monotonicTimestampMs: (0, runtime_1.integerValue)(input.monotonicTimestampMs, 'hardwareObservation.monotonicTimestampMs', 0, Number.MAX_SAFE_INTEGER),
+        wallClockUtc: (0, runtime_1.optionalIsoDateTime)(input.wallClockUtc, 'hardwareObservation.wallClockUtc'),
+        bootId: (0, runtime_1.optionalString)(input.bootId, 'hardwareObservation.bootId', { min: 8, max: 80, pattern: /^[A-Za-z0-9._:-]+$/ }),
+        eventSequence: input.eventSequence === undefined || input.eventSequence === null
+            ? null
+            : (0, runtime_1.integerValue)(input.eventSequence, 'hardwareObservation.eventSequence', 1, Number.MAX_SAFE_INTEGER),
         createdAt: (0, runtime_1.isoDateTime)(input.createdAt, 'hardwareObservation.createdAt'),
         updatedAt: (0, runtime_1.isoDateTime)(input.updatedAt, 'hardwareObservation.updatedAt'),
     };
@@ -639,6 +696,15 @@ exports.hardwareObservationDtoSchema = (0, runtime_1.schema)((value) => {
     }
     if (result.type !== 'PACKAGE_WEIGHT_OBSERVATION' && !result.normalizedValue) {
         throw new runtime_1.DomainValidationError({ path: 'hardwareObservation.normalizedValue', code: 'REQUIRED', message: 'barcode observations require a normalized value' });
+    }
+    if (result.type === 'PACKAGE_WEIGHT_OBSERVATION' && (result.classification !== 'NOT_APPLICABLE' || result.matchStatus !== 'NOT_APPLICABLE')) {
+        throw new runtime_1.DomainValidationError({ path: 'hardwareObservation.classification', code: 'FORMAT', message: 'weight observations do not carry barcode classification' });
+    }
+    if (result.type === 'ITEM_BARCODE_OBSERVATION' && !['EXPECTED_ITEM', 'UNEXPECTED_ITEM', 'UNRECOGNIZED'].includes(result.classification)) {
+        throw new runtime_1.DomainValidationError({ path: 'hardwareObservation.classification', code: 'FORMAT', message: 'item barcode classification does not match observation type' });
+    }
+    if (result.type === 'TRACKING_BARCODE_OBSERVATION' && !['EXPECTED_TRACKING', 'UNEXPECTED_TRACKING'].includes(result.classification)) {
+        throw new runtime_1.DomainValidationError({ path: 'hardwareObservation.classification', code: 'FORMAT', message: 'tracking barcode classification does not match observation type' });
     }
     return result;
 });

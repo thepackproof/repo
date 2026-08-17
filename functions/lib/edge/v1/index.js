@@ -17,4 +17,5 @@ Object.defineProperty(exports, "__esModule", { value: true });
 __exportStar(require("./adapters"), exports);
 __exportStar(require("./queue"), exports);
 __exportStar(require("./runtime"), exports);
+__exportStar(require("./persistent-queue"), exports);
 //# sourceMappingURL=index.js.map

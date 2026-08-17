@@ -168,14 +168,17 @@ export function assuranceForFinalization(input: {
 }
 
 export function finalizeReceivedEvidence(input: {
-  bytes: Buffer;
   pending: PendingEvidenceGrant;
   object: ReceivedEvidenceObject;
   uploaderRole: 'SELLER' | 'BUYER' | 'ENTERPRISE_STATION';
   signer: ManifestSigner;
+  bytes?: Buffer;
+  digest?: string;
+  detectedContentType?: string | null;
 }) {
-  const digest = sha256Hex(input.bytes);
-  const detectedContentType = detectSupportedMediaType(input.bytes.subarray(0, 32));
+  const digest = input.digest ?? (input.bytes ? sha256Hex(input.bytes) : '');
+  if (!digest) throw new Error('finalizeReceivedEvidence requires received bytes or a precomputed digest.');
+  const detectedContentType = input.detectedContentType ?? (input.bytes ? detectSupportedMediaType(input.bytes.subarray(0, 32)) : null);
   const contentTypeMatched = detectedContentType === input.object.contentType;
   const clientSha256 = input.pending.clientSha256;
   const clientHashMatched = clientSha256 ? clientSha256 === digest : null;
@@ -206,6 +209,9 @@ export function finalizeReceivedEvidence(input: {
     carrierStatus: carrierTrackingMatchStatus,
     clientTimeConsistencyStatus,
   });
+  const runtimeIntegrity = clientManifest && typeof clientManifest.runtimeIntegrity === 'object' && clientManifest.runtimeIntegrity
+    ? clientManifest.runtimeIntegrity as { integrityScope?: string | null }
+    : null;
   const unsignedManifest = {
     schemaVersion: EVIDENCE_MANIFEST_SCHEMA_VERSION,
     format: {
@@ -250,7 +256,7 @@ export function finalizeReceivedEvidence(input: {
       detectedContentType,
       contentTypeMatched,
       attestationStatus,
-      runtimeIntegrityScope: null,
+      runtimeIntegrityScope: runtimeIntegrity?.integrityScope ?? null,
       clientWallDurationMs,
       clientMonotonicElapsedMs,
       clientTimeConsistencyStatus,

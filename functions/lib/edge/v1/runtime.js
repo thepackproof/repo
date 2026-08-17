@@ -3,7 +3,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.PackProofEdgeStationRuntime = void 0;
 exports.contentAddressedClientEvidenceId = contentAddressedClientEvidenceId;
 const node_crypto_1 = require("node:crypto");
-const edge_protocol_1 = require("../../domain/v1/edge-protocol");
+const enterprise_1 = require("../../domain/v1/enterprise");
+const edge_authentication_1 = require("../../application/v1/edge-authentication");
 const adapters_1 = require("./adapters");
 function device(station, kind) {
     const match = station.devices.find((item) => item.kind === kind);
@@ -21,12 +22,14 @@ class PackProofEdgeStationRuntime {
     session = null;
     buffer = new adapters_1.RollingChunkBuffer();
     sourceStreamId = 'stream-overhead-1';
+    signer;
     constructor(options) {
         this.options = options;
         this.scanner = new adapters_1.SimulatedHidScanner(device(options.station, 'BARCODE_SCANNER').id, options.station.station.id);
         this.scale = new adapters_1.SimulatedUsbScale(device(options.station, 'SCALE').id);
         this.overheadCamera = new adapters_1.SimulatedUvcCamera(device(options.station, 'OVERHEAD_CAMERA').id);
         this.labelCamera = new adapters_1.SimulatedRtspCamera(device(options.station, 'LABEL_CAMERA').id);
+        this.signer = new edge_authentication_1.EdgeRequestSigner(options.edgePrivateKeyPkcs8);
     }
     get currentSession() {
         return this.session;
@@ -51,46 +54,53 @@ class PackProofEdgeStationRuntime {
             commandKey: input.commandKey ?? input.externalOrderId,
             requestId: input.requestId ?? `req_${(0, node_crypto_1.randomUUID)()}`,
         }, { type: 'EDGE_AGENT', id: this.options.station.edgeAgent.id });
-        this.session = await this.options.service.beginAcquiring(assigned.fulfillment.id, this.options.station.edgeAgent.id, `req_acquire_${assigned.fulfillment.id}`);
+        const acquireBody = { action: 'BEGIN_ACQUIRING', fulfillmentSessionId: assigned.fulfillment.id };
+        const principal = this.authenticate(acquireBody, assigned.fulfillment.id);
+        this.session = await this.options.service.beginAcquiring(assigned.fulfillment.id, principal, `req_acquire_${assigned.fulfillment.id}`);
         this.overheadCamera.startCapture(this.sourceStreamId, this.session.fulfillment.id);
         return this.session;
     }
     async scan(rawValue) {
         const session = this.requireSession();
         const event = this.scanner.observe(rawValue);
-        const classified = (0, edge_protocol_1.classifyBarcode)(event.normalizedValue, session.fulfillment.expectedItems.map((item) => item.sku), session.fulfillment.expectedTrackingNumber);
-        if (classified === 'UNRECOGNIZED')
-            return session;
-        await this.options.service.recordObservation({
+        const command = {
             fulfillmentSessionId: session.fulfillment.id,
-            edgeAgentId: this.options.station.edgeAgent.id,
             deviceId: device(this.options.station, 'BARCODE_SCANNER').id,
-            type: classified === 'ITEM_OBSERVED' ? 'ITEM_BARCODE_OBSERVATION' : 'TRACKING_BARCODE_OBSERVATION',
-            acquisitionClass: 'ENTERPRISE_EDGE',
+            source: 'BARCODE_OBSERVED',
+            format: event.format,
             normalizedValue: event.normalizedValue,
             grams: null,
             rawValueHash: event.rawValueHash,
             monotonicTimestampMs: event.monotonicTimestamp,
+            wallClockUtc: event.wallClockUtc,
+            bootId: event.bootId,
+            eventSequence: event.eventSequence,
             requestId: `req_scan_${event.rawValueHash}`,
-        });
+        };
+        const principal = this.authenticate({ action: 'RECORD_OBSERVATION', ...command }, session.fulfillment.id);
+        await this.options.service.recordObservation(principal, command);
         this.session = await this.reload();
         return this.session;
     }
     async weigh(grams) {
         const session = this.requireSession();
         const event = this.scale.observeStable(grams);
-        await this.options.service.recordObservation({
+        const command = {
             fulfillmentSessionId: session.fulfillment.id,
-            edgeAgentId: this.options.station.edgeAgent.id,
             deviceId: device(this.options.station, 'SCALE').id,
-            type: 'PACKAGE_WEIGHT_OBSERVATION',
-            acquisitionClass: 'ENTERPRISE_EDGE',
+            source: 'WEIGHT_STABLE',
+            format: null,
             normalizedValue: null,
             grams: event.grams,
             rawValueHash: (0, adapters_1.edgeSha256)(String(event.grams)),
             monotonicTimestampMs: event.monotonicTimestamp,
+            wallClockUtc: event.wallClockUtc,
+            bootId: event.bootId,
+            eventSequence: event.eventSequence,
             requestId: `req_weight_${event.measurementSequence}`,
-        });
+        };
+        const principal = this.authenticate({ action: 'RECORD_OBSERVATION', ...command }, session.fulfillment.id);
+        await this.options.service.recordObservation(principal, command);
         this.session = await this.reload();
         return this.session;
     }
@@ -134,9 +144,8 @@ class PackProofEdgeStationRuntime {
             onlineAtCapture: this.options.online(),
             clientEvidenceId: contentAddressedClientEvidenceId(session.fulfillment.id, 'STATION_SEAL_REFERENCE', (0, adapters_1.edgeSha256)(sealBytes)),
         });
-        const videoArtifact = await this.options.service.reserveArtifact({
+        const videoCommand = {
             fulfillmentSessionId: session.fulfillment.id,
-            edgeAgentId: this.options.station.edgeAgent.id,
             deviceId: device(this.options.station, 'OVERHEAD_CAMERA').id,
             clientEvidenceId: video.clientEvidenceId,
             type: 'STATION_PACKING_VIDEO',
@@ -145,10 +154,9 @@ class PackProofEdgeStationRuntime {
             sha256: video.plaintextSha256,
             rollingCapture,
             requestId: `req_video_${video.clientEvidenceId}`,
-        });
-        const sealArtifact = await this.options.service.reserveArtifact({
+        };
+        const sealCommand = {
             fulfillmentSessionId: session.fulfillment.id,
-            edgeAgentId: this.options.station.edgeAgent.id,
             deviceId: device(this.options.station, 'LABEL_CAMERA').id,
             clientEvidenceId: seal.clientEvidenceId,
             type: 'STATION_SEAL_REFERENCE',
@@ -157,8 +165,14 @@ class PackProofEdgeStationRuntime {
             sha256: seal.plaintextSha256,
             rollingCapture: null,
             requestId: `req_seal_${seal.clientEvidenceId}`,
-        });
-        this.session = await this.options.service.completePacking(session.fulfillment.id, this.options.station.edgeAgent.id, `req_packed_${session.fulfillment.id}`);
+        };
+        const videoPrincipal = this.authenticate({ action: 'RESERVE_ARTIFACT', ...videoCommand }, session.fulfillment.id);
+        const videoArtifact = await this.options.service.reserveArtifact(videoPrincipal, videoCommand);
+        const sealPrincipal = this.authenticate({ action: 'RESERVE_ARTIFACT', ...sealCommand }, session.fulfillment.id);
+        const sealArtifact = await this.options.service.reserveArtifact(sealPrincipal, sealCommand);
+        const packedBody = { action: 'COMPLETE_PACKING', fulfillmentSessionId: session.fulfillment.id };
+        const packedPrincipal = this.authenticate(packedBody, session.fulfillment.id);
+        this.session = await this.options.service.completePacking(session.fulfillment.id, packedPrincipal, `req_packed_${session.fulfillment.id}`);
         return { session: this.session, videoId: videoArtifact.id, sealId: sealArtifact.id };
     }
     async syncUploads() {
@@ -176,14 +190,32 @@ class PackProofEdgeStationRuntime {
                 this.options.queue.markAttention(record.clientEvidenceId);
                 continue;
             }
-            await this.options.service.acceptIngress(record.fulfillmentSessionId, artifact.id, this.options.station.edgeAgent.id, plaintext);
-            await this.options.service.markUploaded(record.fulfillmentSessionId, artifact.id, this.options.station.edgeAgent.id);
+            const ingressBody = { action: 'ACCEPT_INGRESS', fulfillmentSessionId: record.fulfillmentSessionId, artifactId: artifact.id };
+            const principal = this.authenticate(ingressBody, record.fulfillmentSessionId);
+            await this.options.service.acceptIngress(record.fulfillmentSessionId, artifact.id, principal, plaintext);
+            const uploadedBody = { action: 'MARK_UPLOADED', fulfillmentSessionId: record.fulfillmentSessionId, artifactId: artifact.id };
+            const uploadedPrincipal = this.authenticate(uploadedBody, record.fulfillmentSessionId);
+            await this.options.service.markUploaded(record.fulfillmentSessionId, artifact.id, uploadedPrincipal);
             this.options.queue.markUploaded(record.clientEvidenceId);
         }
         this.session = this.session ? await this.reload() : this.session;
     }
     acknowledgeServerFinalization(clientEvidenceId) {
         this.options.queue.markServerFinalized(clientEvidenceId);
+    }
+    authenticate(body, sessionId) {
+        const clock = this.options.clock ?? (() => new Date());
+        const request = this.signer.sign({
+            organizationId: this.options.station.organization.organizationId,
+            siteId: this.options.station.site.id,
+            edgeAgentId: this.options.station.edgeAgent.id,
+            stationId: this.options.station.station.id,
+            sessionId: sessionId ? (0, enterprise_1.parseEnterpriseResourceId)('fulfillment_session', sessionId) : null,
+            requestId: `req_${(0, node_crypto_1.randomUUID)()}`,
+            timestamp: clock().toISOString(),
+            nonce: (0, node_crypto_1.randomBytes)(16).toString('base64url'),
+        }, body);
+        return this.options.service.authenticateEdge(request, body);
     }
     requireSession() {
         if (!this.session)
