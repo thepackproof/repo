@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Confirm PackProof account deletion</title>
+  <link rel="stylesheet" href="/site.css">
+  <script src="/deletion-confirm.js" defer></script>
+</head>
+<body><main>
+  <div class="brand">PACKPROOF</div>
+  <h1>Confirm account deletion</h1>
+  <p>This does not delete your account yet. Confirming schedules deletion for seven days from now so you can cancel it in the app if this was a mistake.</p>
+  <div class="card">
+    <form id="confirm-form" method="post" action="/api/confirm-deletion">
+      <input id="token" name="token" type="hidden">
+      <button type="submit">Schedule deletion</button>
+      <p id="status" class="muted" aria-live="polite"></p>
+    </form>
+  </div>
+  <p class="notice">Email scanners and link previews cannot complete this step. Only the button above schedules deletion.</p>
+  <footer><a href="/delete.html">Cancel and start again</a> · <a href="/privacy.html">Privacy</a></footer>
+</main></body>
+</html>

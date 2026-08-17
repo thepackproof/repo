@@ -2,9 +2,6 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     function signedIn() { return request.auth != null; }
-    function transactionRecord(transactionId) {
-      return get(/databases/$(database)/documents/transactions/$(transactionId)).data;
-    }
     function isParticipant(transactionId) {
       return signedIn()
         && exists(/databases/$(database)/documents/transactions/$(transactionId))
@@ -25,8 +22,10 @@ service cloud.firestore {
     }
 
     match /publicProfiles/{userId} {
-      allow read: if signedIn();
-      allow write: if false;
+      // Client code only fetches a known UID. Listing would enumerate member
+      // display names and photos for every signed-in account.
+      allow get: if signedIn();
+      allow list, write: if false;
     }
 
     match /transactions/{transactionId} {
@@ -54,24 +53,12 @@ service cloud.firestore {
       }
     }
 
-    match /pendingUploads/{uploadId} {
-      allow read, write: if false;
-    }
-    match /invites/{inviteId} {
-      allow read, write: if false;
-    }
-    match /reports/{reportId} {
-      allow read, write: if false;
-    }
-    match /billingEvents/{eventId} {
-      allow read, write: if false;
-    }
-    match /oauthStates/{stateId} {
-      allow read, write: if false;
-    }
-    match /authGrants/{grantId} {
-      allow read, write: if false;
-    }
+    match /pendingUploads/{uploadId} { allow read, write: if false; }
+    match /invites/{inviteId} { allow read, write: if false; }
+    match /reports/{reportId} { allow read, write: if false; }
+    match /billingEvents/{eventId} { allow read, write: if false; }
+    match /oauthStates/{stateId} { allow read, write: if false; }
+    match /authGrants/{grantId} { allow read, write: if false; }
     match /captureSessions/{sessionId} { allow read, write: if false; }
     match /connectSessions/{sessionId} { allow read, write: if false; }
     match /commerceContexts/{commerceContextId} { allow read, write: if false; }
@@ -82,14 +69,19 @@ service cloud.firestore {
     match /domainOutbox/{eventId} { allow read, write: if false; }
     match /platformIntegrations/{integrationId} { allow read, write: if false; }
     match /webhookDeliveries/{deliveryId} { allow read, write: if false; }
-    match /providerLinks/{providerId} {
-      allow read, write: if false;
-    }
+    match /providerLinks/{providerId} { allow read, write: if false; }
     match /apiCredentials/{credentialId} { allow read, write: if false; }
     match /apiClients/{clientId} { allow read, write: if false; }
     match /organizations/{organizationId} { allow read, write: if false; }
     match /apiIdempotencyRecords/{recordId} { allow read, write: if false; }
     match /apiRateLimits/{limitId} { allow read, write: if false; }
     match /apiAuditStreams/{streamId} { allow read, write: if false; }
+    match /webDeletionTokens/{tokenId} { allow read, write: if false; }
+    match /deletionRateLimits/{limitId} { allow read, write: if false; }
+    match /mail/{messageId} { allow read, write: if false; }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
   }
 }

@@ -3,6 +3,7 @@ import { FieldValue, Timestamp, type DocumentReference } from 'firebase-admin/fi
 import { HttpsError, onCall, onRequest } from 'firebase-functions/v2/https';
 import { adminAuth, db, publicAppUrl, tikTokClientKey, tikTokClientSecret, tikTokRedirectUri } from './config';
 import { expiresIn, hash, randomToken } from './helpers';
+import { applySecurityHeaders } from './http-security';
 
 const tikTokEnabled = process.env.ENABLE_TIKTOK_AUTH === 'true';
 const secrets = tikTokEnabled ? [tikTokClientKey, tikTokClientSecret] : [];
@@ -31,7 +32,8 @@ export const createTikTokAuthSession = onCall({ enforceAppCheck: true, secrets }
   return { authorizationUrl: await buildTikTokAuthorization(request.auth?.uid ?? null, 'APP_AUTH') };
 });
 
-export const webTikTokDeletionStart = onRequest({ secrets }, async (request, response) => {
+export const webTikTokDeletionStart = onRequest({ cors: false, secrets }, async (request, response) => {
+  applySecurityHeaders(response);
   if (!tikTokEnabled) { response.status(404).send('TikTok sign-in is not enabled.'); return; }
   if (request.method !== 'GET') { response.status(405).send('Method not allowed'); return; }
   response.redirect(302, await buildTikTokAuthorization(null, 'WEB_DELETE'));
@@ -40,15 +42,14 @@ export const webTikTokDeletionStart = onRequest({ secrets }, async (request, res
 type TikTokTokenResponse = { access_token?: string; open_id?: string; refresh_token?: string; error?: string; error_description?: string };
 type TikTokUserResponse = { data?: { user?: { open_id?: string; union_id?: string; display_name?: string; avatar_url?: string } }; error?: { code?: string; message?: string } };
 
-export const tiktokAuthCallback = onRequest({ secrets }, async (request, response) => {
+export const tiktokAuthCallback = onRequest({ cors: false, secrets }, async (request, response) => {
+  applySecurityHeaders(response);
   if (!tikTokEnabled) { response.status(404).send('TikTok sign-in is not enabled.'); return; }
   const code = String(request.query.code ?? '');
   const state = String(request.query.state ?? '');
   const stateRef = db.collection('oauthStates').doc(hash(state));
-  const stateSnap = state ? await stateRef.get() : null;
-  const stateData = stateSnap?.data();
-  if (!code || !state || !stateSnap?.exists || stateData?.used
-    || (stateData?.expiresAt as Timestamp).toMillis() < Date.now()) {
+  const stateData = code && state ? await consumeOauthState(stateRef) : null;
+  if (!stateData) {
     response.status(400).send('This TikTok sign-in attempt is invalid or expired. Return to PackProof and try again.');
     return;
   }
@@ -63,30 +64,29 @@ export const tiktokAuthCallback = onRequest({ secrets }, async (request, respons
         code,
         grant_type: 'authorization_code',
         redirect_uri: tikTokRedirectUri.value(),
-        code_verifier: stateData!.verifier,
+        code_verifier: String(stateData.verifier ?? ''),
       }),
     });
     const token = await tokenResponse.json() as TikTokTokenResponse;
-    if (!tokenResponse.ok || !token.access_token || !token.open_id) throw new Error(token.error_description ?? token.error ?? 'TikTok token exchange failed.');
+    if (!tokenResponse.ok || !token.access_token || !token.open_id) throw new Error('TikTok token exchange failed.');
 
     const userResponse = await fetch('https://open.tiktokapis.com/v2/user/info/?fields=open_id,union_id,avatar_url,display_name', {
       headers: { Authorization: `Bearer ${token.access_token}` },
     });
     const userPayload = await userResponse.json() as TikTokUserResponse;
     const profile = userPayload.data?.user;
-    if (!userResponse.ok || !profile?.open_id) throw new Error(userPayload.error?.message ?? 'TikTok profile lookup failed.');
+    if (!userResponse.ok || !profile?.open_id) throw new Error('TikTok profile lookup failed.');
 
     const providerKey = hash(`tiktok:${profile.open_id}`);
     const providerRef = db.collection('providerLinks').doc(providerKey);
     const providerSnap = await providerRef.get();
     const existingUid = providerSnap.data()?.uid as string | undefined;
-    const targetUid = stateData!.targetUid as string | null;
-    if (stateData!.purpose === 'WEB_DELETE') {
+    const targetUid = stateData.targetUid as string | null;
+    if (stateData.purpose === 'WEB_DELETE') {
       if (existingUid) {
         const scheduledAt = Timestamp.fromMillis(Date.now() + 7 * 86400_000);
         await db.collection('users').doc(existingUid).set({ deletionRequestedAt: FieldValue.serverTimestamp(), deletionScheduledAt: scheduledAt }, { merge: true });
       }
-      await consumeOauthState(stateRef);
       response.redirect(302, `${publicAppUrl.value().replace(/\/$/, '')}/deletion-confirmed.html`);
       return;
     }
@@ -114,23 +114,23 @@ export const tiktokAuthCallback = onRequest({ secrets }, async (request, respons
     const customToken = await adminAuth.createCustomToken(uid, { tiktok: true });
     const grant = randomToken(32);
     await db.collection('authGrants').doc(hash(grant)).set({ uid, customToken, used: false, expiresAt: expiresIn(300), createdAt: FieldValue.serverTimestamp() });
-    await consumeOauthState(stateRef);
     response.redirect(302, `packproof://auth/tiktok?grant=${encodeURIComponent(grant)}`);
-  } catch (error) {
-    response.status(400).send(`TikTok sign-in could not be completed. ${error instanceof Error ? error.message : ''}`);
+  } catch {
+    response.status(400).send('TikTok sign-in could not be completed. Return to PackProof and try again.');
   }
 });
 
-async function consumeOauthState(stateRef: DocumentReference): Promise<void> {
-  await db.runTransaction(async (tx) => {
+async function consumeOauthState(stateRef: DocumentReference): Promise<FirebaseFirestore.DocumentData | null> {
+  return db.runTransaction(async (tx) => {
     const snap = await tx.get(stateRef);
     const data = snap.data();
-    if (!snap.exists || data?.used) throw new Error('This TikTok sign-in attempt is no longer usable.');
+    if (!snap.exists || !data || data.used || (data.expiresAt as Timestamp).toMillis() < Date.now()) return null;
     tx.update(stateRef, {
       used: true,
       usedAt: FieldValue.serverTimestamp(),
       verifier: FieldValue.delete(),
     });
+    return data;
   });
 }
 

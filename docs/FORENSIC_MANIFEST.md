@@ -1,6 +1,6 @@
 # Evidence manifest schema 2
 
-The historical filename is retained for links, but version 0.9.0 calls this an **evidence manifest**. “Forensic” in a filename or technical context is not a claim of laboratory accreditation, legal admissibility, authenticity, or evidentiary weight.
+The historical filename is retained for links, but version 0.9.5.0 calls this an **evidence manifest**. “Forensic” in a filename or technical context is not a claim of laboratory accreditation, legal admissibility, authenticity, or evidentiary weight.
 
 Every accepted or integrity-quarantined evidence object produces canonical private JSON at `manifests/{transactionId}/{uploadId}.json`. Camera-originated records include a capture manifest; a supporting PDF has `capture: null` and remains explicitly distinguishable.
 

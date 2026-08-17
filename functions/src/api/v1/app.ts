@@ -9,6 +9,7 @@ import type { ParticipantAuthenticator } from './participant-security';
 import { MerchantConnectApplicationService } from '../../application/v1/merchant-connect-service';
 import { MerchantEvidenceApplicationService } from '../../application/v1/merchant-evidence-service';
 import { TransactionService } from './transaction-service';
+import { applySecurityHeaders } from '../../http-security';
 import {
   parseAccessibleTransactionId,
   parseAssociateDelivery,
@@ -177,9 +178,7 @@ export function createApiV1App(dependencies: ApiAppDependencies): express.Expres
     const requestId = acceptedRequestId(req.get('x-request-id'));
     res.locals.requestId = requestId;
     res.setHeader('X-Request-Id', requestId);
-    res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.setHeader('X-Frame-Options', 'DENY');
-    res.setHeader('Cache-Control', 'no-store');
+    applySecurityHeaders(res);
     const startedAt = process.hrtime.bigint();
     res.on('finish', () => {
       const durationMs = Number(process.hrtime.bigint() - startedAt) / 1_000_000;

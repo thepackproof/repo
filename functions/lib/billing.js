@@ -5,11 +5,13 @@ const firestore_1 = require("firebase-admin/firestore");
 const https_1 = require("firebase-functions/v2/https");
 const config_1 = require("./config");
 const billing_state_1 = require("./billing-state");
+const http_security_1 = require("./http-security");
 const billingEnabled = process.env.ENABLE_REVENUECAT_BILLING === 'true';
 function validEventId(value) {
     return typeof value === 'string' && value.length >= 8 && value.length <= 200 && !value.includes('/');
 }
-exports.revenueCatWebhook = (0, https_1.onRequest)({ secrets: billingEnabled ? [config_1.revenueCatWebhookSecret] : [] }, async (request, response) => {
+exports.revenueCatWebhook = (0, https_1.onRequest)({ cors: false, secrets: billingEnabled ? [config_1.revenueCatWebhookSecret] : [] }, async (request, response) => {
+    (0, http_security_1.applySecurityHeaders)(response);
     if (!billingEnabled) {
         response.status(404).send('PackProof Pro billing is not enabled.');
         return;
@@ -19,7 +21,7 @@ exports.revenueCatWebhook = (0, https_1.onRequest)({ secrets: billingEnabled ? [
         return;
     }
     const expected = `Bearer ${config_1.revenueCatWebhookSecret.value()}`;
-    if (request.get('authorization') !== expected) {
+    if (!(0, http_security_1.constantTimeSecretEquals)(request.get('authorization') ?? '', expected)) {
         response.status(401).send('Unauthorized');
         return;
     }

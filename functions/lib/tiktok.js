@@ -6,6 +6,7 @@ const firestore_1 = require("firebase-admin/firestore");
 const https_1 = require("firebase-functions/v2/https");
 const config_1 = require("./config");
 const helpers_1 = require("./helpers");
+const http_security_1 = require("./http-security");
 const tikTokEnabled = process.env.ENABLE_TIKTOK_AUTH === 'true';
 const secrets = tikTokEnabled ? [config_1.tikTokClientKey, config_1.tikTokClientSecret] : [];
 function requireTikTokEnabled() {
@@ -30,7 +31,8 @@ async function buildTikTokAuthorization(targetUid, purpose) {
 exports.createTikTokAuthSession = (0, https_1.onCall)({ enforceAppCheck: true, secrets }, async (request) => {
     return { authorizationUrl: await buildTikTokAuthorization(request.auth?.uid ?? null, 'APP_AUTH') };
 });
-exports.webTikTokDeletionStart = (0, https_1.onRequest)({ secrets }, async (request, response) => {
+exports.webTikTokDeletionStart = (0, https_1.onRequest)({ cors: false, secrets }, async (request, response) => {
+    (0, http_security_1.applySecurityHeaders)(response);
     if (!tikTokEnabled) {
         response.status(404).send('TikTok sign-in is not enabled.');
         return;
@@ -41,7 +43,8 @@ exports.webTikTokDeletionStart = (0, https_1.onRequest)({ secrets }, async (requ
     }
     response.redirect(302, await buildTikTokAuthorization(null, 'WEB_DELETE'));
 });
-exports.tiktokAuthCallback = (0, https_1.onRequest)({ secrets }, async (request, response) => {
+exports.tiktokAuthCallback = (0, https_1.onRequest)({ cors: false, secrets }, async (request, response) => {
+    (0, http_security_1.applySecurityHeaders)(response);
     if (!tikTokEnabled) {
         response.status(404).send('TikTok sign-in is not enabled.');
         return;
@@ -49,10 +52,8 @@ exports.tiktokAuthCallback = (0, https_1.onRequest)({ secrets }, async (request,
     const code = String(request.query.code ?? '');
     const state = String(request.query.state ?? '');
     const stateRef = config_1.db.collection('oauthStates').doc((0, helpers_1.hash)(state));
-    const stateSnap = state ? await stateRef.get() : null;
-    const stateData = stateSnap?.data();
-    if (!code || !state || !stateSnap?.exists || stateData?.used
-        || (stateData?.expiresAt).toMillis() < Date.now()) {
+    const stateData = code && state ? await consumeOauthState(stateRef) : null;
+    if (!stateData) {
         response.status(400).send('This TikTok sign-in attempt is invalid or expired. Return to PackProof and try again.');
         return;
     }
@@ -66,19 +67,19 @@ exports.tiktokAuthCallback = (0, https_1.onRequest)({ secrets }, async (request,
                 code,
                 grant_type: 'authorization_code',
                 redirect_uri: config_1.tikTokRedirectUri.value(),
-                code_verifier: stateData.verifier,
+                code_verifier: String(stateData.verifier ?? ''),
             }),
         });
         const token = await tokenResponse.json();
         if (!tokenResponse.ok || !token.access_token || !token.open_id)
-            throw new Error(token.error_description ?? token.error ?? 'TikTok token exchange failed.');
+            throw new Error('TikTok token exchange failed.');
         const userResponse = await fetch('https://open.tiktokapis.com/v2/user/info/?fields=open_id,union_id,avatar_url,display_name', {
             headers: { Authorization: `Bearer ${token.access_token}` },
         });
         const userPayload = await userResponse.json();
         const profile = userPayload.data?.user;
         if (!userResponse.ok || !profile?.open_id)
-            throw new Error(userPayload.error?.message ?? 'TikTok profile lookup failed.');
+            throw new Error('TikTok profile lookup failed.');
         const providerKey = (0, helpers_1.hash)(`tiktok:${profile.open_id}`);
         const providerRef = config_1.db.collection('providerLinks').doc(providerKey);
         const providerSnap = await providerRef.get();
@@ -89,7 +90,6 @@ exports.tiktokAuthCallback = (0, https_1.onRequest)({ secrets }, async (request,
                 const scheduledAt = firestore_1.Timestamp.fromMillis(Date.now() + 7 * 86400_000);
                 await config_1.db.collection('users').doc(existingUid).set({ deletionRequestedAt: firestore_1.FieldValue.serverTimestamp(), deletionScheduledAt: scheduledAt }, { merge: true });
             }
-            await consumeOauthState(stateRef);
             response.redirect(302, `${config_1.publicAppUrl.value().replace(/\/$/, '')}/deletion-confirmed.html`);
             return;
         }
@@ -117,24 +117,24 @@ exports.tiktokAuthCallback = (0, https_1.onRequest)({ secrets }, async (request,
         const customToken = await config_1.adminAuth.createCustomToken(uid, { tiktok: true });
         const grant = (0, helpers_1.randomToken)(32);
         await config_1.db.collection('authGrants').doc((0, helpers_1.hash)(grant)).set({ uid, customToken, used: false, expiresAt: (0, helpers_1.expiresIn)(300), createdAt: firestore_1.FieldValue.serverTimestamp() });
-        await consumeOauthState(stateRef);
         response.redirect(302, `packproof://auth/tiktok?grant=${encodeURIComponent(grant)}`);
     }
-    catch (error) {
-        response.status(400).send(`TikTok sign-in could not be completed. ${error instanceof Error ? error.message : ''}`);
+    catch {
+        response.status(400).send('TikTok sign-in could not be completed. Return to PackProof and try again.');
     }
 });
 async function consumeOauthState(stateRef) {
-    await config_1.db.runTransaction(async (tx) => {
+    return config_1.db.runTransaction(async (tx) => {
         const snap = await tx.get(stateRef);
         const data = snap.data();
-        if (!snap.exists || data?.used)
-            throw new Error('This TikTok sign-in attempt is no longer usable.');
+        if (!snap.exists || !data || data.used || data.expiresAt.toMillis() < Date.now())
+            return null;
         tx.update(stateRef, {
             used: true,
             usedAt: firestore_1.FieldValue.serverTimestamp(),
             verifier: firestore_1.FieldValue.delete(),
         });
+        return data;
     });
 }
 exports.redeemTikTokGrant = (0, https_1.onCall)({ enforceAppCheck: true }, async (request) => {

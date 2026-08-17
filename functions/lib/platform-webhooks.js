@@ -2,8 +2,6 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.retryConnectCallbacks = exports.onConnectEvidenceVerified = exports.redeemPublicCommerceHandoff = exports.redeemConnectSession = exports.handleMarketplaceOrder = exports.provisionConnectIntegration = void 0;
 const node_crypto_1 = require("node:crypto");
-const promises_1 = require("node:dns/promises");
-const node_net_1 = require("node:net");
 const firestore_1 = require("firebase-admin/firestore");
 const https_1 = require("firebase-functions/v2/https");
 const firestore_2 = require("firebase-functions/v2/firestore");
@@ -17,6 +15,7 @@ const errors_1 = require("./application/v1/errors");
 const config_1 = require("./config");
 const evidence_1 = require("./evidence");
 const helpers_1 = require("./helpers");
+const http_security_1 = require("./http-security");
 const connect_session_token_issuer_1 = require("./infrastructure/crypto/connect-session-token-issuer");
 const public_handoff_token_issuer_1 = require("./infrastructure/crypto/public-handoff-token-issuer");
 const sha256_token_verifier_1 = require("./infrastructure/crypto/sha256-token-verifier");
@@ -24,8 +23,10 @@ const callable_errors_1 = require("./infrastructure/firebase/v1/callable-errors"
 const connect_handoff_repository_1 = require("./infrastructure/firebase/v1/connect-handoff-repository");
 const commerce_context_repository_1 = require("./infrastructure/firebase/v1/commerce-context-repository");
 const public_commerce_handoff_repository_1 = require("./infrastructure/firebase/v1/public-commerce-handoff-repository");
+const public_https_callback_1 = require("./infrastructure/net/public-https-callback");
 const validation_1 = require("./validation");
 const provisionSchema = validation_1.connectProvisionSchema;
+const callbackUrlValidator = new public_https_callback_1.DnsPublicHttpsCallbackValidator();
 const commerceContextService = new commerce_context_service_1.CommerceContextApplicationService(new commerce_context_repository_1.FirestoreCommerceContextRepository(config_1.db), new connect_session_token_issuer_1.HmacConnectSessionTokenIssuer());
 const connectHandoffService = new connect_handoff_service_1.ConnectHandoffApplicationService(new connect_handoff_repository_1.FirestoreConnectHandoffRepository(config_1.db), new sha256_token_verifier_1.Sha256TokenVerifier());
 const publicCommerceHandoffService = new public_commerce_handoff_service_1.PublicCommerceHandoffApplicationService(new public_commerce_handoff_repository_1.FirestorePublicCommerceHandoffRepository(config_1.db), new public_handoff_token_issuer_1.HmacPublicHandoffTokenIssuer(() => config_1.publicHandoffSigningSecret.value()), new sha256_token_verifier_1.Sha256TokenVerifier(), () => {
@@ -34,39 +35,17 @@ const publicCommerceHandoffService = new public_commerce_handoff_service_1.Publi
         throw new Error('API_ENVIRONMENT must be sandbox or live.');
     return value;
 });
-function isPrivateAddress(address) {
-    const value = address.toLowerCase().replace(/^::ffff:/, '');
-    if ((0, node_net_1.isIP)(value) === 4) {
-        const parts = value.split('.').map(Number);
-        return parts[0] === 0 || parts[0] === 10 || parts[0] === 127 || parts[0] >= 224
-            || (parts[0] === 100 && parts[1] >= 64 && parts[1] <= 127)
-            || (parts[0] === 169 && parts[1] === 254)
-            || (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31)
-            || (parts[0] === 192 && parts[1] === 0)
-            || (parts[0] === 192 && parts[1] === 168)
-            || (parts[0] === 198 && (parts[1] === 18 || parts[1] === 19))
-            || (parts[0] === 198 && parts[1] === 51 && parts[2] === 100)
-            || (parts[0] === 203 && parts[1] === 0 && parts[2] === 113);
-    }
-    if ((0, node_net_1.isIP)(value) === 6) {
-        return value === '::' || value === '::1' || value.startsWith('fc') || value.startsWith('fd')
-            || /^fe[89ab]/.test(value) || value.startsWith('ff') || value.startsWith('2001:db8:');
-    }
-    return true;
-}
 async function validateCallbackUrl(callbackUrl, allowedOrigins) {
-    const parsed = new URL(callbackUrl);
-    if (parsed.protocol !== 'https:' || parsed.username || parsed.password)
-        throw new https_1.HttpsError('invalid-argument', 'Callback URL must use public HTTPS without embedded credentials.');
-    if (allowedOrigins && !allowedOrigins.includes(parsed.origin))
-        throw new https_1.HttpsError('permission-denied', 'Callback origin is not allowlisted for this integration.');
-    if (parsed.hostname === 'localhost' || parsed.hostname.endsWith('.local'))
-        throw new https_1.HttpsError('invalid-argument', 'Callback hostname is not public.');
-    const addresses = await (0, promises_1.lookup)(parsed.hostname, { all: true, verbatim: true }).catch(() => []);
-    if (!addresses.length || addresses.some(({ address }) => isPrivateAddress(address))) {
-        throw new https_1.HttpsError('invalid-argument', 'Callback hostname must resolve only to public network addresses.');
+    try {
+        await callbackUrlValidator.validate(callbackUrl, allowedOrigins ?? []);
     }
-    return parsed;
+    catch (error) {
+        if (error instanceof errors_1.ApplicationError) {
+            throw new https_1.HttpsError(error.category === 'FORBIDDEN' ? 'permission-denied' : 'invalid-argument', error.message);
+        }
+        throw error;
+    }
+    return new URL(callbackUrl);
 }
 exports.provisionConnectIntegration = (0, https_1.onCall)({ enforceAppCheck: true }, async (request) => {
     (0, helpers_1.requireUid)(request);
@@ -97,6 +76,7 @@ exports.provisionConnectIntegration = (0, https_1.onCall)({ enforceAppCheck: tru
     return { integrationId: ref.id, apiKey, webhookSigningSecret, publishableKey, allowedOrigins: Array.from(new Set(buttonOrigins)) };
 });
 exports.handleMarketplaceOrder = (0, https_1.onRequest)({ cors: false, timeoutSeconds: 30 }, async (req, res) => {
+    (0, http_security_1.applySecurityHeaders)(res);
     if (req.method !== 'POST') {
         res.status(405).json({ error: 'method_not_allowed' });
         return;
@@ -161,7 +141,11 @@ exports.handleMarketplaceOrder = (0, https_1.onRequest)({ cors: false, timeoutSe
             res.status(statusByCode[error.code] ?? 500).json({ error: error.code, message: error.message });
             return;
         }
-        console.error('PackProof Connect ingestion failed', error);
+        console.error(JSON.stringify({
+            severity: 'ERROR',
+            message: 'packproof_connect_ingestion_failed',
+            errorType: error instanceof Error ? error.name : typeof error,
+        }));
         res.status(500).json({ error: 'internal_error' });
     }
 });
