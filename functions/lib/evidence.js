@@ -10,6 +10,7 @@ const pdf_lib_1 = require("pdf-lib");
 const config_1 = require("./config");
 const evidence_format_1 = require("./evidence-format");
 const helpers_1 = require("./helpers");
+const evidence_finalization_1 = require("./evidence-finalization");
 const package_seal_protocol_1 = require("./package-seal-protocol");
 const validation_1 = require("./validation");
 const MAX_EVIDENCE_BYTES = 600 * 1024 * 1024;
@@ -30,44 +31,20 @@ async function readPrefix(file, length = 32) {
     });
     return Buffer.concat(chunks);
 }
-function assuranceFor(input) {
-    const byteMismatch = input.clientHashMatched === false || input.clientSizeMatched === false || !input.contentTypeMatched;
+function grantFieldsFromPending(pending) {
+    const mode = pending?.attestationSnapshot?.mode;
     return {
-        acquisitionQuality: {
-            status: input.clientManifest?.acquisitionQuality?.status ?? 'NOT_EVALUATED',
-            reasonCodes: input.clientManifest?.acquisitionQuality?.reasonCodes ?? ['NO_CALIBRATED_QUALITY_GATE'],
-        },
-        appDeviceContext: {
-            status: input.attestationStatus,
-            reasonCodes: [
-                ...(input.attestationStatus === 'OFFLINE_UNATTESTED'
-                    ? input.clientManifest?.attestation?.reasonCodes ?? ['NO_FRESH_ONLINE_ATTESTATION']
-                    : input.attestationStatus === 'ONLINE_APP_CHECK_ONLY'
-                        ? ['DEVICE_KEY_PROOF_NOT_AVAILABLE']
-                        : []),
-                ...(input.clientTimeConsistencyStatus === 'INCONSISTENT' ? ['CLIENT_WALL_MONOTONIC_DURATION_MISMATCH'] : []),
-            ],
-        },
-        byteIntegrity: {
-            status: byteMismatch ? 'MISMATCH' : input.clientHashMatched === true && input.clientSizeMatched === true ? 'MATCHED' : 'SERVER_HASH_ONLY',
-            reasonCodes: [
-                ...(input.clientHashMatched === false ? ['CLIENT_SERVER_HASH_MISMATCH'] : []),
-                ...(input.clientSizeMatched === false ? ['CLIENT_SERVER_SIZE_MISMATCH'] : []),
-                ...(!input.contentTypeMatched ? ['DECLARED_MEDIA_TYPE_MISMATCH'] : []),
-            ],
-        },
-        physicalCorrespondence: {
-            status: 'NOT_AVAILABLE',
-            reasonCodes: ['NO_VALIDATED_PHYSICAL_MATCHER_ENABLED'],
-        },
-        carrierContext: {
-            status: input.carrierStatus,
-            reasonCodes: input.carrierStatus === 'MISMATCH' ? ['OBSERVED_TRACKING_DOES_NOT_MATCH_EXPECTED_CONTEXT'] : [],
-        },
-        businessLegalRelevance: {
-            status: 'REVIEW_REQUIRED',
-            reasonCodes: ['EXTERNAL_POLICY_AND_HUMAN_INTERPRETATION_REQUIRED'],
-        },
+        acquisitionClass: (0, evidence_finalization_1.acquisitionClassOf)(pending?.acquisitionClass),
+        edgeAgentId: typeof pending?.edgeAgentId === 'string' ? pending.edgeAgentId : null,
+        clientManifest: pending?.clientManifest && typeof pending.clientManifest === 'object'
+            ? pending.clientManifest
+            : null,
+        attestationSnapshot: mode === 'ENTERPRISE_EDGE' || mode === 'JIT_APP_CHECK' || mode === 'OFFLINE_UNATTESTED'
+            ? {
+                mode,
+                deviceKeySignatureValid: pending?.attestationSnapshot?.deviceKeySignatureValid === true,
+            }
+            : null,
     };
 }
 function timestampIso(value) {
@@ -146,7 +123,12 @@ exports.onEvidenceUploaded = (0, storage_1.onObjectFinalized)({ timeoutSeconds: 
         return;
     }
     const { data } = await (0, helpers_1.getTransaction)(transactionId);
-    if (!data.participantIds.includes(uploaderId)) {
+    const pendingGrant = grantFieldsFromPending(pending);
+    if (!(0, evidence_finalization_1.uploaderAuthorizedForGrant)({
+        participantIds: data.participantIds,
+        uploaderId,
+        pending: pendingGrant,
+    })) {
         await file.delete({ ignoreNotFound: true });
         await pendingRef.delete();
         return;
@@ -158,12 +140,8 @@ exports.onEvidenceUploaded = (0, storage_1.onObjectFinalized)({ timeoutSeconds: 
     const clientHashMatched = clientSha256 ? clientSha256 === digest : null;
     const clientSizeBytes = typeof pending?.clientSizeBytes === 'number' ? pending.clientSizeBytes : null;
     const clientSizeMatched = clientSizeBytes !== null ? clientSizeBytes === size : null;
-    const evidenceType = pending.evidenceType;
-    const attestationStatus = pending?.attestationSnapshot?.mode === 'JIT_APP_CHECK'
-        ? pending?.attestationSnapshot?.deviceKeySignatureValid === true ? 'ONLINE_APP_CHECK_AND_KEY_POSSESSION' : 'ONLINE_APP_CHECK_ONLY'
-        : pending?.clientManifest
-            ? 'OFFLINE_UNATTESTED'
-            : 'NOT_PROVIDED';
+    const evidenceType = String(pending.evidenceType);
+    const attestationStatus = (0, evidence_finalization_1.attestationStatusForGrant)(pendingGrant);
     const carrierTrackingMatchStatus = pending?.carrierContext?.matchStatus ?? 'NOT_SCANNED';
     const clientWallDurationMs = pending?.clientManifest
         ? Date.parse(String(pending.clientManifest.captureFinishedAt)) - Date.parse(String(pending.clientManifest.captureStartedAt))
@@ -178,8 +156,8 @@ exports.onEvidenceUploaded = (0, storage_1.onObjectFinalized)({ timeoutSeconds: 
             : Math.abs(clientWallDurationMs - clientMonotonicElapsedMs) <= 5_000
                 ? 'CONSISTENT_WITHIN_5_SECONDS'
                 : 'INCONSISTENT';
-    const assurance = assuranceFor({
-        clientManifest: pending?.clientManifest,
+    const assurance = (0, evidence_finalization_1.assuranceForFinalization)({
+        clientManifest: pendingGrant.clientManifest,
         attestationStatus,
         clientHashMatched,
         clientSizeMatched,
@@ -208,8 +186,14 @@ exports.onEvidenceUploaded = (0, storage_1.onObjectFinalized)({ timeoutSeconds: 
             clientEvidenceId: pending?.clientEvidenceId ?? null,
             transactionId,
             uploaderId,
-            uploaderRole: data.sellerId === uploaderId ? 'SELLER' : 'BUYER',
+            uploaderRole: (0, evidence_finalization_1.uploaderRoleForGrant)({
+                sellerId: data.sellerId,
+                buyerId: data.buyerId ?? null,
+                uploaderId,
+                pending: pendingGrant,
+            }),
             evidenceType,
+            ...(pendingGrant.acquisitionClass ? { acquisitionClass: pendingGrant.acquisitionClass } : {}),
             returnPassportId: pending?.returnPassportId ?? null,
             connectSessionId: pending?.connectSessionId ?? null,
             originalName: pending.originalName,
@@ -284,7 +268,12 @@ exports.onEvidenceUploaded = (0, storage_1.onObjectFinalized)({ timeoutSeconds: 
         id: uploadId,
         transactionId,
         uploaderId,
-        role: data.sellerId === uploaderId ? 'SELLER' : 'BUYER',
+        role: (0, evidence_finalization_1.uploaderRoleForGrant)({
+            sellerId: data.sellerId,
+            buyerId: data.buyerId ?? null,
+            uploaderId,
+            pending: pendingGrant,
+        }),
         type: evidenceType,
         storagePath: path,
         manifestPath,
@@ -320,6 +309,10 @@ exports.onEvidenceUploaded = (0, storage_1.onObjectFinalized)({ timeoutSeconds: 
         captureSessionId: pending?.captureSessionId ?? null,
         returnPassportId: pending?.returnPassportId ?? null,
         connectSessionId: pending?.connectSessionId ?? null,
+        acquisitionClass: pendingGrant.acquisitionClass,
+        edgeAgentId: pendingGrant.edgeAgentId,
+        fulfillmentSessionId: typeof pending?.fulfillmentSessionId === 'string' ? pending.fulfillmentSessionId : null,
+        organizationId: typeof pending?.organizationId === 'string' ? pending.organizationId : null,
         captureGroupId: pending?.clientManifest?.physicalCaptureProfile?.captureGroupId ?? null,
         physicalRegionId: pending?.clientManifest?.physicalCaptureProfile?.observedRegion ?? null,
         captureProfileId: pending?.clientManifest?.physicalCaptureProfile?.profileId ?? null,
@@ -360,7 +353,11 @@ exports.onEvidenceUploaded = (0, storage_1.onObjectFinalized)({ timeoutSeconds: 
         const freshPendingData = freshPending.data();
         const freshTransactionData = freshTransaction.data();
         if (freshPendingData?.storagePath !== path || freshPendingData?.uploaderId !== uploaderId
-            || !freshTransactionData?.participantIds?.includes(uploaderId)) {
+            || !(0, evidence_finalization_1.uploaderAuthorizedForGrant)({
+                participantIds: freshTransactionData?.participantIds ?? [],
+                uploaderId,
+                pending: grantFieldsFromPending(freshPendingData),
+            })) {
             throw new Error('Evidence finalization prerequisites no longer match the uploaded object.');
         }
         tx.create(evidenceRef, evidenceData);
@@ -368,7 +365,7 @@ exports.onEvidenceUploaded = (0, storage_1.onObjectFinalized)({ timeoutSeconds: 
         if (captureSessionRef) {
             tx.set(captureSessionRef, { finalizedAt: firestore_1.FieldValue.serverTimestamp(), evidenceId: uploadId }, { merge: true });
         }
-        if (integrityAccepted && evidenceType === 'PACKING_VIDEO' && freshTransactionData?.status === 'TERMS_LOCKED') {
+        if (integrityAccepted && (0, package_seal_protocol_1.isOutboundPackingEvidenceType)(evidenceType) && freshTransactionData?.status === 'TERMS_LOCKED') {
             tx.update(transactionRef, { status: 'PACKED', updatedAt: firestore_1.FieldValue.serverTimestamp() });
         }
         else if (integrityAccepted && evidenceType === 'UNBOXING_VIDEO' && freshTransactionData?.status === 'SHIPPED') {

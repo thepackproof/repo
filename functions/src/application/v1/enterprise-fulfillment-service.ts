@@ -1,3 +1,5 @@
+import { canonicalizeJson, deterministicUploadId, sha256Hex } from '../../evidence-format';
+import { finalizeReceivedEvidence, hmacManifestSigner, type ManifestSigner } from '../../evidence-finalization';
 import {
   assertFulfillmentTransition,
   assertNeutralEnterpriseStatement,
@@ -31,6 +33,7 @@ import type {
   EnterpriseFulfillmentRepository,
   EnterpriseSessionRecord,
   EnterpriseStationGraph,
+  EnterpriseUploadGrant,
   RecordObservationCommand,
   ReserveArtifactCommand,
 } from './enterprise-ports';
@@ -71,6 +74,7 @@ export class EnterpriseFulfillmentApplicationService {
   constructor(
     private readonly repository: EnterpriseFulfillmentRepository,
     private readonly clock: () => Date = () => new Date(),
+    private readonly signer: ManifestSigner = hmacManifestSigner('packproof-enterprise-test-manifest-mac-key-32b', 'manifest-hmac-v1'),
   ) {}
 
   async bootstrapStation(command: BootstrapStationCommand, actor: ActorRef): Promise<EnterpriseStationGraph> {
@@ -236,6 +240,7 @@ export class EnterpriseFulfillmentApplicationService {
           maxArtifacts: evidenceSession.maxArtifacts,
         }),
       ],
+      grants: [],
     };
     await this.repository.saveSession(record);
     return record;
@@ -312,6 +317,8 @@ export class EnterpriseFulfillmentApplicationService {
       throw new ApplicationError('FAILED_PRECONDITION', 'CAPTURE_WINDOW_CLOSED', 'The Enterprise capture window has ended.');
     }
     const now = iso(this.clock());
+    const transactionId = record.fulfillment.transactionId;
+    if (!transactionId) throw new ApplicationError('FAILED_PRECONDITION', 'TRANSACTION_REQUIRED', 'A fulfillment session must be bound to a transaction before evidence can be reserved.');
     const artifact = enterpriseArtifactDtoSchema.parse({
       id: stableId('eart_', 'enterprise-artifact-v1', { fulfillmentSessionId: command.fulfillmentSessionId, clientEvidenceId: command.clientEvidenceId }),
       object: 'enterprise_artifact',
@@ -325,6 +332,10 @@ export class EnterpriseFulfillmentApplicationService {
       sizeBytes: command.sizeBytes,
       sha256: command.sha256,
       rollingCapture: command.rollingCapture,
+      uploadId: null,
+      manifestSha256: null,
+      evidenceBundleSha256: null,
+      attestationStatus: null,
       serverFinalizedAt: null,
       createdAt: now,
       updatedAt: now,
@@ -336,16 +347,62 @@ export class EnterpriseFulfillmentApplicationService {
       }
       return existing;
     }
-    record.artifacts.push(artifact);
+    const uploadId = deterministicUploadId({
+      transactionId,
+      uploaderId: command.edgeAgentId,
+      clientEvidenceId: command.clientEvidenceId,
+    });
+    const reserved = enterpriseArtifactDtoSchema.parse({ ...artifact, uploadId });
+    const grant: EnterpriseUploadGrant = {
+      uploadId,
+      storagePath: `evidence/${transactionId}/${command.edgeAgentId}/${uploadId}`,
+      clientEvidenceId: command.clientEvidenceId,
+      artifactId: reserved.id,
+      requestFingerprint: sha256Hex(canonicalizeJson({
+        transactionId,
+        evidenceType: command.type,
+        contentType: command.contentType,
+        clientEvidenceId: command.clientEvidenceId,
+        clientSha256: command.sha256,
+        clientSizeBytes: command.sizeBytes,
+      })),
+      acquisitionClass: 'ENTERPRISE_EDGE',
+      edgeAgentId: command.edgeAgentId,
+      organizationId: record.fulfillment.organizationId,
+      fulfillmentSessionId: command.fulfillmentSessionId,
+      transactionId,
+      evidenceType: command.type,
+      contentType: command.contentType,
+      originalName: `${command.type.toLowerCase()}`,
+      clientSha256: command.sha256,
+      clientSizeBytes: command.sizeBytes,
+      expiresAt: iso(new Date(this.clock().getTime() + 6 * 3600 * 1000)),
+    };
+    record.artifacts.push(reserved);
+    record.grants = [...(record.grants ?? []), grant];
     await this.repository.saveSession(record);
-    return artifact;
+    return reserved;
+  }
+
+  async acceptIngress(fulfillmentSessionId: string, artifactId: string, edgeAgentId: string, bytes: Buffer): Promise<void> {
+    const record = await this.requireSession(fulfillmentSessionId);
+    this.assertEdge(record, edgeAgentId);
+    const artifact = record.artifacts.find((item) => item.id === artifactId);
+    if (!artifact?.uploadId) throw new ApplicationError('NOT_FOUND', 'ARTIFACT_NOT_FOUND', 'Enterprise artifact reservation was not found.');
+    const grant = record.grants.find((item) => item.artifactId === artifactId);
+    if (!grant || grant.edgeAgentId !== edgeAgentId) {
+      throw new ApplicationError('FORBIDDEN', 'UPLOAD_GRANT_MISMATCH', 'The Edge agent does not hold this upload reservation.');
+    }
+    await this.repository.saveIngress(artifact.uploadId, bytes);
   }
 
   async markUploaded(fulfillmentSessionId: string, artifactId: string, edgeAgentId: string): Promise<EnterpriseArtifactDto> {
     const record = await this.requireSession(fulfillmentSessionId);
     this.assertEdge(record, edgeAgentId);
     const artifact = record.artifacts.find((item) => item.id === artifactId);
-    if (!artifact) throw new ApplicationError('NOT_FOUND', 'ARTIFACT_NOT_FOUND', 'Enterprise artifact was not found.');
+    if (!artifact?.uploadId) throw new ApplicationError('NOT_FOUND', 'ARTIFACT_NOT_FOUND', 'Enterprise artifact was not found.');
+    const received = await this.repository.getIngress(artifact.uploadId);
+    if (!received) throw new ApplicationError('FAILED_PRECONDITION', 'INGRESS_REQUIRED', 'Bytes must be received against the reservation before upload can be marked complete.');
     if (artifact.status === 'UPLOADED' || artifact.status === 'FINALIZED' || artifact.status === 'QUARANTINED') return artifact;
     const uploaded = enterpriseArtifactDtoSchema.parse({
       ...artifact,
@@ -357,24 +414,101 @@ export class EnterpriseFulfillmentApplicationService {
     return uploaded;
   }
 
-  async applyServerFinalization(fulfillmentSessionId: string, artifactId: string, actor: ActorRef, integrityMismatch = false): Promise<EnterpriseArtifactDto> {
+  async applyServerFinalization(fulfillmentSessionId: string, artifactId: string, actor: ActorRef): Promise<EnterpriseArtifactDto> {
     if (actor.type === 'EDGE_AGENT') {
       throw new ApplicationError('FORBIDDEN', 'EDGE_CANNOT_FINALIZE', 'Acquisition source does not authorize evidence finalization.');
     }
     const record = await this.requireSession(fulfillmentSessionId);
     const artifact = record.artifacts.find((item) => item.id === artifactId);
-    if (!artifact) throw new ApplicationError('NOT_FOUND', 'ARTIFACT_NOT_FOUND', 'Enterprise artifact was not found.');
-    const now = iso(this.clock());
+    if (!artifact?.uploadId) throw new ApplicationError('NOT_FOUND', 'ARTIFACT_NOT_FOUND', 'Enterprise artifact was not found.');
+    const grant = record.grants.find((item) => item.artifactId === artifactId);
+    if (!grant) throw new ApplicationError('FAILED_PRECONDITION', 'UPLOAD_GRANT_REQUIRED', 'Server finalization requires a retry-stable upload reservation.');
+    const bytes = await this.repository.getIngress(artifact.uploadId);
+    if (!bytes) throw new ApplicationError('FAILED_PRECONDITION', 'INGRESS_REQUIRED', 'Server finalization requires independently received bytes.');
+    const now = this.clock();
+    const finalizedCore = finalizeReceivedEvidence({
+      bytes,
+      pending: {
+        transactionId: grant.transactionId,
+        uploaderId: grant.edgeAgentId,
+        uploadId: grant.uploadId,
+        clientEvidenceId: grant.clientEvidenceId,
+        evidenceType: grant.evidenceType,
+        contentType: grant.contentType,
+        originalName: grant.originalName,
+        clientSha256: grant.clientSha256,
+        clientSizeBytes: grant.clientSizeBytes,
+        storagePath: grant.storagePath,
+        captureSessionId: record.evidenceSession?.id ?? null,
+        returnPassportId: null,
+        connectSessionId: null,
+        clientManifest: {
+          schemaVersion: 2,
+          acquisitionClass: 'ENTERPRISE_EDGE',
+          captureStartedAt: record.fulfillment.openedAt ?? iso(now),
+          captureFinishedAt: iso(now),
+          rollingCapture: artifact.rollingCapture,
+          attestation: { mode: 'ENTERPRISE_EDGE', reasonCodes: ['NOT_NATIVE_APP_CHECK'] },
+        },
+        attestationSnapshot: {
+          mode: 'ENTERPRISE_EDGE',
+          deviceKeySignatureValid: false,
+          captureSessionId: record.evidenceSession?.id ?? null,
+          nonce: grant.uploadId.slice(0, 16),
+          issuedAt: artifact.createdAt,
+          captureWindowEndsAt: record.fulfillment.captureWindowEndsAt,
+          tokenReplayDetected: false,
+          reasonCodes: ['NOT_NATIVE_APP_CHECK'],
+        },
+        carrierContext: null,
+        requestFingerprint: grant.requestFingerprint,
+        acquisitionClass: 'ENTERPRISE_EDGE',
+        edgeAgentId: grant.edgeAgentId,
+        organizationId: grant.organizationId,
+        fulfillmentSessionId: grant.fulfillmentSessionId,
+        ingressNetwork: null,
+      },
+      object: {
+        bucket: 'packproof-enterprise-ingress',
+        storagePath: grant.storagePath,
+        generation: '1',
+        timeCreated: iso(now),
+        size: bytes.length,
+        contentType: grant.contentType,
+      },
+      uploaderRole: 'ENTERPRISE_STATION',
+      signer: this.signer,
+    });
+    const status = finalizedCore.integrityAccepted ? 'FINALIZED' : 'QUARANTINED';
     const finalized = enterpriseArtifactDtoSchema.parse({
       ...artifact,
-      status: integrityMismatch ? 'QUARANTINED' : 'FINALIZED',
-      serverFinalizedAt: now,
-      updatedAt: now,
+      sha256: finalizedCore.digest,
+      sizeBytes: bytes.length,
+      status,
+      manifestSha256: finalizedCore.manifestSha256,
+      evidenceBundleSha256: finalizedCore.evidenceBundleSha256,
+      attestationStatus: finalizedCore.attestationStatus,
+      serverFinalizedAt: iso(now),
+      updatedAt: iso(now),
     });
     record.artifacts = record.artifacts.map((item) => item.id === artifactId ? finalized : item);
-    if (integrityMismatch) {
-      record.fulfillment = this.withState(record.fulfillment, 'INTEGRITY_FAILURE', now);
+    if (!finalizedCore.integrityAccepted) {
+      record.fulfillment = this.withState(record.fulfillment, 'INTEGRITY_FAILURE', iso(now));
     }
+    record.events.push(event(
+      finalizedCore.integrityAccepted ? 'EVIDENCE_FINALIZED' : 'EVIDENCE_INTEGRITY_MISMATCH',
+      actor,
+      'enterprise_artifact',
+      artifactId,
+      grant.uploadId,
+      record.fulfillment.organizationId,
+      now,
+      {
+        uploadId: grant.uploadId,
+        attestationStatus: finalizedCore.attestationStatus,
+        acquisitionClass: 'ENTERPRISE_EDGE',
+      },
+    ));
     await this.repository.saveSession(record);
     return finalized;
   }
@@ -508,6 +642,7 @@ export class EnterpriseFulfillmentApplicationService {
   private async requireSession(id: string): Promise<EnterpriseSessionRecord> {
     const record = await this.repository.getSession(id);
     if (!record) throw new ApplicationError('NOT_FOUND', 'FULFILLMENT_SESSION_NOT_FOUND', 'Fulfillment session was not found.');
+    record.grants ??= [];
     return record;
   }
 

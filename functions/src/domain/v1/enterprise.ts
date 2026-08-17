@@ -510,6 +510,10 @@ export type EnterpriseArtifactDto = EnterprisePublicResource<'enterprise_artifac
   sizeBytes: number;
   sha256: string;
   rollingCapture: RollingCaptureProvenance | null;
+  uploadId: string | null;
+  manifestSha256: string | null;
+  evidenceBundleSha256: string | null;
+  attestationStatus: string | null;
   serverFinalizedAt: string | null;
 };
 
@@ -788,7 +792,8 @@ function parseRollingCapture(value: unknown, path: string): RollingCaptureProven
 export const enterpriseArtifactDtoSchema = schema<EnterpriseArtifactDto>((value) => {
   const input = strictObject(value, 'enterpriseArtifact', [
     'id', 'object', 'schemaVersion', 'fulfillmentSessionId', 'evidenceSessionId', 'type', 'status', 'acquisitionClass',
-    'contentType', 'sizeBytes', 'sha256', 'rollingCapture', 'serverFinalizedAt', 'createdAt', 'updatedAt',
+    'contentType', 'sizeBytes', 'sha256', 'rollingCapture', 'uploadId', 'manifestSha256', 'evidenceBundleSha256',
+    'attestationStatus', 'serverFinalizedAt', 'createdAt', 'updatedAt',
   ]);
   literalValue(input.object, 'enterpriseArtifact.object', 'enterprise_artifact');
   literalValue(input.schemaVersion, 'enterpriseArtifact.schemaVersion', 1);
@@ -807,6 +812,10 @@ export const enterpriseArtifactDtoSchema = schema<EnterpriseArtifactDto>((value)
     sizeBytes: integerValue(input.sizeBytes, 'enterpriseArtifact.sizeBytes', 1, 20_000_000_000),
     sha256: sha256Value(input.sha256, 'enterpriseArtifact.sha256'),
     rollingCapture: input.rollingCapture === undefined || input.rollingCapture === null ? null : parseRollingCapture(input.rollingCapture, 'enterpriseArtifact.rollingCapture'),
+    uploadId: optionalString(input.uploadId, 'enterpriseArtifact.uploadId', { min: 8, max: 128, pattern: /^[A-Za-z0-9_-]+$/ }),
+    manifestSha256: input.manifestSha256 === undefined || input.manifestSha256 === null ? null : sha256Value(input.manifestSha256, 'enterpriseArtifact.manifestSha256'),
+    evidenceBundleSha256: input.evidenceBundleSha256 === undefined || input.evidenceBundleSha256 === null ? null : sha256Value(input.evidenceBundleSha256, 'enterpriseArtifact.evidenceBundleSha256'),
+    attestationStatus: optionalString(input.attestationStatus, 'enterpriseArtifact.attestationStatus', { min: 3, max: 80, pattern: /^[A-Z0-9_]+$/ }),
     serverFinalizedAt: optionalIsoDateTime(input.serverFinalizedAt, 'enterpriseArtifact.serverFinalizedAt'),
     createdAt: isoDateTime(input.createdAt, 'enterpriseArtifact.createdAt'),
     updatedAt: isoDateTime(input.updatedAt, 'enterpriseArtifact.updatedAt'),
@@ -814,8 +823,11 @@ export const enterpriseArtifactDtoSchema = schema<EnterpriseArtifactDto>((value)
   if (result.type === 'STATION_PACKING_VIDEO' && !result.rollingCapture) {
     throw new DomainValidationError({ path: 'enterpriseArtifact.rollingCapture', code: 'REQUIRED', message: 'station packing video must record rolling-capture provenance' });
   }
-  if (['FINALIZED', 'QUARANTINED'].includes(result.status) && !result.serverFinalizedAt) {
-    throw new DomainValidationError({ path: 'enterpriseArtifact.serverFinalizedAt', code: 'REQUIRED', message: 'server-finalized artifacts require a finalization time' });
+  if (['FINALIZED', 'QUARANTINED'].includes(result.status) && (!result.serverFinalizedAt || !result.manifestSha256 || !result.evidenceBundleSha256 || !result.attestationStatus)) {
+    throw new DomainValidationError({ path: 'enterpriseArtifact.status', code: 'REQUIRED', message: 'server-finalized artifacts require a finalization time, manifest digest, bundle digest and attestation status' });
+  }
+  if (result.status === 'FINALIZED' && result.attestationStatus && result.attestationStatus.startsWith('ONLINE_APP_CHECK')) {
+    throw new DomainValidationError({ path: 'enterpriseArtifact.attestationStatus', code: 'FORMAT', message: 'Enterprise artifacts must not inherit native App Check attestation' });
   }
   if (!['FINALIZED', 'QUARANTINED'].includes(result.status) && result.serverFinalizedAt) {
     throw new DomainValidationError({ path: 'enterpriseArtifact.serverFinalizedAt', code: 'FORMAT', message: 'is only valid after server finalization or quarantine' });

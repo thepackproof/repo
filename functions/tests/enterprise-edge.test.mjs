@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { ApplicationError, EnterpriseFulfillmentApplicationService } from '../lib/application/v1/index.js';
-import { createSoftwareWrappedSpoolKey, EncryptedEdgeQueue, PackProofEdgeStationRuntime } from '../lib/edge/v1/index.js';
+import { createSoftwareWrappedSpoolKey, EncryptedEdgeQueue, PackProofEdgeStationRuntime, simulatedMp4Container } from '../lib/edge/v1/index.js';
 
 const now = new Date('2026-08-17T12:00:00.000Z');
 
@@ -9,6 +9,7 @@ class MemoryEnterpriseRepository {
   stations = new Map();
   sessions = new Map();
   byOrder = new Map();
+  ingress = new Map();
 
   async saveStation(graph) {
     this.stations.set(`${graph.organization.organizationId}:${graph.station.id}`, graph);
@@ -36,6 +37,15 @@ class MemoryEnterpriseRepository {
   async findSessionByOrder(organizationId, stationId, externalOrderId) {
     const record = this.byOrder.get(`${organizationId}:${stationId}:${externalOrderId}`);
     return record ? structuredClone(record) : null;
+  }
+
+  async saveIngress(uploadId, bytes) {
+    this.ingress.set(uploadId, Buffer.from(bytes));
+  }
+
+  async getIngress(uploadId) {
+    const bytes = this.ingress.get(uploadId);
+    return bytes ? Buffer.from(bytes) : null;
   }
 }
 
@@ -98,6 +108,12 @@ test('single-station OBSERVE pilot preserves offline capture and requires indepe
   assert.throws(() => service.attemptFinalizeFromEdge(), (error) => error instanceof ApplicationError && error.code === 'EDGE_CANNOT_FINALIZE');
   await service.applyServerFinalization(captured.session.fulfillment.id, captured.videoId, { type: 'SYSTEM', id: 'evidence-finalizer' });
   await service.applyServerFinalization(captured.session.fulfillment.id, captured.sealId, { type: 'SYSTEM', id: 'evidence-finalizer' });
+  const finalized = await service.getSession(captured.session.fulfillment.id);
+  assert.ok(finalized.artifacts.every((item) => item.status === 'FINALIZED'));
+  assert.ok(finalized.artifacts.every((item) => item.attestationStatus === 'ENTERPRISE_EDGE_INSTALLATION'));
+  assert.ok(finalized.artifacts.every((item) => item.manifestSha256 && item.evidenceBundleSha256 && item.uploadId));
+  assert.ok(finalized.artifacts.every((item) => !String(item.attestationStatus).includes('APP_CHECK')));
+  assert.ok(finalized.events.some((item) => item.type === 'EVIDENCE_FINALIZED'));
   for (const item of queue.list('awaiting-finalization')) runtime.acknowledgeServerFinalization(item.clientEvidenceId);
   assert.equal(queue.list('finalized').length, 2);
   await service.beginFinalizing(captured.session.fulfillment.id, { type: 'SYSTEM', id: 'evidence-finalizer' }, 'request-finalize');
@@ -188,4 +204,24 @@ test('encrypted Edge spool decrypts exact bytes and refuses to treat upload as f
   assert.equal(uploaded.folder, 'awaiting-finalization');
   assert.equal(uploaded.transportState, 'AWAITING_FINALIZATION');
   assert.notEqual(uploaded.transportState, 'SERVER_FINALIZED');
+});
+
+test('byte-integrity mismatch quarantines the artifact without App Check attestation', async () => {
+  const { repository, service, runtime } = await boot('OBSERVE');
+  await runtime.assignOrder({
+    externalOrderId: '84723',
+    transactionId: 'txn_12345678',
+    expectedItems: [{ sku: 'SKU-1', quantity: 1 }],
+    expectedTrackingNumber: '1Z1',
+  });
+  const captured = await runtime.completePackingAndCapture();
+  await runtime.syncUploads();
+  const session = await service.getSession(captured.session.fulfillment.id);
+  const video = session.artifacts.find((item) => item.id === captured.videoId);
+  await repository.saveIngress(video.uploadId, simulatedMp4Container(Buffer.from('tampered-station-segment')));
+  const quarantined = await service.applyServerFinalization(captured.session.fulfillment.id, captured.videoId, { type: 'SYSTEM', id: 'evidence-finalizer' });
+  assert.equal(quarantined.status, 'QUARANTINED');
+  assert.equal(quarantined.attestationStatus, 'ENTERPRISE_EDGE_INSTALLATION');
+  assert.equal((await service.getSession(captured.session.fulfillment.id)).fulfillment.state, 'INTEGRITY_FAILURE');
+  assert.ok(!String(quarantined.attestationStatus).includes('APP_CHECK'));
 });

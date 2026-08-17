@@ -6,7 +6,7 @@ Status: `SOURCE_CHECKED` on 2026-08-17. The model is implemented and unit-tested
 
 Give PackProof one vocabulary for warehouse sites, packing stations, Edge agents, fulfillment sessions, hardware observations, versioned workflow policy, and bounded Enterprise evidence sessions—without placing those concepts inside the canonical commerce `transaction` resource or weakening native evidence rules.
 
-Executable source: `functions/src/domain/v1/enterprise.ts` and `functions/src/domain/v1/edge-protocol.ts`.
+Executable source: `functions/src/domain/v1/enterprise.ts` and `functions/src/domain/v1/edge-protocol.ts`. Application-layer finalization lives in `functions/src/evidence-finalization.ts` and `EnterpriseFulfillmentApplicationService`. Finalized Enterprise artifacts require server digest fields and must not carry native App Check attestation.
 
 This catalog is parallel to the original 17 commerce/evidence resource families. Enterprise records reference `organization` and `transaction` identities; they do not replace them.
 

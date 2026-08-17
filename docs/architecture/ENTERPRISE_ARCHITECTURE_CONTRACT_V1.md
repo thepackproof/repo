@@ -1,6 +1,6 @@
 # PackProof Enterprise architecture contract v1
 
-Status: accepted as the architectural boundary for PackProof Enterprise™ on 2026-08-17. Executable domain, Edge protocol, and a single-station Edge runtime are `SOURCE_CHECKED`. This is not a deployed-warehouse, multi-station, or ENFORCE-mode claim.
+Status: accepted as the architectural boundary for PackProof Enterprise™ on 2026-08-17. Executable domain, Edge protocol, a single-station Edge runtime, and application-layer Evidence Format v2 finalization are `SOURCE_CHECKED`. Live Cloud Storage finalization, a deployed warehouse, multi-station operation, and ENFORCE-mode customer pilots are not claimed.
 
 This contract extends [`ARCHITECTURE_CONTRACT.md`](ARCHITECTURE_CONTRACT.md) and [`ADR 0012`](../adr/0012-packproof-enterprise-acquisition-surface.md). It does not authorize a rewrite of the evidence core, camera stack, or mobile application.
 
@@ -44,7 +44,9 @@ WMS / OMS / Marketplace
 
 ## 1. Freeze the evidence core
 
-Do not start Enterprise work by modifying native camera code, the Android queue, Evidence Format v2, or the Storage finalizer.
+Do not start Enterprise work by modifying native camera code, the Android queue, or Evidence Format v2.
+
+The existing Storage finalizer may be extended so Enterprise reservations use the same hash, quarantine, and manifest-binding rules. It must not let Edge finalize evidence, must not treat station media as native App Check context, and must not add station artifact types to the handheld upload callable.
 
 Enterprise may produce evidence. It may not bypass the controls already protecting mobile evidence:
 
@@ -247,7 +249,7 @@ Fencing tokens already prevent a stale worker from publishing a late result afte
 
 The first proof is one Windows packing station, one overhead camera, one barcode scanner, one USB scale, one WMS (simulated or real), and one shipping transaction—including connectivity loss, queue preservation, independent server finalization, and a Connect review package. No PackProof mobile UI is required during that fulfillment flow.
 
-Current slice: steps 1–8 plus policy modes as domain/application rules, with simulated hardware. Steps 9–13 remain not yet activated.
+Current slice: steps 1–9 for the in-process application-layer finalizer and Edge spool. The Storage trigger accepts Enterprise grants when those fields are present, but live GCS / emulator finalization is not yet checked. Steps 10–13 remain not yet activated.
 
 ## 17. Test vocabulary
 

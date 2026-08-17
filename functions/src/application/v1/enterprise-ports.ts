@@ -23,12 +23,32 @@ export type EnterpriseStationGraph = {
   devices: StationDeviceDto[];
 };
 
+export type EnterpriseUploadGrant = {
+  uploadId: string;
+  storagePath: string;
+  clientEvidenceId: string;
+  artifactId: string;
+  requestFingerprint: string;
+  acquisitionClass: 'ENTERPRISE_EDGE';
+  edgeAgentId: string;
+  organizationId: string;
+  fulfillmentSessionId: string;
+  transactionId: string;
+  evidenceType: EnterpriseArtifactType;
+  contentType: string;
+  originalName: string;
+  clientSha256: string;
+  clientSizeBytes: number;
+  expiresAt: string;
+};
+
 export type EnterpriseSessionRecord = {
   fulfillment: FulfillmentSessionDto;
   evidenceSession: EnterpriseEvidenceSessionDto | null;
   observations: HardwareObservationDto[];
   artifacts: EnterpriseArtifactDto[];
   events: ApplicationEvent[];
+  grants: EnterpriseUploadGrant[];
 };
 
 export interface EnterpriseFulfillmentRepository {
@@ -38,6 +58,8 @@ export interface EnterpriseFulfillmentRepository {
   saveSession(record: EnterpriseSessionRecord): Promise<void>;
   getSession(fulfillmentSessionId: string): Promise<EnterpriseSessionRecord | null>;
   findSessionByOrder(organizationId: string, stationId: string, externalOrderId: string): Promise<EnterpriseSessionRecord | null>;
+  saveIngress(uploadId: string, bytes: Buffer): Promise<void>;
+  getIngress(uploadId: string): Promise<Buffer | null>;
 }
 
 export type BootstrapStationCommand = {

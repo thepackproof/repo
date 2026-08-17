@@ -143,3 +143,5 @@ No source or emulator result is promoted into a live-runtime claim.
 PackProof Enterprise is another trusted evidence-acquisition channel that feeds this same core. It does not replace native capture, Connect, Evidence Format v2, or server finalization.
 
 The Enterprise boundary is defined in [`ENTERPRISE_ARCHITECTURE_CONTRACT_V1.md`](ENTERPRISE_ARCHITECTURE_CONTRACT_V1.md) and [`ADR 0012`](../adr/0012-packproof-enterprise-acquisition-surface.md). The governing invariant is `acquisition source ≠ authority to finalize evidence`. `NATIVE_MOBILE`, `ENTERPRISE_EDGE`, and `EXTERNAL_DECLARED` never silently receive equal assurance.
+
+Current activation is `SOURCE_CHECKED` through application-layer Evidence Format v2 finalization for Enterprise artifacts. Live warehouse deployment is not claimed.

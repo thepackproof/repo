@@ -1,8 +1,10 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.SHIPMENT_PRECONDITION_MESSAGES = exports.HUMAN_REVIEW_DISCLAIMER = void 0;
+exports.outboundSealEvidenceTypes = exports.outboundPackingEvidenceTypes = exports.SHIPMENT_PRECONDITION_MESSAGES = exports.HUMAN_REVIEW_DISCLAIMER = void 0;
 exports.evidenceReadyForWorkflow = evidenceReadyForWorkflow;
 exports.shipmentEvidenceDecision = shipmentEvidenceDecision;
+exports.isOutboundPackingEvidenceType = isOutboundPackingEvidenceType;
+exports.isOutboundSealEvidenceType = isOutboundSealEvidenceType;
 exports.groupPackageSealObservations = groupPackageSealObservations;
 exports.HUMAN_REVIEW_DISCLAIMER = 'These observations are preserved for authorized human review. Visible similarity or difference in the mark, tape, seams, label, or cardboard is contextual only. PackProof does not state that the package is the same or different, identify a cause or actor, or determine authenticity, custody, fraud, fault, liability, or any commercial or legal outcome.';
 exports.SHIPMENT_PRECONDITION_MESSAGES = {
@@ -31,9 +33,17 @@ function shipmentEvidenceDecision(input) {
         return { ok: false, missing: kind === 'return' ? 'RETURN_SEAL_REFERENCE' : 'SEAL_REFERENCE' };
     return { ok: true };
 }
+exports.outboundPackingEvidenceTypes = ['PACKING_VIDEO', 'STATION_PACKING_VIDEO'];
+exports.outboundSealEvidenceTypes = ['SHIPPING_LABEL', 'STATION_SEAL_REFERENCE'];
+function isOutboundPackingEvidenceType(type) {
+    return Boolean(type && exports.outboundPackingEvidenceTypes.includes(type));
+}
+function isOutboundSealEvidenceType(type) {
+    return Boolean(type && exports.outboundSealEvidenceTypes.includes(type));
+}
 function groupPackageSealObservations(evidence) {
     return {
-        sellerReference: evidence.filter((item) => ((item.type === 'PACKING_VIDEO' || item.type === 'SHIPPING_LABEL') && !item.returnPassportId)),
+        sellerReference: evidence.filter((item) => ((isOutboundPackingEvidenceType(item.type) || isOutboundSealEvidenceType(item.type)) && !item.returnPassportId)),
         buyerArrival: evidence.filter((item) => ((item.type === 'DELIVERY_PHOTO' || item.type === 'UNBOXING_VIDEO') && !item.returnPassportId)),
         returnReference: evidence.filter((item) => (item.type === 'RETURN_PACKING_VIDEO' || item.type === 'RETURN_SHIPPING_LABEL')),
         returnArrival: evidence.filter((item) => item.type === 'RETURN_UNBOXING_VIDEO'),

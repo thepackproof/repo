@@ -77,3 +77,16 @@ test('Connect evidence callback reports limitations and never omits the permanen
   assert.equal(payload.manifestAuthentication.type, 'LEGACY_SERVICE_MAC');
   assert.equal(payload.manifestAuthentication.macBase64url, 'legacy-mac');
 });
+
+test('Enterprise Edge attestation is DIGITAL_EVIDENCE_WITH_LIMITATIONS', () => {
+  assert.equal(connectEvidenceIsReady({
+    ...readyInput,
+    attestationStatus: 'ENTERPRISE_EDGE_CERTIFICATE',
+  }), false);
+  const payload = buildConnectEvidenceFinalizedCallback({
+    ...readyInput,
+    attestationStatus: 'ENTERPRISE_EDGE_CERTIFICATE',
+  });
+  assert.equal(payload.evidenceStatus, 'DIGITAL_EVIDENCE_WITH_LIMITATIONS');
+  assert.ok(payload.statusReasonCodes.includes('STRONGEST_APP_DEVICE_CONTEXT_NOT_AVAILABLE'));
+});

@@ -19,7 +19,7 @@ import {
   randomToken,
   requireUid,
 } from './helpers';
-import { evidenceReadyForWorkflow, SHIPMENT_PRECONDITION_MESSAGES, shipmentEvidenceDecision } from './package-seal-protocol';
+import { evidenceReadyForWorkflow, outboundPackingEvidenceTypes, outboundSealEvidenceTypes, SHIPMENT_PRECONDITION_MESSAGES, shipmentEvidenceDecision } from './package-seal-protocol';
 import { inviteCodeSchema, reportSchema, shippingSchema, transactionDraftSchema, transactionIdSchema, uploadRequestSchema } from './validation';
 
 const callOptions = { enforceAppCheck: true } as const;
@@ -672,8 +672,8 @@ export const submitShipping = onCall(callOptions, async (request) => {
   const input = shippingSchema.parse(request.data);
   const { ref, data } = await getTransaction(input.transactionId);
   assertSeller(data, uid);
-  const packingVideos = await ref.collection('evidence').where('type', '==', 'PACKING_VIDEO').get();
-  const sealPhotos = await ref.collection('evidence').where('type', '==', 'SHIPPING_LABEL').get();
+  const packingVideos = await ref.collection('evidence').where('type', 'in', [...outboundPackingEvidenceTypes]).get();
+  const sealPhotos = await ref.collection('evidence').where('type', 'in', [...outboundSealEvidenceTypes]).get();
   const packingVideo = packingVideos.docs.find((item) => evidenceReadyForWorkflow(item.data()));
   const sealPhoto = sealPhotos.docs.find((item) => evidenceReadyForWorkflow(item.data()));
   const shipmentDecision = shipmentEvidenceDecision({ packingReady: Boolean(packingVideo), sealReady: Boolean(sealPhoto) });

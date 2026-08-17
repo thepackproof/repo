@@ -15,8 +15,10 @@ test('groups seller reference and buyer arrival without a physical verdict', () 
     { type: 'UNBOXING_VIDEO', sha256: 'd' },
     { type: 'RETURN_PACKING_VIDEO', sha256: 'e' },
     { type: 'ITEM_PHOTO', sha256: 'f' },
+    { type: 'STATION_PACKING_VIDEO', sha256: 'g' },
+    { type: 'STATION_SEAL_REFERENCE', sha256: 'h' },
   ]);
-  assert.deepEqual(grouped.sellerReference.map((item) => item.type), ['PACKING_VIDEO', 'SHIPPING_LABEL']);
+  assert.deepEqual(grouped.sellerReference.map((item) => item.type), ['PACKING_VIDEO', 'SHIPPING_LABEL', 'STATION_PACKING_VIDEO', 'STATION_SEAL_REFERENCE']);
   assert.deepEqual(grouped.buyerArrival.map((item) => item.type), ['DELIVERY_PHOTO', 'UNBOXING_VIDEO']);
   assert.deepEqual(grouped.returnReference.map((item) => item.type), ['RETURN_PACKING_VIDEO']);
   assert.equal(grouped.returnArrival.length, 0);

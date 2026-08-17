@@ -114,16 +114,17 @@ class PackProofEdgeStationRuntime {
             assemblyMethod: 'DETERMINISTIC_CHUNK_CONCAT',
             captureKind: 'DERIVED_TRANSACTION_SEGMENT',
         };
-        this.overheadCamera.finalizeSegment(this.sourceStreamId, assembled.bytes, 45_000);
-        const sealBytes = Buffer.from(`seal:${session.fulfillment.id}`);
+        const videoBytes = (0, adapters_1.simulatedMp4Container)(assembled.bytes);
+        this.overheadCamera.finalizeSegment(this.sourceStreamId, videoBytes, 45_000);
+        const sealBytes = (0, adapters_1.simulatedJpegStill)(Buffer.from(`seal:${session.fulfillment.id}`));
         this.labelCamera.captureStill(sealBytes);
         const video = this.options.queue.enqueue({
             fulfillmentSessionId: session.fulfillment.id,
             artifactType: 'STATION_PACKING_VIDEO',
-            plaintext: assembled.bytes,
-            plaintextSha256: (0, adapters_1.edgeSha256)(assembled.bytes),
+            plaintext: videoBytes,
+            plaintextSha256: (0, adapters_1.edgeSha256)(videoBytes),
             onlineAtCapture: this.options.online(),
-            clientEvidenceId: contentAddressedClientEvidenceId(session.fulfillment.id, 'STATION_PACKING_VIDEO', (0, adapters_1.edgeSha256)(assembled.bytes)),
+            clientEvidenceId: contentAddressedClientEvidenceId(session.fulfillment.id, 'STATION_PACKING_VIDEO', (0, adapters_1.edgeSha256)(videoBytes)),
         });
         const seal = this.options.queue.enqueue({
             fulfillmentSessionId: session.fulfillment.id,
@@ -140,7 +141,7 @@ class PackProofEdgeStationRuntime {
             clientEvidenceId: video.clientEvidenceId,
             type: 'STATION_PACKING_VIDEO',
             contentType: 'video/mp4',
-            sizeBytes: assembled.bytes.length,
+            sizeBytes: videoBytes.length,
             sha256: video.plaintextSha256,
             rollingCapture,
             requestId: `req_video_${video.clientEvidenceId}`,
@@ -171,9 +172,12 @@ class PackProofEdgeStationRuntime {
                 continue;
             }
             const artifact = this.session?.artifacts.find((item) => item.sha256 === record.plaintextSha256);
-            if (artifact) {
-                await this.options.service.markUploaded(record.fulfillmentSessionId, artifact.id, this.options.station.edgeAgent.id);
+            if (!artifact) {
+                this.options.queue.markAttention(record.clientEvidenceId);
+                continue;
             }
+            await this.options.service.acceptIngress(record.fulfillmentSessionId, artifact.id, this.options.station.edgeAgent.id, plaintext);
+            await this.options.service.markUploaded(record.fulfillmentSessionId, artifact.id, this.options.station.edgeAgent.id);
             this.options.queue.markUploaded(record.clientEvidenceId);
         }
         this.session = this.session ? await this.reload() : this.session;

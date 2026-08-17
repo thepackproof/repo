@@ -1,6 +1,8 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.RollingChunkBuffer = exports.SimulatedWmsAdapter = exports.SimulatedRtspCamera = exports.SimulatedUvcCamera = exports.SimulatedUsbScale = exports.SimulatedSerialScanner = exports.SimulatedHidScanner = void 0;
+exports.simulatedMp4Container = simulatedMp4Container;
+exports.simulatedJpegStill = simulatedJpegStill;
 exports.edgeSha256 = sha256;
 const node_crypto_1 = require("node:crypto");
 const edge_protocol_1 = require("../../domain/v1/edge-protocol");
@@ -95,6 +97,19 @@ class SimulatedWmsAdapter {
     }
 }
 exports.SimulatedWmsAdapter = SimulatedWmsAdapter;
+function simulatedMp4Container(payload) {
+    const header = Buffer.alloc(24);
+    header.writeUInt32BE(24, 0);
+    header.write('ftyp', 4);
+    header.write('isom', 8);
+    header.writeUInt32BE(0, 12);
+    header.write('isom', 16);
+    header.write('mp41', 20);
+    return Buffer.concat([header, payload]);
+}
+function simulatedJpegStill(payload) {
+    return Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xdb]), payload, Buffer.from([0xff, 0xd9])]);
+}
 class RollingChunkBuffer {
     chunkBytes;
     chunks = [];

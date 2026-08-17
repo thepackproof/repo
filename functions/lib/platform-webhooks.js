@@ -16,6 +16,7 @@ const config_1 = require("./config");
 const evidence_1 = require("./evidence");
 const helpers_1 = require("./helpers");
 const http_security_1 = require("./http-security");
+const package_seal_protocol_1 = require("./package-seal-protocol");
 const connect_session_token_issuer_1 = require("./infrastructure/crypto/connect-session-token-issuer");
 const public_handoff_token_issuer_1 = require("./infrastructure/crypto/public-handoff-token-issuer");
 const sha256_token_verifier_1 = require("./infrastructure/crypto/sha256-token-verifier");
@@ -227,7 +228,7 @@ async function deliverCallback(deliveryRef, delivery) {
 }
 exports.onConnectEvidenceVerified = (0, firestore_2.onDocumentCreated)('transactions/{transactionId}/evidence/{evidenceId}', async (event) => {
     const evidence = event.data?.data();
-    if (!evidence || evidence.type !== 'PACKING_VIDEO')
+    if (!evidence || !(0, package_seal_protocol_1.isOutboundPackingEvidenceType)(String(evidence.type)))
         return;
     const transactionId = event.params.transactionId;
     const transactionSnap = await config_1.db.collection('transactions').doc(transactionId).get();

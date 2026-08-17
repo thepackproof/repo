@@ -83,7 +83,9 @@ const samples = {
   artifact: {
     id: 'eart_12345678', object: 'enterprise_artifact', schemaVersion: 1, fulfillmentSessionId: 'fs_12345678',
     evidenceSessionId: 'ees_12345678', type: 'STATION_PACKING_VIDEO', status: 'FINALIZED', acquisitionClass: 'ENTERPRISE_EDGE',
-    contentType: 'video/mp4', sizeBytes: 2048, sha256: sha, rollingCapture: rolling, serverFinalizedAt: now,
+    contentType: 'video/mp4', sizeBytes: 2048, sha256: sha, rollingCapture: rolling,
+    uploadId: 'a'.repeat(64), manifestSha256: sha, evidenceBundleSha256: 'c'.repeat(64),
+    attestationStatus: 'ENTERPRISE_EDGE_INSTALLATION', serverFinalizedAt: now,
     createdAt: now, updatedAt: now,
   },
   observation: {
@@ -116,6 +118,7 @@ test('enterprise public DTOs parse and reject unknown or secret fields', () => {
   assert.deepEqual(deviceCredentialDtoSchema.parse(structuredClone(samples.credential)), samples.credential);
   assert.throws(() => deviceCredentialDtoSchema.parse({ ...samples.credential, privateKey: 'secret' }), DomainValidationError);
   assert.throws(() => enterpriseArtifactDtoSchema.parse({ ...samples.artifact, storagePath: 'gs://hidden' }), DomainValidationError);
+  assert.throws(() => enterpriseArtifactDtoSchema.parse({ ...samples.artifact, attestationStatus: 'ONLINE_APP_CHECK_ONLY' }), DomainValidationError);
 });
 
 test('fulfillment session transitions cover the vocabulary and reject a generic failed collapse', () => {

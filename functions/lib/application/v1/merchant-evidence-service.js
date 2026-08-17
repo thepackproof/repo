@@ -100,7 +100,10 @@ function presence(artifacts, types) {
     return matches.some((item) => item.workflowReady) ? 'PRESENT' : 'PRESENT_WITH_LIMITATIONS';
 }
 function documentation(artifacts, transaction, returns, timeline) {
-    const packing = artifacts.filter((item) => ['PACKING_VIDEO', 'SHIPPING_LABEL', 'RETURN_PACKING_VIDEO', 'RETURN_SHIPPING_LABEL'].includes(item.type));
+    const packing = artifacts.filter((item) => ((0, package_seal_protocol_1.isOutboundPackingEvidenceType)(item.type)
+        || (0, package_seal_protocol_1.isOutboundSealEvidenceType)(item.type)
+        || item.type === 'RETURN_PACKING_VIDEO'
+        || item.type === 'RETURN_SHIPPING_LABEL'));
     const arrival = artifacts.filter((item) => ['DELIVERY_PHOTO', 'UNBOXING_VIDEO', 'RETURN_UNBOXING_VIDEO'].includes(item.type));
     const returning = artifacts.filter((item) => item.type.startsWith('RETURN_') || Boolean(returns.length));
     return [
@@ -241,8 +244,8 @@ class MerchantEvidenceApplicationService {
             amount: transaction.amount,
             terms: transaction.terms,
             protocolCompleteness: {
-                sellerPackingVideo: presence(evidence.filter((item) => !item.type.startsWith('RETURN_')), ['PACKING_VIDEO']),
-                sellerSealReference: presence(evidence.filter((item) => !item.type.startsWith('RETURN_')), ['SHIPPING_LABEL']),
+                sellerPackingVideo: presence(evidence.filter((item) => !item.type.startsWith('RETURN_')), package_seal_protocol_1.outboundPackingEvidenceTypes),
+                sellerSealReference: presence(evidence.filter((item) => !item.type.startsWith('RETURN_')), package_seal_protocol_1.outboundSealEvidenceTypes),
                 buyerArrivalObservation: presence(evidence, ['DELIVERY_PHOTO']),
                 buyerUnboxing: presence(evidence, ['UNBOXING_VIDEO']),
                 returnPackingVideo: presence(evidence, ['RETURN_PACKING_VIDEO']),
@@ -323,8 +326,8 @@ class MerchantEvidenceApplicationService {
             await fence.assertOwned();
             const records = await this.repository.listEvidence(transactionId);
             const artifacts = records.map(toMerchantEvidenceArtifactDto);
-            const packing = artifacts.find((item) => item.type === 'PACKING_VIDEO' && item.workflowReady);
-            const seal = artifacts.find((item) => item.type === 'SHIPPING_LABEL' && item.workflowReady);
+            const packing = artifacts.find((item) => (0, package_seal_protocol_1.isOutboundPackingEvidenceType)(item.type) && item.workflowReady);
+            const seal = artifacts.find((item) => (0, package_seal_protocol_1.isOutboundSealEvidenceType)(item.type) && item.workflowReady);
             const decision = (0, package_seal_protocol_1.shipmentEvidenceDecision)({ packingReady: Boolean(packing), sealReady: Boolean(seal) });
             if (!decision.ok || !packing || !seal) {
                 throw new errors_1.ApplicationError('FAILED_PRECONDITION', decision.ok ? 'SEAL_REFERENCE_REQUIRED' : `${decision.missing}_REQUIRED`, package_seal_protocol_1.SHIPMENT_PRECONDITION_MESSAGES[decision.ok ? 'SEAL_REFERENCE' : decision.missing]);
