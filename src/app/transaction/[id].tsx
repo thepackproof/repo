@@ -6,7 +6,6 @@ import { AppIcon } from '@/components/app-icon';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { Button, Card, Choice, Field, LoadingScreen } from '@/components/ui';
-import { NextActionCard, WorkflowProgress } from '@/components/ux-orchestration';
 import { colors } from '@/constants/brand';
 import { featureFlags } from '@/constants/features';
 import { callFunction, downloadUrl, subscribeEvents, subscribeEvidence, subscribeReturnPassports, subscribeTransaction } from '@/lib/api';
@@ -18,14 +17,10 @@ import { HUMAN_REVIEW_DISCLAIMER, packageSealProtocolStatus } from '@/lib/packag
 import { evidenceLabels } from '@/lib/transaction-detail-labels';
 import { formatRuntimeEnum, normalizePhysicalStatus, type PhysicalStatusView } from '@/lib/runtime-display';
 import {
-  actionOutcomeCopy,
-  captureTypeForAction,
   orderLabel,
   resolveNextRequiredAction,
   viewerRole,
   type NextRequiredAction,
-  type UxPrimaryActionKind,
-  type UxSecondaryActionKind,
 } from '@/lib/ux-flow';
 import { useAuth } from '@/providers/auth-provider';
 import type { EvidenceRecord, EvidenceType, PackProofTransaction, ReturnPassport, TimelineEvent } from '@/types/models';
@@ -39,21 +34,13 @@ export default function TransactionDetail() {
   const [events, setEvents] = useState<TimelineEvent[]>([]);
   const [returnPassports, setReturnPassports] = useState<ReturnPassport[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
-  const [carrier, setCarrier] = useState('USPS');
-  const [tracking, setTracking] = useState('');
-  const [showShipping, setShowShipping] = useState(false);
   const [showConcern, setShowConcern] = useState(false);
   const [concernReason, setConcernReason] = useState<'FRAUD' | 'HARASSMENT' | 'PROHIBITED_ITEM' | 'IMPERSONATION' | 'PRIVACY' | 'OTHER'>('OTHER');
   const [concernDetails, setConcernDetails] = useState('');
   const [showReturnRequest, setShowReturnRequest] = useState(false);
   const [returnReason, setReturnReason] = useState('');
-  const [showReturnShipping, setShowReturnShipping] = useState(false);
-  const [returnCarrier, setReturnCarrier] = useState('USPS');
-  const [returnTracking, setReturnTracking] = useState('');
   const [physicalStatus, setPhysicalStatus] = useState<PhysicalStatusView | null>(null);
-  const [showDetails, setShowDetails] = useState(false);
   const [showTechnical, setShowTechnical] = useState(false);
-  const [outcome, setOutcome] = useState<{ succeeded: string; nextStep: string } | null>(null);
 
   useEffect(() => {
     if (!id) return;
@@ -72,12 +59,6 @@ export default function TransactionDetail() {
       .catch(() => { if (active) setPhysicalStatus(null); });
     return () => { active = false; };
   }, [id, evidence.length]);
-
-  useEffect(() => {
-    if (!outcome) return;
-    const timer = setTimeout(() => setOutcome(null), 4000);
-    return () => clearTimeout(timer);
-  }, [outcome]);
 
   const role = item && user ? viewerRole(item, user.uid) : 'SELLER';
   const protocol = useMemo(() => packageSealProtocolStatus(evidence), [evidence]);
@@ -106,11 +87,10 @@ export default function TransactionDetail() {
       : null
   ), [item, user]);
 
-  const run = async (name: string, action: () => Promise<void>, next?: NextRequiredAction) => {
+  const run = async (name: string, action: () => Promise<void>) => {
     setBusy(name);
     try {
       await action();
-      if (next) setOutcome(actionOutcomeCopy(name as UxPrimaryActionKind, next));
     } catch (error) {
       Alert.alert('Could not complete that', readableError(error));
     } finally {
@@ -155,103 +135,9 @@ export default function TransactionDetail() {
     [{ text: 'Keep it', style: 'cancel' }, { text: 'Cancel PackProof', style: 'destructive', onPress: () => run('cancel', () => callFunction('cancelTransaction', { transactionId: id }).then(() => undefined)) }],
   );
 
-  const optimisticAfterConfirm = (): NextRequiredAction | undefined => {
-    if (!item || !user) return undefined;
-    const confirmedBy = Array.from(new Set([...(item.confirmedBy ?? []), user.uid]));
-    const both = Boolean(item.buyerId && [item.sellerId, item.buyerId].every((uid) => confirmedBy.includes(uid)));
-    return resolveNextRequiredAction({
-      transaction: { ...item, confirmedBy, status: both ? 'TERMS_LOCKED' : 'TERMS_REVIEW' },
-      viewerId: user.uid,
-      protocol,
-    });
-  };
-
-  const handlePrimary = (kind: UxPrimaryActionKind) => {
-    if (!item || !user || !id) return;
-    const captureType = captureTypeForAction(kind);
-    switch (kind) {
-      case 'EDIT_TERMS':
-        router.push({ pathname: '/transaction/new', params: { transactionId: id } });
-        return;
-      case 'INVITE_BUYER':
-        router.push(`/transaction/invite/${id}`);
-        return;
-      case 'CONFIRM_TERMS':
-        void run('CONFIRM_TERMS', () => callFunction('confirmTerms', { transactionId: id }).then(() => undefined), optimisticAfterConfirm());
-        return;
-      case 'START_PACKING':
-      case 'RECORD_SEAL':
-      case 'RECORD_ARRIVAL':
-      case 'RECORD_UNBOXING':
-        if (captureType) capture(captureType);
-        return;
-      case 'RECORD_RETURN_PACKING':
-      case 'RECORD_RETURN_SEAL':
-      case 'RECORD_RETURN_UNBOXING':
-        if (captureType) capture(captureType, activeReturn?.id);
-        return;
-      case 'ADD_SHIPMENT':
-        setShowShipping(true);
-        return;
-      case 'ADD_RETURN_SHIPMENT':
-        setShowReturnShipping(true);
-        return;
-      case 'CONFIRM_HANDOFF':
-        void run('CONFIRM_HANDOFF', () => callFunction('confirmLocalHandoff', { transactionId: id }).then(() => undefined));
-        return;
-      case 'COMPLETE_TRANSACTION':
-        void run('COMPLETE_TRANSACTION', () => callFunction('completeTransaction', { transactionId: id }).then(() => undefined));
-        return;
-      case 'OPEN_PASSPORT':
-        router.push({ pathname: '/passport/[id]', params: { id } });
-        return;
-      case 'AUTHORIZE_RETURN':
-        if (activeReturn) void run('AUTHORIZE_RETURN', () => callFunction('authorizeReturnPassport', { transactionId: id, returnPassportId: activeReturn.id }).then(() => undefined));
-        return;
-      case 'COMPLETE_RETURN':
-        if (activeReturn) void run('COMPLETE_RETURN', () => callFunction('completeReturnPassport', { transactionId: id, returnPassportId: activeReturn.id }).then(() => undefined));
-        return;
-      default:
-        return;
-    }
-  };
-
-  const handleSecondary = (kind: UxSecondaryActionKind) => {
-    if (!id) return;
-    switch (kind) {
-      case 'RESEND_INVITE':
-        router.push(`/transaction/invite/${id}`);
-        return;
-      case 'EDIT_TERMS':
-        router.push({ pathname: '/transaction/new', params: { transactionId: id } });
-        return;
-      case 'OPEN_PASSPORT':
-        router.push({ pathname: '/passport/[id]', params: { id } });
-        return;
-      case 'MARK_RECEIVED':
-        Alert.alert(
-          'Skip arrival and unboxing?',
-          'The packing record is stronger if you photograph the sealed package and record unboxing. PackProof will not infer a physical conclusion either way.',
-          [{ text: 'Keep capturing', style: 'cancel' }, { text: 'Mark received', onPress: () => run('received', () => callFunction('markReceived', { transactionId: id }).then(() => undefined)) }],
-        );
-        return;
-      case 'MARK_RETURN_RECEIVED':
-        if (activeReturn) void run('returnReceived', () => callFunction('markReturnReceived', { transactionId: id, returnPassportId: activeReturn.id }).then(() => undefined));
-        return;
-      default:
-        return;
-    }
-  };
-
   if (!item || !user || !ux) return <LoadingScreen />;
   const order = orderLabel(item);
   const sourcePlatform = item.source && 'platform' in item.source ? item.source.platform : null;
-  const shippingJob = ux.primaryAction?.kind === 'ADD_SHIPMENT' || showShipping;
-  const returnShippingJob = (ux.primaryAction?.kind === 'ADD_RETURN_SHIPMENT' || showReturnShipping) && Boolean(activeReturn);
-  const detailsForced = ux.consumerState === 'complete' || ux.consumerState === 'blocked';
-  const detailsOpen = detailsForced || showDetails;
-  const primaryKind = ux.primaryAction?.kind;
-  const hidePrimaryButton = primaryKind === 'ADD_SHIPMENT' || primaryKind === 'ADD_RETURN_SHIPMENT';
 
   return <SafeAreaView style={styles.safe}><ScrollView contentContainerStyle={styles.container}>
     <Button label="Back" variant="ghost" onPress={() => router.back()} style={styles.back} />
@@ -262,26 +148,6 @@ export default function TransactionDetail() {
         {order ? <Text style={styles.order}>{order}</Text> : null}
       </View>
     </View>
-
-    <NextActionCard
-      ux={ux}
-      busy={busy === ux.primaryAction?.kind}
-      outcome={outcome}
-      onPrimary={!hidePrimaryButton && ux.primaryAction ? () => handlePrimary(ux.primaryAction!.kind) : undefined}
-      onQuietSecondary={ux.secondaryAction?.kind === 'RESEND_INVITE' ? () => handleSecondary('RESEND_INVITE') : undefined}
-    />
-
-    {shippingJob ? <Card style={styles.form}>
-      <View style={styles.choices}>{['USPS', 'UPS', 'FedEx', 'DHL', 'Other'].map((value) => <Choice key={value} label={value} selected={carrier === value} onPress={() => setCarrier(value)} />)}</View>
-      <Field label="Tracking number" value={tracking} onChangeText={setTracking} autoCapitalize="characters" placeholder="Tracking number" />
-      <Button label="Looks right" busy={busy === 'ADD_SHIPMENT'} disabled={tracking.trim().length < 3} onPress={() => run('ADD_SHIPMENT', async () => { await callFunction('submitShipping', { transactionId: id, carrier, trackingNumber: tracking.trim() }); setShowShipping(false); }, ux)} />
-    </Card> : null}
-
-    {returnShippingJob && activeReturn ? <Card style={styles.form}>
-      <View style={styles.choices}>{['USPS', 'UPS', 'FedEx', 'DHL', 'Other'].map((value) => <Choice key={value} label={value} selected={returnCarrier === value} onPress={() => setReturnCarrier(value)} />)}</View>
-      <Field label="Tracking number" value={returnTracking} onChangeText={setReturnTracking} autoCapitalize="characters" placeholder="Return tracking number" />
-      <Button label="Looks right" busy={busy === 'ADD_RETURN_SHIPMENT'} disabled={returnTracking.trim().length < 3} onPress={() => run('ADD_RETURN_SHIPMENT', async () => { await callFunction('submitReturnShipping', { transactionId: id, returnPassportId: activeReturn.id, carrier: returnCarrier, trackingNumber: returnTracking.trim() }); setShowReturnShipping(false); }, ux)} />
-    </Card> : null}
 
     {showReturnRequest ? <Card style={styles.form}>
       <Text style={styles.cardTitle}>Start a return</Text>
@@ -299,20 +165,13 @@ export default function TransactionDetail() {
       <Button label="Cancel" variant="ghost" onPress={() => setShowConcern(false)} />
     </Card> : null}
 
-    {detailsForced ? null : <Button label={detailsOpen ? 'Hide details' : 'View details'} variant="ghost" onPress={() => setShowDetails(!showDetails)} />}
-
-    {detailsOpen ? <View style={styles.more}>
+    <View style={styles.more}>
       <Card style={styles.card}>
-        <Text style={styles.cardEyebrow}>TRANSACTION</Text>
         <Text style={styles.detailLine}>
           {[formatMoney(item.priceMinor, item.currency), sourcePlatform, order].filter(Boolean).join(' · ') || item.category}
         </Text>
         <Text style={styles.body}>{item.description || 'No additional description supplied.'}</Text>
         <Text style={styles.small}>{item.terms.saleType === 'SHIPPED' ? 'Shipped' : 'Local handoff'} · Returns {formatRuntimeEnum(item.terms.returns).toLowerCase()}</Text>
-      </Card>
-
-      <Card style={styles.card}>
-        <WorkflowProgress steps={ux.progressSteps} />
       </Card>
 
       <View style={styles.sectionHead}><Text style={styles.sectionTitle}>Activity</Text></View>
@@ -332,10 +191,9 @@ export default function TransactionDetail() {
         {!events.length ? <Text style={styles.small}>Activity appears here as each step completes.</Text> : null}
       </Card>
 
-      {item.shipping ? <Card style={styles.card}><Text style={styles.cardEyebrow}>SHIPMENT</Text><Text style={styles.body}>{item.shipping.carrier} · {item.shipping.trackingNumber}</Text><Text style={styles.small}>Recorded {formatDate(item.shipping.shippedAt)}</Text></Card> : null}
+      {item.shipping ? <Card style={styles.card}><Text style={styles.body}>{item.shipping.carrier} · {item.shipping.trackingNumber}</Text><Text style={styles.small}>Recorded {formatDate(item.shipping.shippedAt)}</Text></Card> : null}
 
       {item.terms.saleType === 'SHIPPED' && !['DRAFT', 'AWAITING_BUYER', 'TERMS_REVIEW', 'CANCELLED'].includes(item.status) ? <Card style={styles.card}>
-        <Text style={styles.cardEyebrow}>PACKING AND ARRIVAL</Text>
         <Text style={styles.body}>{HUMAN_REVIEW_DISCLAIMER}</Text>
         <Text style={styles.small}>{protocol.hasPackingVideo ? '✓' : '○'} Packing video</Text>
         <Text style={styles.small}>{protocol.hasSealReference ? '✓' : '○'} Seal and label</Text>
@@ -351,20 +209,18 @@ export default function TransactionDetail() {
             <Text style={styles.evidenceTitle}>{evidenceLabels[record.type]}</Text>
             <Text style={styles.evidenceMeta}>{formatDate(record.createdAt)}</Text>
           </View>
-          <Text onPress={() => downloadUrl(record.storagePath).then(Linking.openURL).catch((error) => Alert.alert('Could not open evidence', readableError(error)))} style={styles.open}>OPEN</Text>
+          <Text onPress={() => downloadUrl(record.storagePath).then(Linking.openURL).catch((error) => Alert.alert('Could not open evidence', readableError(error)))} style={styles.open}>Open</Text>
         </Card>
       ))}
       {!evidence.length ? <Text style={styles.small}>Evidence appears here after PackProof finishes saving it.</Text> : null}
 
-      {role === 'SELLER' && ['DRAFT', 'AWAITING_BUYER', 'TERMS_REVIEW'].includes(item.status) && ux.primaryAction?.kind !== 'EDIT_TERMS' ? <Button label="Edit details" icon="pencil" variant="secondary" onPress={() => router.push({ pathname: '/transaction/new', params: { transactionId: id } })} /> : null}
+      {role === 'SELLER' && ['DRAFT', 'AWAITING_BUYER', 'TERMS_REVIEW'].includes(item.status) ? <Button label="Edit details" icon="pencil" variant="secondary" onPress={() => router.push({ pathname: '/transaction/new', params: { transactionId: id } })} /> : null}
       {role === 'SELLER' && ['DRAFT', 'AWAITING_BUYER', 'TERMS_REVIEW'].includes(item.status) ? <Button label="Add item photo" icon="camera.fill" variant="secondary" onPress={() => capture('ITEM_PHOTO')} /> : null}
       {featureFlags.researchMode && role === 'SELLER' && ['TERMS_LOCKED', 'PACKED'].includes(item.status) ? <Button label="Optional research series" icon="camera.metering.center.weighted" variant="secondary" onPress={() => router.push({ pathname: '/capture/physical/[id]', params: { id, intent: 'REFERENCE' } })} /> : null}
       {featureFlags.researchMode && role === 'BUYER' && ['SHIPPED', 'BUYER_REVIEW', 'DISPUTED'].includes(item.status) ? <Button label="Optional research series" icon="viewfinder" variant="secondary" onPress={() => router.push({ pathname: '/capture/physical/[id]', params: { id, intent: 'VERIFICATION' } })} /> : null}
       {!['COMPLETED', 'CANCELLED', 'ARCHIVED'].includes(item.status) ? <Button label="Add more information" icon="doc.fill" variant="secondary" busy={busy === 'document'} onPress={attachPdf} /> : null}
-      {ux.passportReady && ux.primaryAction?.kind !== 'OPEN_PASSPORT' ? <Button label="View Passport" icon="checkmark.shield.fill" variant="secondary" onPress={() => router.push({ pathname: '/passport/[id]', params: { id } })} /> : null}
+      {ux.passportReady ? <Button label="View Passport" icon="checkmark.shield.fill" variant="secondary" onPress={() => router.push({ pathname: '/passport/[id]', params: { id } })} /> : null}
       {!['DRAFT', 'CANCELLED', 'ARCHIVED'].includes(item.status) ? <Button label="Download record" icon="doc.text.fill" variant="secondary" busy={busy === 'packet'} onPress={createPacket} /> : null}
-      {ux.secondaryAction?.kind === 'MARK_RECEIVED' ? <Button label="Skip photos" variant="ghost" onPress={() => handleSecondary('MARK_RECEIVED')} /> : null}
-      {ux.secondaryAction?.kind === 'MARK_RETURN_RECEIVED' ? <Button label="Skip video" variant="ghost" onPress={() => handleSecondary('MARK_RETURN_RECEIVED')} /> : null}
       {!activeReturn && item.buyerId && ['SHIPPED', 'BUYER_REVIEW', 'COMPLETED', 'DISPUTED'].includes(item.status) && (item.terms.returns !== 'NO_RETURNS' || item.status === 'DISPUTED') ? <Button label="Start a return" icon="arrow.uturn.backward.circle.fill" variant="secondary" onPress={() => setShowReturnRequest(true)} /> : null}
       {item.buyerId && !['COMPLETED', 'CANCELLED', 'ARCHIVED'].includes(item.status) ? <Button label="Raise a concern" icon="exclamationmark.triangle.fill" variant="danger" onPress={() => setShowConcern(true)} /> : null}
       {role === 'SELLER' && ['DRAFT', 'AWAITING_BUYER', 'TERMS_REVIEW'].includes(item.status) ? <Button label="Cancel PackProof" icon="xmark.circle.fill" variant="danger" busy={busy === 'cancel'} onPress={cancelTransaction} /> : null}
@@ -372,14 +228,13 @@ export default function TransactionDetail() {
       <Button label={showTechnical ? 'Hide technical details' : 'Show technical details'} variant="ghost" onPress={() => setShowTechnical(!showTechnical)} />
       {showTechnical ? <>
         {physicalStatus ? <Card style={styles.card}>
-          <Text style={styles.cardEyebrow}>OPTIONAL RESEARCH SERIES</Text>
           <Text style={styles.body}>{physicalStatus.reason === 'NO_REFERENCE_CAPTURE' ? 'No optional research series has been recorded.' : 'Research observations are stored separately from the packing workflow.'}</Text>
         </Card> : null}
         {evidence.map((record) => (
           <Text key={`${record.id}-hash`} style={styles.hash}>{evidenceLabels[record.type]} · {record.sha256.slice(0, 16)}…</Text>
         ))}
       </> : null}
-    </View> : null}
+    </View>
   </ScrollView></SafeAreaView>;
 }
 

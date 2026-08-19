@@ -11,7 +11,7 @@ import {
   shouldDeletePhysicalOriginalsAfterSeriesCommit,
   shouldDeletePhysicalSourceAfterEachEncrypt,
 } from '../src/lib/capture-workflow.ts';
-import { captureGuideFor, captureChecklists, capturePreflightFor, captureReviewChecklist, captureTitles, formatCaptureBytes, formatCaptureDuration, videoTypes } from '../src/lib/capture-guides.ts';
+import { captureGuideFor, captureChecklists, capturePreflightFor, captureReviewChecklist, captureTitles, consumerCameraPrompt, formatCaptureBytes, formatCaptureDuration, packingCoachingLine, videoTypes } from '../src/lib/capture-guides.ts';
 import { canonicalShippingObservationV1, identifyTrackingNumber } from '../src/lib/shipping-tracker.ts';
 import { createHash } from 'node:crypto';
 import {
@@ -51,9 +51,12 @@ assert.equal(recordingStop.stopRecording, true);
 assert.match(recordingStop.message, /left the foreground/);
 assert.equal(captureForegroundInterruption(false).stopRecording, false);
 
-assert.equal(captureTitles.PACKING_VIDEO.includes('packing'), true);
+assert.match(captureTitles.PACKING_VIDEO, /packing/i);
 assert.equal(videoTypes.has('PACKING_VIDEO'), true);
-assert.match(captureGuideFor('PACKING_VIDEO', true).instruction, /PP mark/);
+assert.match(captureGuideFor('PACKING_VIDEO', true).instruction, /item and box/);
+assert.match(consumerCameraPrompt('PACKING_VIDEO', { recordingSeconds: 0 }), /Show the item/);
+assert.equal(packingCoachingLine(40), 'Draw a line across the label and the box');
+assert.match(consumerCameraPrompt('SHIPPING_LABEL', { barcodeCaptured: true }), /Got it/);
 assert.match(captureChecklists.PACKING_VIDEO.join(' '), /paid postage is not required/i);
 assert.match(captureChecklists.PACKING_VIDEO.join(' '), /Scanning the tracking barcode is optional/);
 assert.match(captureChecklists.RETURN_PACKING_VIDEO.join(' '), /paid postage is not required/i);

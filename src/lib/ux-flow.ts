@@ -1069,9 +1069,24 @@ export const DIRECT_CAPTURE_ACTIONS = new Set<UxPrimaryActionKind>([
   'RECORD_UNBOXING',
 ]);
 
+export const PACK_SESSION_ACTIONS = new Set<UxPrimaryActionKind>([
+  'START_PACKING',
+  'RECORD_SEAL',
+  'RECORD_RETURN_PACKING',
+  'RECORD_RETURN_SEAL',
+]);
+
+export const CAMERA_SESSION_ACTIONS = new Set<UxPrimaryActionKind>([
+  'RECORD_ARRIVAL',
+  'RECORD_UNBOXING',
+  'RECORD_RETURN_UNBOXING',
+]);
+
 export type PrimaryActionHref =
+  | { pathname: '/task/[id]'; params: { id: string; fromShare?: string } }
+  | { pathname: '/pack/[id]'; params: { id: string; beat?: string; tracking?: string; carrier?: string } }
+  | { pathname: '/capture/[id]'; params: { id: string; type: EvidenceType; session?: string } }
   | { pathname: '/transaction/[id]'; params: { id: string } }
-  | { pathname: '/capture/[id]'; params: { id: string; type: EvidenceType } }
   | { pathname: '/transaction/invite/[id]'; params: { id: string } }
   | { pathname: '/transaction/new'; params: { transactionId: string } }
   | { pathname: '/passport/[id]'; params: { id: string } };
@@ -1081,11 +1096,14 @@ export function hrefForPrimaryAction(
   transactionId: string,
 ): PrimaryActionHref {
   const captureType = kind ? captureTypeForAction(kind) : null;
-  if (kind && DIRECT_CAPTURE_ACTIONS.has(kind) && captureType) {
-    return { pathname: '/capture/[id]', params: { id: transactionId, type: captureType } };
+  if (kind === 'START_PACKING' || kind === 'RECORD_RETURN_PACKING') {
+    return { pathname: '/pack/[id]', params: { id: transactionId } };
   }
-  if (kind === 'INVITE_BUYER') {
-    return { pathname: '/transaction/invite/[id]', params: { id: transactionId } };
+  if (kind === 'RECORD_SEAL' || kind === 'RECORD_RETURN_SEAL') {
+    return { pathname: '/pack/[id]', params: { id: transactionId, beat: 'label' } };
+  }
+  if (kind && CAMERA_SESSION_ACTIONS.has(kind) && captureType) {
+    return { pathname: '/capture/[id]', params: { id: transactionId, type: captureType, session: 'task' } };
   }
   if (kind === 'EDIT_TERMS') {
     return { pathname: '/transaction/new', params: { transactionId } };
@@ -1093,7 +1111,47 @@ export function hrefForPrimaryAction(
   if (kind === 'OPEN_PASSPORT') {
     return { pathname: '/passport/[id]', params: { id: transactionId } };
   }
-  return { pathname: '/transaction/[id]', params: { id: transactionId } };
+  return { pathname: '/task/[id]', params: { id: transactionId } };
+}
+
+export function toHref(href: PrimaryActionHref): import('expo-router').Href {
+  return href as unknown as import('expo-router').Href;
+}
+
+export function hrefAfterCapture(input: {
+  transactionId: string;
+  type: EvidenceType;
+  session?: string | null;
+  trackingNumber?: string | null;
+  courierCode?: string | null;
+}): PrimaryActionHref {
+  const { transactionId: id, type, session, trackingNumber, courierCode } = input;
+  if (session === 'pack') {
+    if (type === 'PACKING_VIDEO' || type === 'RETURN_PACKING_VIDEO') {
+      return { pathname: '/pack/[id]', params: { id, beat: 'label' } };
+    }
+    if (type === 'SHIPPING_LABEL' || type === 'RETURN_SHIPPING_LABEL') {
+      return {
+        pathname: '/pack/[id]',
+        params: {
+          id,
+          beat: 'tracking',
+          ...(trackingNumber ? { tracking: trackingNumber } : {}),
+          ...(courierCode ? { carrier: courierCode } : {}),
+        },
+      };
+    }
+  }
+  return { pathname: '/task/[id]', params: { id } };
+}
+
+export function displayCarrierName(code?: string | null): string {
+  const key = (code ?? '').toLowerCase();
+  if (key.includes('ups') && !key.includes('usps')) return 'UPS';
+  if (key.includes('usps')) return 'USPS';
+  if (key.includes('fedex')) return 'FedEx';
+  if (key.includes('dhl')) return 'DHL';
+  return code ? code.toUpperCase() : '';
 }
 
 export function groupHomeInbox<T>(

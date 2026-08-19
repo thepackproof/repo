@@ -5,6 +5,7 @@ import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import { callFunction } from '@/lib/api';
+import { toHref } from '@/lib/ux-flow';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({ shouldShowBanner: true, shouldShowList: true, shouldPlaySound: false, shouldSetBadge: false }),
@@ -30,7 +31,7 @@ export function useNotifications(uid?: string) {
   useEffect(() => {
     const subscription = Notifications.addNotificationResponseReceivedListener((response) => {
       const transactionId = response.notification.request.content.data?.transactionId;
-      if (typeof transactionId === 'string') router.push(`/transaction/${transactionId}`);
+      if (typeof transactionId === 'string') router.push(toHref({ pathname: '/task/[id]', params: { id: transactionId } }));
     });
     return () => subscription.remove();
   }, [router]);

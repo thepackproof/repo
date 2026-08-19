@@ -7,6 +7,7 @@ import {
   evidenceProcessingFromProgress,
   groupByInboxBucket,
   groupHomeInbox,
+  hrefAfterCapture,
   hrefForPrimaryAction,
   resolveNextRequiredAction,
   viewerRole,
@@ -122,7 +123,11 @@ assert.equal(readyToPack.primaryAction?.kind, 'START_PACKING');
 assert.equal(readyToPack.primaryAction?.label, 'Start packing');
 assert.equal(readyToPack.notificationCopy.title, 'The buyer confirmed. Ready to pack.');
 assert.equal(captureTypeForAction('START_PACKING'), 'PACKING_VIDEO');
-assert.equal(hrefForPrimaryAction('START_PACKING', 'tx_1').pathname, '/capture/[id]');
+assert.equal(hrefForPrimaryAction('START_PACKING', 'tx_1').pathname, '/pack/[id]');
+assert.equal(hrefForPrimaryAction('CONFIRM_TERMS', 'tx_1').pathname, '/task/[id]');
+assert.equal(hrefForPrimaryAction('RECORD_ARRIVAL', 'tx_1').pathname, '/capture/[id]');
+assert.equal(hrefAfterCapture({ transactionId: 'tx_1', type: 'PACKING_VIDEO', session: 'pack' }).pathname, '/pack/[id]');
+assert.equal(hrefAfterCapture({ transactionId: 'tx_1', type: 'DELIVERY_PHOTO', session: 'task' }).pathname, '/task/[id]');
 assert.equal(readyToPack.progressStage, 'PACKING');
 assert.equal(readyToPack.progressSteps.find((step) => step.id === 'TERMS')?.state, 'done');
 assert.equal(readyToPack.progressSteps.find((step) => step.id === 'PACKING')?.state, 'current');

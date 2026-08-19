@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Animated, AppState, Linking, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { Alert, Animated, AppState, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { CameraView, useCameraPermissions, useMicrophonePermissions, type FlashMode } from 'expo-camera';
@@ -7,10 +7,11 @@ import * as Haptics from 'expo-haptics';
 import * as Crypto from 'expo-crypto';
 import * as FileSystem from 'expo-file-system/legacy';
 import { Image } from 'expo-image';
-import * as Location from 'expo-location';
 import { AppIcon } from '@/components/app-icon';
 import NetInfo from '@react-native-community/netinfo';
-import { Button, Card, ProgressBar, ScreenTitle } from '@/components/ui';
+import { ProgressBar } from '@/components/ui';
+import { SealGuideOverlay, TaskArt } from '@/components/task-art';
+import { TaskSession } from '@/components/task-session';
 import { colors } from '@/constants/brand';
 import { prepareCaptureAttestation, prepareEvidenceSessionAttestation } from '@/lib/api';
 import { startCaptureTelemetry } from '@/lib/capture-telemetry';
@@ -22,13 +23,9 @@ import {
   type CaptureStage,
 } from '@/lib/capture-workflow';
 import {
-  captureChecklists,
   captureGuideFor,
-  capturePreflightFor,
-  captureReviewChecklist,
   captureTitles,
-  formatCaptureBytes,
-  formatCaptureDuration,
+  consumerCameraPrompt,
   labelAwareTypes,
   requestedRegions,
   videoTypes,
@@ -38,7 +35,7 @@ import { captureShippingLabelStill, hashShippingLabelObservation } from '@/lib/s
 import { identifyTrackingNumber } from '@/lib/shipping-tracker';
 import { readableError } from '@/lib/format';
 import { useAuth } from '@/providers/auth-provider';
-import { evidenceProcessingFromProgress } from '@/lib/ux-flow';
+import { hrefAfterCapture, toHref } from '@/lib/ux-flow';
 import type { EvidenceType } from '@/types/models';
 import type { CaptureAttestation, CaptureManifestInput, ShippingLabelTelemetry } from '@/types/telemetry';
 
@@ -79,6 +76,7 @@ export default function CaptureScreen() {
   const params = useLocalSearchParams<{
     id: string;
     type: EvidenceType;
+    session?: string;
     returnPassportId?: string;
     connectSessionId?: string;
     evidenceSessionId?: string;
@@ -86,17 +84,18 @@ export default function CaptureScreen() {
     evidenceSessionOperationKey?: string;
   }>();
   const { id, returnPassportId, connectSessionId, evidenceSessionId, evidenceSessionToken, evidenceSessionOperationKey } = params;
+  const session = typeof params.session === 'string' ? params.session : undefined;
+  const skipPrep = session === 'pack' || session === 'task';
   const rawType = params.type;
   const type = rawType && captureTitles[rawType] ? rawType : 'CONDITION_PHOTO';
   const isVideo = videoTypes.has(type);
   const guide = captureGuideFor(type, isVideo);
-  const preflight = capturePreflightFor(type);
   const router = useRouter();
   const { user } = useAuth();
   const camera = useRef<CameraView>(null);
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const [microphonePermission, requestMicrophonePermission] = useMicrophonePermissions();
-  const [stage, setStage] = useState<CaptureStage>('CHECKLIST');
+  const [stage, setStage] = useState<CaptureStage>(skipPrep ? 'CAMERA' : 'CHECKLIST');
   const goTo = (next: CaptureStage) => {
     setStage((current) => (canTransitionCaptureStage(current, next) ? next : current));
   };
@@ -105,10 +104,11 @@ export default function CaptureScreen() {
   const [cameraReady, setCameraReady] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
+  const [previewSeconds, setPreviewSeconds] = useState(0);
   const [flashMode, setFlashMode] = useState<FlashMode>('off');
   const [torchEnabled, setTorchEnabled] = useState(false);
   const [zoom, setZoom] = useState<number>(zoomSteps[0]);
-  const [includeLocation, setIncludeLocation] = useState(false);
+  const [includeLocation] = useState(false);
   const [localUri, setLocalUri] = useState<string | null>(null);
   const [manifest, setManifest] = useState<CaptureManifestInput | null>(null);
   const [reviewSummary, setReviewSummary] = useState<ReviewSummary | null>(null);
@@ -171,6 +171,20 @@ export default function CaptureScreen() {
     }, 250);
     return () => clearInterval(timer);
   }, [recording]);
+
+  useEffect(() => {
+    if (stage !== 'CAMERA' || recording) return;
+    const startedAt = Date.now();
+    const timer = setInterval(() => setPreviewSeconds(Math.floor((Date.now() - startedAt) / 1000)), 500);
+    return () => clearInterval(timer);
+  }, [recording, stage]);
+
+  useEffect(() => {
+    if (!skipPrep || stage !== 'CHECKLIST') return;
+    if (cameraPermission?.granted && (!isVideo || microphonePermission?.granted)) {
+      goTo('CAMERA');
+    }
+  }, [cameraPermission?.granted, isVideo, microphonePermission?.granted, skipPrep, stage]);
 
   useEffect(() => {
     if (!barcodeFlash) return;
@@ -251,10 +265,6 @@ export default function CaptureScreen() {
     setFlashMode((current) => current === 'off' ? 'auto' : current === 'auto' ? 'on' : 'off');
   };
 
-  const cycleZoom = () => {
-    setZoom((current) => zoomSteps[(zoomSteps.indexOf(current as typeof zoomSteps[number]) + 1) % zoomSteps.length]);
-  };
-
   const observedFlashMode: CaptureManifestInput['cameraObservation']['flashMode'] = isVideo
     ? (torchEnabled ? 'TORCH' : 'OFF')
     : flashMode.toUpperCase() as CaptureManifestInput['cameraObservation']['flashMode'];
@@ -278,17 +288,6 @@ export default function CaptureScreen() {
     setCameraReady(false);
     setCameraError(null);
     goTo('CAMERA');
-  };
-
-  const changeLocationPreference = async (enabled: boolean) => {
-    if (!enabled) { setIncludeLocation(false); return; }
-    const permission = await Location.requestForegroundPermissionsAsync();
-    if (!permission.granted) {
-      setIncludeLocation(false);
-      Alert.alert('Location not included', 'PackProof will continue without location. You can enable location permission later in Android Settings.');
-      return;
-    }
-    setIncludeLocation(true);
   };
 
   const capture = async () => {
@@ -485,11 +484,25 @@ export default function CaptureScreen() {
     localUriRef.current = null;
     if (temporaryUri) await FileSystem.deleteAsync(temporaryUri, { idempotent: true }).catch(() => undefined);
     await deleteLabelStill();
-    router.back();
+    if (connectSessionId || evidenceSessionId) {
+      router.back();
+      return;
+    }
+    if (session === 'pack') {
+      const beat = type === 'PACKING_VIDEO' || type === 'RETURN_PACKING_VIDEO' ? 'prep' : 'label';
+      router.replace(toHref({ pathname: '/pack/[id]', params: { id, beat } }));
+      return;
+    }
+    router.replace(toHref({ pathname: '/task/[id]', params: { id } }));
   };
 
   const upload = async () => {
     if (!localUri || !id || !user) return;
+    const observedLabel = shippingLabelRef.current ?? shippingLabel;
+    const trackingNumber = observedLabel?.trackingNumber ?? null;
+    const courierCode = observedLabel
+      ? identifyTrackingNumber(observedLabel.rawDecodedValue, observedLabel.trackingNumber).courierCode
+      : null;
     securingRef.current = true;
     goTo('UPLOADING');
     setProgress(0);
@@ -519,29 +532,33 @@ export default function CaptureScreen() {
       }
       securingRef.current = false;
       const result = await syncEvidenceQueue({ targetId: item.id, onProgress: (value) => { if (mountedRef.current) setProgress(value); } });
-      const uploaded = result.uploadedIds.includes(item.id);
-      const terminal = result.terminalIds.includes(item.id);
-      if (mountedRef.current) {
-        Alert.alert(
-          uploaded ? 'Evidence ready' : terminal ? 'Retry the upload' : 'Securing evidence record',
-          uploaded
-            ? 'PackProof finished processing the evidence. You can leave this screen.'
-            : terminal
-              ? 'The capture is still saved on this device. Retry the upload — you do not need to recapture. Do not clear app data or uninstall.'
-              : 'You can leave this screen. PackProof will update when it finishes.',
-          [{ text: 'Done', onPress: () => router.replace(`/transaction/${id}`) }],
-        );
+      if (!mountedRef.current) return;
+      if (connectSessionId || evidenceSessionId) {
+        router.back();
+        return;
       }
+      router.replace(toHref(hrefAfterCapture({
+        transactionId: id,
+        type,
+        session,
+        trackingNumber,
+        courierCode,
+      })));
+      void result;
     } catch (error) {
       securingRef.current = false;
       if (queuedId) {
         if (mountedRef.current) {
           setProgress(1);
-          Alert.alert(
-            'Securing evidence record',
-            `The original is already saved on this device. You can leave this screen; PackProof will retry. ${readableError(error)}`,
-            [{ text: 'Done', onPress: () => router.replace(`/transaction/${id}`) }],
-          );
+          if (connectSessionId || evidenceSessionId) {
+            Alert.alert(
+              'Saved on this phone',
+              `You can leave this screen; PackProof will retry. ${readableError(error)}`,
+              [{ text: 'Done', onPress: () => router.back() }],
+            );
+          } else {
+            router.replace(toHref({ pathname: '/task/[id]', params: { id } }));
+          }
         }
       } else {
         if (!mountedRef.current) {
@@ -549,135 +566,119 @@ export default function CaptureScreen() {
           await FileSystem.deleteAsync(localUri, { idempotent: true }).catch(() => undefined);
         } else {
           goTo('REVIEW');
-          Alert.alert('Could not secure evidence', readableError(error));
+          Alert.alert('Could not save that', readableError(error));
         }
       }
     }
   };
 
   const shutterDisabled = !recording && !preparing && (!cameraReady || Boolean(cameraError));
-  const cameraHelp = cameraError
-    ? `The camera preview could not start: ${cameraError}`
-    : !cameraReady
-      ? 'Waiting for the native camera preview before capture is enabled.'
-      : preparing
-        ? 'Button pressed. Refreshing online app-integrity context, then recording will start.'
-        : recording
-          ? (type === 'PACKING_VIDEO' || type === 'RETURN_PACKING_VIDEO'
-            ? 'Show the item, pack and seal it, then capture the label.'
-            : 'Keep the package in frame. Hold steady for the last seconds.')
-          : isVideo
-            ? (labelAwareTypes.has(type)
-              ? 'Aim at the tracking barcode if you have one. Scanning is optional.'
-              : 'Tap the shutter to start recording.')
-            : type === 'SHIPPING_LABEL' || type === 'RETURN_SHIPPING_LABEL' || type === 'DELIVERY_PHOTO'
-              ? 'Hold steady on the label, seal, and nearby cardboard.'
-              : 'Frame the evidence, then capture.';
-  const tracker = shippingLabel?.tracker;
-  const liveIdentity = useMemo(
-    () => (shippingLabel ? identifyTrackingNumber(shippingLabel.rawDecodedValue, shippingLabel.trackingNumber) : null),
-    [shippingLabel],
-  );
-  const barcodeIdentified = tracker?.identified ?? liveIdentity?.identified ?? false;
-  const barcodeBadgeLabel = !shippingLabel
-    ? 'Optional · aim at the barcode'
-    : barcodeFlash && barcodeIdentified
-      ? 'Barcode captured'
-      : barcodeFlash
-        ? 'Barcode read'
-        : tracker?.sha256
-          ? 'Barcode captured'
-          : `Checking ${shippingLabel.trackingNumber}`;
+  const coaching = consumerCameraPrompt(type, {
+    recordingSeconds,
+    previewSeconds,
+    barcodeCaptured: Boolean(shippingLabel),
+    preparing,
+  });
+  const showSealGuide = type === 'SHIPPING_LABEL' || type === 'RETURN_SHIPPING_LABEL';
 
   if (stage === 'CAMERA') return <View style={styles.cameraPage}>
     <CameraView ref={camera} style={StyleSheet.absoluteFill} facing="back" mode={isVideo ? 'video' : 'picture'} flash={isVideo ? 'off' : flashMode} enableTorch={isVideo && torchEnabled} zoom={zoom} videoQuality="720p" mute={false} onCameraReady={() => { setCameraReady(true); setCameraError(null); }} onMountError={({ message }) => { setCameraReady(false); setCameraError(message); }} onBarcodeScanned={labelAwareTypes.has(type) ? handleBarcodeScanned : undefined} barcodeScannerSettings={{ barcodeTypes: ['code128', 'code39', 'code93', 'qr', 'pdf417', 'aztec', 'ean13', 'ean8', 'upc_a', 'upc_e', 'itf14', 'datamatrix'] }} />
     <SafeAreaView style={styles.overlay}>
       <View style={styles.cameraHeader}>
-        <Pressable disabled={recording || preparing} onPress={() => { void close(); }} style={styles.circleButton}><AppIcon name="xmark" size={18} tintColor={colors.white} /></Pressable>
-        <View style={[styles.captureLabel, preparing && styles.captureLabelPreparing, recording && styles.captureLabelRecording, cameraError && styles.captureLabelError]}>
-          <View style={[styles.liveDot, (preparing || recording || cameraError) && styles.liveDotOnColor]} />
-          <Text style={styles.captureLabelText}>{cameraError ? 'CAMERA UNAVAILABLE' : preparing ? 'STARTING…' : recording ? `REC ${formatCaptureDuration(recordingSeconds)}` : cameraReady ? 'Ready' : 'STARTING CAMERA…'}</Text>
-        </View>
-      </View>
-      {isVideo ? <View pointerEvents="none" style={styles.guideArea} /> : (
-        <View pointerEvents="none" style={styles.guideArea}>
-          <View style={[styles.frameGuide, { aspectRatio: guide.aspectRatio }]} />
-          <Text style={styles.guideTitle}>{guide.title}</Text>
-          <Text style={styles.guideInstruction}>{guide.instruction}</Text>
-          <Text style={styles.guideDisclaimer}>GUIDE ONLY · COVERAGE IS NOT MACHINE-CONFIRMED</Text>
-        </View>
-      )}
-      <View style={styles.cameraFooter}>
-        {!recording && !preparing ? (
-          <View style={styles.cameraControls}>
-            <Pressable accessibilityLabel={isVideo ? `${torchEnabled ? 'Disable' : 'Enable'} camera light` : `Change flash mode, currently ${flashMode}`} disabled={!cameraReady} onPress={cycleFlash} style={[styles.controlPill, !cameraReady && styles.controlDisabled]}><Text style={styles.controlText}>{isVideo ? `LIGHT ${torchEnabled ? 'ON' : 'OFF'}` : `FLASH ${flashMode.toUpperCase()}`}</Text></Pressable>
-            <Pressable accessibilityLabel={`Change camera zoom, currently ${Math.round(zoom * 100)} percent of device maximum`} disabled={!cameraReady} onPress={cycleZoom} style={[styles.controlPill, !cameraReady && styles.controlDisabled]}><Text style={styles.controlText}>ZOOM {Math.round(zoom * 100)}%</Text></Pressable>
-          </View>
-        ) : null}
-        {labelAwareTypes.has(type) ? (
-          <View style={styles.barcodeRow}>
-            {labelStillUri ? <Image source={{ uri: labelStillUri }} contentFit="cover" style={styles.labelStillThumb} accessibilityLabel="Captured shipping-label still" /> : null}
-            <View style={[
-              styles.barcodeBadge,
-              shippingLabel && barcodeIdentified && styles.barcodeBadgeRead,
-              shippingLabel && !barcodeIdentified && styles.barcodeBadgeUnknown,
-              barcodeFlash && barcodeIdentified && styles.barcodeBadgeFlash,
-              barcodeFlash && !barcodeIdentified && styles.barcodeBadgeUnknownFlash,
-            ]}>
-              <AppIcon name={shippingLabel ? 'checkmark.circle.fill' : 'barcode.viewfinder'} size={16} tintColor={colors.white} />
-              <Text style={styles.barcodeText}>{barcodeBadgeLabel}</Text>
-            </View>
-          </View>
-        ) : null}
-        <Text style={styles.cameraHelp}>{cameraHelp}</Text>
-        <Pressable
-          accessibilityLabel={recording ? 'Stop recording' : 'Start capture'}
-          disabled={shutterDisabled}
-          onPressIn={shutterDisabled ? undefined : pulseShutter}
-          onPress={recording ? stop : capture}
-          style={[styles.shutter, preparing && styles.shutterPreparing, recording && styles.shutterRecording, shutterDisabled && { opacity: 0.55 }]}
-        >
-          <Animated.View style={[styles.shutterInner, preparing && styles.shutterInnerPreparing, recording && styles.stopInner, { transform: [{ scale: shutterScale }] }]} />
+        <Pressable disabled={recording || preparing} onPress={() => { void close(); }} style={styles.circleButton} accessibilityLabel="Close">
+          <AppIcon name="xmark" size={18} tintColor={colors.white} />
         </Pressable>
+        {recording ? <View style={styles.recDot} /> : <View style={styles.recDotSpacer} />}
+      </View>
+      <View pointerEvents="none" style={styles.guideArea}>
+        {isVideo ? null : showSealGuide ? <SealGuideOverlay /> : <View style={[styles.frameGuide, { aspectRatio: guide.aspectRatio }]} />}
+      </View>
+      <View style={styles.cameraFooter}>
+        <Text style={styles.coaching}>{cameraError ? 'Camera could not start.' : coaching}</Text>
+        <View style={styles.shutterRow}>
+          <Pressable
+            accessibilityLabel={isVideo ? `${torchEnabled ? 'Turn off' : 'Turn on'} light` : 'Flash'}
+            disabled={!cameraReady || recording || preparing}
+            onPress={cycleFlash}
+            style={[styles.flashButton, (!cameraReady || recording || preparing) && styles.controlDisabled]}
+          >
+            <AppIcon name="camera.fill" size={18} tintColor={colors.white} />
+          </Pressable>
+          <Pressable
+            accessibilityLabel={recording ? 'Stop recording' : 'Start capture'}
+            disabled={shutterDisabled}
+            onPressIn={shutterDisabled ? undefined : pulseShutter}
+            onPress={recording ? stop : capture}
+            style={[styles.shutter, preparing && styles.shutterPreparing, recording && styles.shutterRecording, shutterDisabled && { opacity: 0.55 }]}
+          >
+            <Animated.View style={[styles.shutterInner, preparing && styles.shutterInnerPreparing, recording && styles.stopInner, { transform: [{ scale: shutterScale }] }]} />
+          </Pressable>
+          <View style={styles.flashButton} />
+        </View>
       </View>
     </SafeAreaView>
-    {isVideo && preparing ? <View pointerEvents="none" style={styles.preparingFrame} /> : null}
     {recording ? <View pointerEvents="none" style={styles.recordingFrame} /> : null}
   </View>;
 
-  return <SafeAreaView style={styles.safe}><ScrollView contentContainerStyle={styles.container}>
-    <Button label="Close" variant="ghost" onPress={() => { void close(); }} style={styles.close} disabled={stage === 'UPLOADING'} />
-    {stage === 'CHECKLIST' ? <>
-      <ScreenTitle eyebrow="Before you begin" title={preflight.title} subtitle={preflight.subtitle} />
-      <Card style={styles.checklist}>{preflight.expectations.map((item, index) => <View key={item} style={styles.check}><View style={styles.number}><Text style={styles.numberText}>{index + 1}</Text></View><Text style={styles.checkText}>{item}</Text></View>)}</Card>
-      {['PACKING_VIDEO', 'SHIPPING_LABEL', 'UNBOXING_VIDEO', 'DELIVERY_PHOTO', 'RETURN_PACKING_VIDEO', 'RETURN_SHIPPING_LABEL', 'RETURN_UNBOXING_VIDEO'].includes(type) && (captureChecklists[type]?.length ?? 0) > 3 ? <Card style={styles.checklist}>{(captureChecklists[type] ?? []).map((item) => <Text key={item} style={styles.checkText}>{item}</Text>)}</Card> : null}
-      {['PACKING_VIDEO', 'SHIPPING_LABEL', 'UNBOXING_VIDEO', 'DELIVERY_PHOTO', 'RETURN_PACKING_VIDEO', 'RETURN_SHIPPING_LABEL', 'RETURN_UNBOXING_VIDEO'].includes(type) ? <Card style={styles.caution}><AppIcon name="info.circle.fill" size={20} tintColor={colors.amber} /><Text style={styles.cautionText}>PackProof preserves what you record. It does not decide whether the package later matches.</Text></Card> : null}
-      <Card style={styles.locationCard}><View style={{ flex: 1, gap: 4 }}><Text style={styles.locationTitle}>Include precise capture location</Text><Text style={styles.locationText}>Optional. Leave off when location is unnecessary.</Text></View><Switch value={includeLocation} onValueChange={(value) => { changeLocationPreference(value).catch((error) => Alert.alert('Could not update location setting', readableError(error))); }} /></Card>
-      <Button label={preflight.startLabel} icon="camera.fill" onPress={requestPermissions} />
-    </> : null}
-    {stage === 'REVIEW' ? <>
-      <ScreenTitle eyebrow="Review" title="Looks complete?" subtitle="Check what was captured, then submit. PackProof will upload, secure, and mark the evidence ready." />
-      {!isVideo && localUri ? <Image source={{ uri: localUri }} contentFit="contain" style={styles.reviewImage} accessibilityLabel="Captured evidence preview" /> : null}
-      <Card style={styles.checklist}>
-        {captureReviewChecklist(type, { barcodeCaptured: Boolean(manifest?.shippingLabel || shippingLabel), videoRecorded: isVideo && Boolean(localUri), photoCaptured: !isVideo && Boolean(localUri) }).map((item) => (
-          <Text key={item.label} style={[styles.checkText, !item.done && { color: colors.amber }]}>{item.done ? '✓' : '○'} {item.label}</Text>
-        ))}
-      </Card>
-      <Card style={styles.review}><AppIcon name={isVideo ? 'video.fill' : 'photo.fill'} size={42} tintColor={colors.teal} /><Text style={styles.reviewTitle}>{captureTitles[type]}</Text>{reviewSummary ? <View style={styles.reviewFacts}><Text style={styles.reviewFact}>{isVideo ? `Duration ${formatCaptureDuration(Math.round(reviewSummary.durationMs / 1000))}` : reviewSummary.widthPixels && reviewSummary.heightPixels ? `${reviewSummary.widthPixels} × ${reviewSummary.heightPixels} px` : 'Dimensions unavailable'}</Text><Text style={styles.reviewFact}>{formatCaptureBytes(reviewSummary.sizeBytes)}</Text></View> : null}{labelStillUri ? <Image source={{ uri: labelStillUri }} contentFit="contain" style={styles.reviewStill} accessibilityLabel="Shipping-label scan still" /> : null}<Text style={styles.reviewText}>{manifest?.shippingLabel ? `Barcode captured: ${manifest.shippingLabel.trackingNumber}.` : labelAwareTypes.has(type) ? 'No barcode captured — that is optional.' : 'Ready to secure this capture.'}</Text></Card>
-      <Button label="Submit evidence" icon="lock.shield.fill" onPress={upload} />
-      <Button label="Discard and retake" variant="danger" onPress={discard} />
-    </> : null}
-    {stage === 'UPLOADING' ? <View style={styles.uploading}><AppIcon name="icloud.and.arrow.up.fill" size={48} tintColor={colors.teal} /><Text style={styles.uploadTitle}>{evidenceProcessingFromProgress(progress, 'working') === 'SECURING' ? 'Securing evidence record' : 'Uploading evidence'}</Text><Text style={styles.uploadPercent}>{Math.round(progress * 100)}%</Text><ProgressBar value={progress} /><Text style={styles.uploadText}>Uploading evidence → Securing evidence record → Evidence ready.{'\n'}You can leave this screen. PackProof will update when it finishes.</Text></View> : null}
-  </ScrollView></SafeAreaView>;
+  if (stage === 'REVIEW') {
+    return (
+      <TaskSession
+        art={!isVideo && localUri
+          ? <Image source={{ uri: localUri }} contentFit="contain" style={styles.reviewImage} accessibilityLabel="Captured preview" />
+          : <TaskArt kind="check" />}
+        title="Looks good?"
+        sentence="You can retake it if not."
+        onClose={() => { void close(); }}
+        primary={{ label: 'Looks good', onPress: () => { void upload(); } }}
+        secondary={{ label: 'Retake', onPress: () => { void discard(); } }}
+      />
+    );
+  }
+
+  if (stage === 'UPLOADING') {
+    return (
+      <TaskSession
+        art={<TaskArt kind="check" />}
+        title="Saving"
+        sentence="You can leave. PackProof will keep going."
+        onClose={() => { void close(); }}
+      >
+        <ProgressBar value={progress} />
+      </TaskSession>
+    );
+  }
+
+  return (
+    <TaskSession
+      art={<TaskArt kind={isVideo ? 'phone' : type === 'DELIVERY_PHOTO' ? 'box' : 'label'} />}
+      title={isVideo ? (type.includes('UNBOXING') ? 'Record the unboxing' : 'Set your phone down') : type === 'DELIVERY_PHOTO' ? 'Photograph the arrived box' : 'Photograph the box'}
+      sentence={isVideo ? (type.includes('UNBOXING') ? 'Start with the sealed package.' : 'Keep the item and box in view.') : 'Keep the whole label in the frame.'}
+      onClose={() => { void close(); }}
+      primary={{ label: isVideo ? 'I’m ready' : 'Take photo', onPress: () => { void requestPermissions(); } }}
+    />
+  );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.background }, container: { flexGrow: 1, padding: 20, paddingBottom: 44, gap: 15 }, close: { alignSelf: 'flex-start', minHeight: 40 },
-  checklist: { gap: 17 }, check: { flexDirection: 'row', gap: 12, alignItems: 'flex-start' }, number: { width: 28, height: 28, borderRadius: 14, backgroundColor: 'rgba(70,124,99,0.1)', alignItems: 'center', justifyContent: 'center' }, numberText: { color: colors.teal, fontSize: 12, fontWeight: '900' }, checkText: { flex: 1, color: colors.ink, fontSize: 13, lineHeight: 20 },
-  locationCard: { flexDirection: 'row', gap: 12, alignItems: 'center' }, locationTitle: { color: colors.ink, fontSize: 13, fontWeight: '800' }, locationText: { color: colors.muted, fontSize: 10, lineHeight: 15 },
-  caution: { flexDirection: 'row', gap: 11, backgroundColor: 'rgba(138,91,0,0.06)' }, cautionText: { flex: 1, color: colors.amber, fontSize: 11, lineHeight: 17 },
-  cameraPage: { flex: 1, backgroundColor: colors.black }, overlay: { flex: 1, justifyContent: 'space-between' }, cameraHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 18 }, circleButton: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(0,0,0,0.55)', alignItems: 'center', justifyContent: 'center' }, captureLabel: { flexDirection: 'row', gap: 7, alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.55)', paddingHorizontal: 12, paddingVertical: 9, borderRadius: 999 }, captureLabelPreparing: { backgroundColor: colors.amber }, captureLabelRecording: { backgroundColor: colors.danger }, captureLabelError: { backgroundColor: colors.danger }, liveDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.teal }, liveDotOnColor: { backgroundColor: colors.white }, captureLabelText: { color: colors.white, fontSize: 10, fontWeight: '900', letterSpacing: 0.7 }, recordingFrame: { ...StyleSheet.absoluteFill, borderWidth: 6, borderColor: colors.danger, zIndex: 20 }, preparingFrame: { ...StyleSheet.absoluteFill, borderWidth: 6, borderColor: colors.amber, zIndex: 20 }, guideArea: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 28, gap: 7 }, frameGuide: { width: '88%', maxHeight: '70%', borderWidth: 2, borderColor: 'rgba(255,255,255,0.9)', borderRadius: 18, backgroundColor: 'rgba(0,0,0,0.03)' }, guideTitle: { color: colors.white, fontSize: 15, fontWeight: '900', textAlign: 'center', textShadowColor: colors.black, textShadowRadius: 4 }, guideInstruction: { color: colors.white, maxWidth: 340, fontSize: 10, lineHeight: 15, textAlign: 'center', textShadowColor: colors.black, textShadowRadius: 4 }, guideDisclaimer: { color: colors.white, opacity: 0.78, fontSize: 8, fontWeight: '900', letterSpacing: 0.7, textAlign: 'center' },
-  cameraFooter: { alignItems: 'center', gap: 18, padding: 24, paddingBottom: 32, backgroundColor: 'rgba(0,0,0,0.38)' }, cameraControls: { flexDirection: 'row', gap: 10 }, controlPill: { minWidth: 100, alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.62)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.35)', borderRadius: 999, paddingHorizontal: 13, paddingVertical: 9 }, controlDisabled: { opacity: 0.45 }, controlText: { color: colors.white, fontSize: 9, fontWeight: '900', letterSpacing: 0.6 }, barcodeRow: { maxWidth: '100%', flexDirection: 'row', alignItems: 'center', gap: 10 }, labelStillThumb: { width: 56, height: 56, borderRadius: 10, borderWidth: 2, borderColor: colors.teal, backgroundColor: colors.black }, barcodeBadge: { flex: 1, maxWidth: '100%', flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: 'rgba(0,0,0,0.62)', borderRadius: 999, paddingHorizontal: 12, paddingVertical: 8, borderWidth: 1, borderColor: 'transparent' }, barcodeBadgeRead: { backgroundColor: 'rgba(70,124,99,0.92)', borderColor: colors.teal }, barcodeBadgeUnknown: { backgroundColor: 'rgba(138,91,0,0.88)', borderColor: colors.amber }, barcodeBadgeFlash: { backgroundColor: colors.teal, borderColor: colors.white }, barcodeBadgeUnknownFlash: { backgroundColor: colors.amber, borderColor: colors.white }, barcodeText: { flexShrink: 1, color: colors.white, fontSize: 9, fontWeight: '900', letterSpacing: 0.4 }, cameraHelp: { color: colors.white, fontSize: 12, lineHeight: 18, textAlign: 'center' }, shutter: { width: 82, height: 82, borderRadius: 41, borderWidth: 5, borderColor: colors.white, alignItems: 'center', justifyContent: 'center' }, shutterInner: { width: 62, height: 62, borderRadius: 31, backgroundColor: colors.white }, shutterPreparing: { borderColor: colors.amber }, shutterInnerPreparing: { backgroundColor: colors.amber }, shutterRecording: { borderColor: colors.danger }, stopInner: { width: 31, height: 31, borderRadius: 7, backgroundColor: colors.danger },
-  reviewImage: { width: '100%', aspectRatio: 3 / 4, borderRadius: 18, backgroundColor: colors.black }, reviewStill: { width: '100%', aspectRatio: 4 / 3, maxHeight: 180, borderRadius: 14, backgroundColor: colors.black }, review: { alignItems: 'center', gap: 9, paddingVertical: 32 }, reviewTitle: { color: colors.ink, fontSize: 20, fontWeight: '900' }, reviewFacts: { width: '100%', flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 7 }, reviewFact: { color: colors.tealDark, backgroundColor: colors.accent, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6, fontSize: 9, fontWeight: '900' }, reviewText: { color: colors.muted, fontSize: 12, lineHeight: 18, textAlign: 'center' },
-  uploading: { flex: 1, justifyContent: 'center', gap: 16, paddingVertical: 80 }, uploadTitle: { color: colors.ink, fontSize: 25, fontWeight: '900', textAlign: 'center' }, uploadPercent: { color: colors.teal, fontSize: 36, fontWeight: '900', textAlign: 'center' }, uploadText: { color: colors.muted, fontSize: 12, lineHeight: 18, textAlign: 'center' },
+  cameraPage: { flex: 1, backgroundColor: colors.black },
+  overlay: { flex: 1, justifyContent: 'space-between' },
+  cameraHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 18 },
+  circleButton: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(0,0,0,0.55)', alignItems: 'center', justifyContent: 'center' },
+  recDot: { width: 12, height: 12, borderRadius: 6, backgroundColor: colors.danger },
+  recDotSpacer: { width: 12, height: 12 },
+  recordingFrame: { ...StyleSheet.absoluteFill, borderWidth: 6, borderColor: colors.danger, zIndex: 20 },
+  guideArea: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 28 },
+  frameGuide: { width: '88%', maxHeight: '70%', borderWidth: 2, borderColor: 'rgba(255,255,255,0.9)', borderRadius: 18, backgroundColor: 'rgba(0,0,0,0.03)' },
+  cameraFooter: { alignItems: 'center', gap: 16, padding: 24, paddingBottom: 32, backgroundColor: 'rgba(0,0,0,0.38)' },
+  coaching: { color: colors.white, fontSize: 20, lineHeight: 26, fontWeight: '700', textAlign: 'center', textShadowColor: colors.black, textShadowRadius: 6 },
+  shutterRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 22 },
+  flashButton: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(0,0,0,0.45)', alignItems: 'center', justifyContent: 'center' },
+  controlDisabled: { opacity: 0.45 },
+  shutter: { width: 82, height: 82, borderRadius: 41, borderWidth: 5, borderColor: colors.white, alignItems: 'center', justifyContent: 'center' },
+  shutterInner: { width: 62, height: 62, borderRadius: 31, backgroundColor: colors.white },
+  shutterPreparing: { borderColor: colors.amber },
+  shutterInnerPreparing: { backgroundColor: colors.amber },
+  shutterRecording: { borderColor: colors.danger },
+  stopInner: { width: 31, height: 31, borderRadius: 7, backgroundColor: colors.danger },
+  reviewImage: { width: '100%', aspectRatio: 3 / 4, borderRadius: 18, backgroundColor: colors.black },
 });

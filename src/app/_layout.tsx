@@ -23,6 +23,8 @@ export default function RootLayout() {
             <Stack.Screen name="transaction/[id]" />
             <Stack.Screen name="passport/[id]" />
             <Stack.Screen name="transaction/invite/[id]" options={{ presentation: 'modal' }} />
+            <Stack.Screen name="task/[id]" />
+            <Stack.Screen name="pack/[id]" options={{ presentation: 'fullScreenModal' }} />
             <Stack.Screen name="capture/[id]" options={{ presentation: 'fullScreenModal' }} />
             <Stack.Screen name="connect/capture" options={{ presentation: 'fullScreenModal' }} />
             <Stack.Screen name="handoff/review" options={{ presentation: 'fullScreenModal' }} />

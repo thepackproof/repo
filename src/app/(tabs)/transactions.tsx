@@ -23,7 +23,7 @@ export default function TransactionsScreen() {
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <ScrollView contentContainerStyle={styles.container}>
-        <ScreenTitle eyebrow="Records" title="Your PackProofs" subtitle="A library of active and finished records. Current tasks live on Home." />
+        <ScreenTitle title="Your PackProofs" subtitle="Active and finished records. Current tasks live on Home." />
         <View style={styles.segments}>
           <Pressable onPress={() => setSegment('active')} style={[styles.segment, segment === 'active' && styles.segmentOn]}>
             <Text style={[styles.segmentText, segment === 'active' && styles.segmentTextOn]}>Active</Text>
@@ -46,7 +46,7 @@ export default function TransactionsScreen() {
         ) : (
           <View style={styles.list}>
             {visible.map((item) => (
-              <TransactionCard key={item.id} transaction={item} uid={user!.uid} surface="library" />
+              <TransactionCard key={item.id} transaction={item} uid={user!.uid} />
             ))}
           </View>
         )}

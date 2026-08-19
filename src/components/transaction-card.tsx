@@ -1,10 +1,9 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Button, Card } from './ui';
-import { iconForAction } from './ux-orchestration';
+import { Card } from './ui';
 import { colors } from '@/constants/brand';
 import { formatMoney } from '@/lib/format';
-import { hrefForPrimaryAction, resolveNextRequiredAction, viewerRole, type NextRequiredAction } from '@/lib/ux-flow';
+import { resolveNextRequiredAction, viewerRole, type NextRequiredAction } from '@/lib/ux-flow';
 import type { PackProofTransaction } from '@/types/models';
 
 export function transactionUx(transaction: PackProofTransaction, uid: string): NextRequiredAction {
@@ -17,23 +16,16 @@ export function transactionUx(transaction: PackProofTransaction, uid: string): N
 export function TransactionCard({
   transaction,
   uid,
-  surface = 'library',
 }: {
   transaction: PackProofTransaction;
   uid: string;
-  surface?: 'home-task' | 'home-wait' | 'library';
 }) {
   const router = useRouter();
   const role = viewerRole(transaction, uid);
   const ux = transactionUx(transaction, uid);
-  const detailHref = { pathname: '/transaction/[id]' as const, params: { id: transaction.id } };
-  const actionHref = ux.primaryAction
-    ? hrefForPrimaryAction(ux.primaryAction.kind, transaction.id)
-    : detailHref;
-  const open = surface === 'home-task' ? actionHref : detailHref;
 
   return (
-    <Pressable onPress={() => router.push(open)}>
+    <Pressable onPress={() => router.push({ pathname: '/transaction/[id]', params: { id: transaction.id } })}>
       <Card style={styles.card}>
         <View style={styles.top}>
           <View style={styles.copy}>
@@ -41,28 +33,17 @@ export function TransactionCard({
             <Text numberOfLines={2} style={styles.title}>{transaction.title}</Text>
           </View>
         </View>
-        <Text style={styles.sentence}>{surface === 'library' ? ux.headline : ux.inboxSentence}</Text>
-        {surface === 'home-task' && ux.completedContext.length ? (
-          <Text style={styles.saved}>{ux.completedContext.map((item) => `${item} ✓`).join('  ')}</Text>
-        ) : null}
-        {surface === 'home-task' && ux.primaryAction ? (
-          <Button
-            label={ux.primaryAction.label}
-            icon={iconForAction(ux.primaryAction.kind)}
-            onPress={() => router.push(actionHref)}
-          />
-        ) : null}
+        <Text style={styles.sentence}>{ux.headline}</Text>
       </Card>
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  card: { gap: 12 },
+  card: { gap: 10 },
   top: { flexDirection: 'row', justifyContent: 'space-between', gap: 12 },
   copy: { flex: 1, gap: 5 },
-  role: { color: colors.muted, fontSize: 10, letterSpacing: 1.1, fontWeight: '800' },
+  role: { color: colors.muted, fontSize: 13, fontWeight: '600' },
   title: { color: colors.ink, fontSize: 18, lineHeight: 23, fontWeight: '800' },
-  sentence: { color: colors.ink, fontSize: 15, lineHeight: 21, fontWeight: '600' },
-  saved: { color: colors.teal, fontSize: 13, fontWeight: '700' },
+  sentence: { color: colors.muted, fontSize: 15, lineHeight: 21 },
 });
