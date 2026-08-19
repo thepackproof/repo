@@ -13,7 +13,7 @@ import type {
   ParticipantTransactionSnapshot,
   RedeemEvidenceSessionResult,
 } from '../../../application/v1/participant-capture-service';
-import { evidenceSessionDtoSchema, type EvidenceArtifactType, type EvidenceSessionDto } from '../../../domain/v1/evidence';
+import { evidenceSessionDtoSchema, freezeEvidenceSessionIntake, type EvidenceArtifactType, type EvidenceSessionDto } from '../../../domain/v1/evidence';
 import { participantClaimDtoSchema, type ParticipantClaimDto, type ParticipantRole } from '../../../domain/v1/transactions';
 import { sha256 } from '../../../application/v1/merchant-transaction-service';
 import { storedOutboxEvent } from './outbox';
@@ -63,6 +63,7 @@ function storedEvidenceSession(session: EvidenceSessionDto): DocumentData {
     expiresAt: Timestamp.fromDate(new Date(session.expiresAt)),
     startedAt: session.startedAt ? Timestamp.fromDate(new Date(session.startedAt)) : null,
     completedAt: session.completedAt ? Timestamp.fromDate(new Date(session.completedAt)) : null,
+    intakeFrozenAt: session.intakeFrozenAt ? Timestamp.fromDate(new Date(session.intakeFrozenAt)) : null,
     createdAt: Timestamp.fromDate(new Date(session.createdAt)),
     updatedAt: Timestamp.fromDate(new Date(session.updatedAt)),
   };
@@ -92,6 +93,11 @@ function evidenceSessionDto(id: string, data: DocumentData): EvidenceSessionDto 
     expiresAt: date(data.expiresAt, 'evidenceSession.expiresAt').toISOString(),
     startedAt: data.startedAt instanceof Timestamp ? data.startedAt.toDate().toISOString() : null,
     completedAt: data.completedAt instanceof Timestamp ? data.completedAt.toDate().toISOString() : null,
+    originalArtifactSha256: typeof data.originalArtifactSha256 === 'string' ? data.originalArtifactSha256 : null,
+    normalizedSnapshotSha256: typeof data.normalizedSnapshotSha256 === 'string' ? data.normalizedSnapshotSha256 : null,
+    intakeFrozenAt: data.intakeFrozenAt instanceof Timestamp
+      ? data.intakeFrozenAt.toDate().toISOString()
+      : typeof data.intakeFrozenAt === 'string' ? data.intakeFrozenAt : null,
     createdAt: date(data.createdAt, 'evidenceSession.createdAt').toISOString(),
     updatedAt: date(data.updatedAt, 'evidenceSession.updatedAt').toISOString(),
   });
@@ -166,11 +172,24 @@ export class FirestoreParticipantCaptureRepository implements ParticipantCapture
     if (!Array.isArray(rawRequirements) || rawRequirements.some((entry: unknown) => typeof entry !== 'string')) {
       throw new Error('Persisted transaction has invalid capture requirements.');
     }
+    const commerceContextId = transactionCommerceContextId(data);
+    let originalArtifactSha256: string | null = null;
+    let normalizedSnapshotSha256: string | null = null;
+    if (commerceContextId) {
+      const contextSnap = await this.firestore.collection('commerceContexts').doc(commerceContextId).get();
+      const contextData = contextSnap.data();
+      if (contextData) {
+        originalArtifactSha256 = typeof contextData.source?.originalArtifactSha256 === 'string' ? contextData.source.originalArtifactSha256 : null;
+        normalizedSnapshotSha256 = typeof contextData.canonicalPayloadSha256 === 'string' ? contextData.canonicalPayloadSha256 : null;
+      }
+    }
     return {
       id: snap.id,
       organizationId,
       status: requiredString(data.apiStatus, 'apiStatus'),
-      commerceContextId: transactionCommerceContextId(data),
+      commerceContextId,
+      originalArtifactSha256,
+      normalizedSnapshotSha256,
       participantReferences,
       requiredArtifactTypes: rawRequirements as EvidenceArtifactType[],
     };
@@ -371,13 +390,17 @@ export class FirestoreParticipantCaptureRepository implements ParticipantCapture
       const capture = decision.captureSession;
       const nextRedemptionCount = snapshot.session.redemptionCount + 1;
       const startedAt = snapshot.session.startedAt ?? capture.issuedAt.toISOString();
-      const nextSession = evidenceSessionDtoSchema.parse({
+      const nextSession = freezeEvidenceSessionIntake(evidenceSessionDtoSchema.parse({
         ...snapshot.session,
         status: 'CAPTURING',
         captureState: 'CAPTURING',
         redemptionCount: nextRedemptionCount,
         startedAt,
         updatedAt: capture.issuedAt.toISOString(),
+      }), {
+        originalArtifactSha256: snapshot.session.originalArtifactSha256,
+        normalizedSnapshotSha256: snapshot.session.normalizedSnapshotSha256,
+        frozenAt: capture.issuedAt.toISOString(),
       });
       const outboxRef = this.firestore.collection('domainOutbox').doc(decision.event.id);
       const transactionRef = this.firestore.collection('transactions').doc(snapshot.session.transactionId);
@@ -413,6 +436,9 @@ export class FirestoreParticipantCaptureRepository implements ParticipantCapture
         redemptionCount: nextRedemptionCount,
         startedAt: Timestamp.fromDate(new Date(startedAt)),
         updatedAt: Timestamp.fromDate(capture.issuedAt),
+        originalArtifactSha256: nextSession.originalArtifactSha256,
+        normalizedSnapshotSha256: nextSession.normalizedSnapshotSha256,
+        intakeFrozenAt: nextSession.intakeFrozenAt ? Timestamp.fromDate(new Date(nextSession.intakeFrozenAt)) : null,
         appCheckContext: { appId: capture.appId, verifiedAt: Timestamp.fromDate(capture.issuedAt) },
         ...(nextRedemptionCount >= snapshot.session.maximumRedemptions ? { redemptionTokenHash: FieldValue.delete() } : {}),
       });

@@ -12,6 +12,7 @@ exports.literalValue = literalValue;
 exports.isoDateTime = isoDateTime;
 exports.optionalIsoDateTime = optionalIsoDateTime;
 exports.sha256Value = sha256Value;
+exports.optionalSha256 = optionalSha256;
 exports.urlValue = urlValue;
 exports.arrayValue = arrayValue;
 exports.recordValue = recordValue;
@@ -105,6 +106,11 @@ function optionalIsoDateTime(value, path) {
 }
 function sha256Value(value, path) {
     return stringValue(value, path, { min: 64, max: 64, pattern: /^[a-f0-9]{64}$/ });
+}
+function optionalSha256(value, path) {
+    if (value === undefined || value === null)
+        return null;
+    return sha256Value(value, path);
 }
 function urlValue(value, path, maximum = 2000) {
     const result = stringValue(value, path, { min: 1, max: maximum });

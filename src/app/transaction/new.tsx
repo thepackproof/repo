@@ -29,6 +29,7 @@ export default function NewTransaction() {
   const [busy, setBusy] = useState(false);
   const [loadingExisting, setLoadingExisting] = useState(Boolean(transactionId));
   const [pageDeclaredSource, setPageDeclaredSource] = useState<string | null>(null);
+  const [importedReceipt, setImportedReceipt] = useState(false);
   const [listingImages, setListingImages] = useState<{ url: string; altText?: string | null }[]>([]);
   const valid = useMemo(() => title.trim().length > 2 && Number.isFinite(Number(price)) && Number(price) >= 0, [price, title]);
 
@@ -55,6 +56,7 @@ export default function NewTransaction() {
       setReturnWindow(String(item.terms.returnWindowDays));
       setCustomTerms(item.terms.customTerms);
       setPageDeclaredSource(item.source?.type === 'PACKPROOF_BUTTON' ? item.source.origin : null);
+      setImportedReceipt(item.source?.type === 'TRANSACTION_INTAKE');
       setListingImages((item.listingImageReferences ?? []).filter((image) => typeof image.url === 'string' && image.url.startsWith('https://')).slice(0, 6));
       setShowMore(true);
       setLoadingExisting(false);
@@ -101,6 +103,10 @@ export default function NewTransaction() {
           {listingImages.length ? listingImages.map((image) => (
             <Image key={image.url} source={{ uri: image.url }} style={styles.listingImage} contentFit="cover" accessibilityLabel={image.altText || 'Imported listing image'} />
           )) : null}
+        </View>
+      ) : importedReceipt ? (
+        <View style={styles.import}>
+          <Text style={styles.importText}>These details came from a receipt you imported. Check them, then continue.</Text>
         </View>
       ) : null}
       <Field label="Item name" value={title} onChangeText={setTitle} placeholder="Sony A7 Camera" autoCapitalize="sentences" />

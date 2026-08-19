@@ -9,16 +9,19 @@ import { HomeTaskTile, HomeWaitTile } from '@/components/task-session';
 import { transactionUx } from '@/components/transaction-card';
 import { colors } from '@/constants/brand';
 import { useTransactions } from '@/hooks/use-transactions';
+import { usePendingIntakes } from '@/hooks/use-pending-intakes';
 import { useAuth } from '@/providers/auth-provider';
 import { useOfflineEvidence } from '@/providers/offline-evidence-provider';
 import { queueAttentionMessage } from '@/lib/queue-attention';
 import { formatMoney } from '@/lib/format';
+import { formatIntakeSource } from '@/lib/transaction-intake';
 import { groupHomeInbox, hrefForPrimaryAction, toHref, viewerRole } from '@/lib/ux-flow';
 
 export default function HomeScreen() {
   const router = useRouter();
   const { user, profile } = useAuth();
   const { items } = useTransactions(user?.uid);
+  const { items: pendingIntakes } = usePendingIntakes(user?.uid);
   const { queuedCount, attentionCount, attentionReason, syncNow, retryAttention } = useOfflineEvidence();
   const [joinOpen, setJoinOpen] = useState(false);
   const [inviteCode, setInviteCode] = useState('');
@@ -32,7 +35,7 @@ export default function HomeScreen() {
       <ScrollView contentContainerStyle={styles.container}>
         <View style={styles.header}>
           <Text style={styles.name}>{profile?.displayName?.split(' ')[0] ?? 'Home'}</Text>
-          <Pressable onPress={() => router.push('/transaction/new')} style={styles.newButton} accessibilityRole="button" accessibilityLabel="Protect a shipment">
+          <Pressable onPress={() => router.push('/transaction/orders')} style={styles.newButton} accessibilityRole="button" accessibilityLabel="Protect a shipment">
             <AppIcon name="plus" size={20} tintColor={colors.teal} />
           </Pressable>
         </View>
@@ -51,12 +54,12 @@ export default function HomeScreen() {
           </View>
         ) : null}
 
-        {!grouped.needsAttention.length && !grouped.waiting.length ? (
+        {!grouped.needsAttention.length && !grouped.waiting.length && !pendingIntakes.length ? (
           <View style={styles.empty}>
             <TaskArt kind="box" />
             <Text style={styles.emptyTitle}>Protect a shipment</Text>
             <Text style={styles.emptyBody}>PackProof will tell you the next step. You should not have to hunt for it.</Text>
-            <Button label="Protect this shipment" onPress={() => router.push('/transaction/new')} />
+            <Button label="Protect this shipment" onPress={() => router.push('/transaction/orders')} />
             <Pressable onPress={() => setJoinOpen((value) => !value)} accessibilityRole="button">
               <Text style={styles.quietLink}>I have an invite</Text>
             </Pressable>
@@ -73,6 +76,17 @@ export default function HomeScreen() {
           </View>
         ) : (
           <>
+            {pendingIntakes.map((item) => (
+              <HomeTaskTile
+                key={item.commerceContextId}
+                identity={`${formatIntakeSource(item.intakeSourceType)}${item.amount ? ` · ${formatMoney(item.amount.minorUnits, item.amount.currency)}` : ''}`}
+                title={item.title}
+                job={item.orderNumber ? `Order ${item.orderNumber}` : 'Imported purchase ready to protect'}
+                cta="Protect this shipment"
+                onPress={() => router.push('/transaction/orders')}
+                onCta={() => router.push('/transaction/orders')}
+              />
+            ))}
             {grouped.needsAttention.map((item) => {
               const ux = transactionUx(item, user!.uid);
               const href = ux.primaryAction

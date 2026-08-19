@@ -105,6 +105,11 @@ export function sha256Value(value: unknown, path: string): string {
   return stringValue(value, path, { min: 64, max: 64, pattern: /^[a-f0-9]{64}$/ });
 }
 
+export function optionalSha256(value: unknown, path: string): string | null {
+  if (value === undefined || value === null) return null;
+  return sha256Value(value, path);
+}
+
 export function urlValue(value: unknown, path: string, maximum = 2000): string {
   const result = stringValue(value, path, { min: 1, max: maximum });
   let parsed: URL;

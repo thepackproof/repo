@@ -1,6 +1,6 @@
 import type { PublicResource, ResourceId, VersionedResource } from './common';
 import { parseResourceId } from './common';
-import { arrayValue, DomainValidationError, enumValue, integerValue, isoDateTime, literalValue, schema, sha256Value, strictObject, stringValue } from './runtime';
+import { arrayValue, DomainValidationError, enumValue, integerValue, isoDateTime, literalValue, optionalIsoDateTime, optionalSha256, schema, sha256Value, strictObject, stringValue } from './runtime';
 
 export const evidenceSessionTypes = [
   'OUTBOUND_PACK',
@@ -67,6 +67,9 @@ export type EvidenceSession = VersionedResource<'evidence_session'> & {
   expiresAt: Date;
   startedAt: Date | null;
   completedAt: Date | null;
+  originalArtifactSha256: string | null;
+  normalizedSnapshotSha256: string | null;
+  intakeFrozenAt: Date | null;
 };
 
 export type EvidenceSessionDto = PublicResource<'evidence_session', 'evidence_session'> & {
@@ -89,6 +92,9 @@ export type EvidenceSessionDto = PublicResource<'evidence_session', 'evidence_se
   expiresAt: string;
   startedAt: string | null;
   completedAt: string | null;
+  originalArtifactSha256: string | null;
+  normalizedSnapshotSha256: string | null;
+  intakeFrozenAt: string | null;
 };
 
 export const evidenceArtifactTypes = [
@@ -201,7 +207,8 @@ export const evidenceSessionDtoSchema = schema<EvidenceSessionDto>((value) => {
   const input = strictObject(value, 'evidenceSession', [
     'id', 'object', 'schemaVersion', 'transactionId', 'commerceContextId', 'returnPassportId', 'actorRole', 'type', 'protocolVersion',
     'allowedArtifactTypes', 'status', 'captureState', 'syncState', 'processingState', 'maximumRedemptions', 'redemptionCount',
-    'requestedEvidenceCount', 'captureProfileId', 'captureGroupId', 'expiresAt', 'startedAt', 'completedAt', 'createdAt', 'updatedAt',
+    'requestedEvidenceCount', 'captureProfileId', 'captureGroupId', 'expiresAt', 'startedAt', 'completedAt',
+    'originalArtifactSha256', 'normalizedSnapshotSha256', 'intakeFrozenAt', 'createdAt', 'updatedAt',
   ]);
   literalValue(input.object, 'evidenceSession.object', 'evidence_session');
   literalValue(input.schemaVersion, 'evidenceSession.schemaVersion', 1);
@@ -234,10 +241,44 @@ export const evidenceSessionDtoSchema = schema<EvidenceSessionDto>((value) => {
     expiresAt: isoDateTime(input.expiresAt, 'evidenceSession.expiresAt'),
     startedAt: input.startedAt === undefined || input.startedAt === null ? null : isoDateTime(input.startedAt, 'evidenceSession.startedAt'),
     completedAt: input.completedAt === undefined || input.completedAt === null ? null : isoDateTime(input.completedAt, 'evidenceSession.completedAt'),
+    originalArtifactSha256: optionalSha256(input.originalArtifactSha256, 'evidenceSession.originalArtifactSha256'),
+    normalizedSnapshotSha256: optionalSha256(input.normalizedSnapshotSha256, 'evidenceSession.normalizedSnapshotSha256'),
+    intakeFrozenAt: optionalIsoDateTime(input.intakeFrozenAt, 'evidenceSession.intakeFrozenAt'),
     createdAt: isoDateTime(input.createdAt, 'evidenceSession.createdAt'),
     updatedAt: isoDateTime(input.updatedAt, 'evidenceSession.updatedAt'),
   };
 });
+
+export type EvidenceSessionIntakeFreeze = {
+  originalArtifactSha256: string | null;
+  normalizedSnapshotSha256: string | null;
+  frozenAt: string;
+};
+
+export function freezeEvidenceSessionIntake(
+  session: EvidenceSessionDto,
+  freeze: EvidenceSessionIntakeFreeze,
+): EvidenceSessionDto {
+  if (session.intakeFrozenAt) {
+    if (
+      session.originalArtifactSha256 !== freeze.originalArtifactSha256
+      || session.normalizedSnapshotSha256 !== freeze.normalizedSnapshotSha256
+    ) {
+      throw new DomainValidationError({
+        path: 'evidenceSession.intakeFrozenAt',
+        code: 'FORMAT',
+        message: 'intake freeze hashes cannot change after capture starts',
+      });
+    }
+    return session;
+  }
+  return evidenceSessionDtoSchema.parse({
+    ...session,
+    originalArtifactSha256: freeze.originalArtifactSha256,
+    normalizedSnapshotSha256: freeze.normalizedSnapshotSha256,
+    intakeFrozenAt: freeze.frozenAt,
+  });
+}
 
 export const evidenceArtifactDtoSchema = schema<EvidenceArtifactDto>((value) => {
   const input = strictObject(value, 'evidenceArtifact', [

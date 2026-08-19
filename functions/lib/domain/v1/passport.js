@@ -15,8 +15,10 @@ exports.compareExactIdentifier = compareExactIdentifier;
 exports.compareIdentifierAttribute = compareIdentifierAttribute;
 exports.isAuthoritativeCommerceTrust = isAuthoritativeCommerceTrust;
 exports.selectPassportOrderCommerce = selectPassportOrderCommerce;
+exports.selectPassportDisplayCommerce = selectPassportDisplayCommerce;
 exports.canAttributePassportOrderToTransaction = canAttributePassportOrderToTransaction;
 exports.passportHasAuthoritativeOrderSource = passportHasAuthoritativeOrderSource;
+exports.passportHasIdentifiedCommerceSource = passportHasIdentifiedCommerceSource;
 exports.normalizePassportReviewQuery = normalizePassportReviewQuery;
 exports.passportSnapshotFingerprintPayload = passportSnapshotFingerprintPayload;
 exports.evaluatePassportEligibility = evaluatePassportEligibility;
@@ -25,6 +27,7 @@ exports.inventoryStateFor = inventoryStateFor;
 exports.aggregatePassport = aggregatePassport;
 exports.verificationUrlFor = verificationUrlFor;
 const node_crypto_1 = require("node:crypto");
+const commerce_1 = require("./commerce");
 exports.PASSPORT_OBJECT = 'packproof_passport';
 exports.PASSPORT_SNAPSHOT_OBJECT = 'packproof_passport_snapshot';
 exports.PASSPORT_EXPORT_OBJECT = 'packproof_passport_export';
@@ -55,6 +58,7 @@ exports.provenanceClasses = [
 exports.trustClasses = [
     'MERCHANT_SERVER_ATTESTED',
     'PLATFORM_API_ATTESTED',
+    'USER_PROVIDED_COMMERCE_ARTIFACT',
     'PAGE_DECLARED',
     'PACKPROOF_CAPTURE',
     'PACKPROOF_SERVICE',
@@ -185,10 +189,15 @@ function finalizedWithManifest(artifact) {
     return isFinalized(artifact) && Boolean(artifact.sha256) && Boolean(artifact.manifestSha256);
 }
 function isAuthoritativeCommerceTrust(trust) {
-    return trust === 'MERCHANT_SERVER_ATTESTED' || trust === 'PLATFORM_API_ATTESTED';
+    return (0, commerce_1.isAuthoritativeCommerceTrustLevel)(trust);
 }
 function selectPassportOrderCommerce(commerce) {
     if (!commerce || !isAuthoritativeCommerceTrust(commerce.trustLevel))
+        return null;
+    return commerce;
+}
+function selectPassportDisplayCommerce(commerce) {
+    if (!commerce || !(0, commerce_1.commerceContextMayAppearAsPassportOrderContext)(commerce.trustLevel))
         return null;
     return commerce;
 }
@@ -199,6 +208,17 @@ function canAttributePassportOrderToTransaction(transaction) {
 }
 function passportHasAuthoritativeOrderSource(input) {
     if (input.commerceContextId && isAuthoritativeCommerceTrust(input.commerceTrustLevel ?? null))
+        return true;
+    if (input.externalOrderId)
+        return true;
+    if (input.sourceTrustLevel === 'PAGE_DECLARED' || (0, commerce_1.isUserProvidedCommerceArtifact)(input.sourceTrustLevel ?? input.commerceTrustLevel ?? null))
+        return false;
+    return Boolean(input.merchantReference);
+}
+function passportHasIdentifiedCommerceSource(input) {
+    if (input.commerceContextId && isAuthoritativeCommerceTrust(input.commerceTrustLevel ?? null))
+        return true;
+    if (input.commerceContextId && (0, commerce_1.isUserProvidedCommerceArtifact)(input.commerceTrustLevel ?? null))
         return true;
     if (input.externalOrderId)
         return true;
@@ -226,10 +246,10 @@ function evaluatePassportEligibility(input) {
     if (!input.transactionExists) {
         failures.push({ code: 'TRANSACTION_MISSING', message: 'A tenant-authorized PackProof transaction is required.' });
     }
-    if (!passportHasAuthoritativeOrderSource(input)) {
+    if (!passportHasIdentifiedCommerceSource(input)) {
         failures.push({
             code: 'NO_COMMERCE_SOURCE',
-            message: 'An attested commerce context, Connect external order identifier, or merchant reference is required. PAGE_DECLARED listing data remains draft lineage only.',
+            message: 'An attested commerce context, user-provided commerce artifact, Connect external order identifier, or merchant reference is required. PAGE_DECLARED listing data remains draft lineage only.',
         });
     }
     if (input.displayedUnattributedFacts > 0) {
@@ -283,14 +303,14 @@ function observation(kind, value, artifact, extras = {}) {
     };
 }
 function orderContextSelection(transaction, commerce) {
-    const orderCommerce = selectPassportOrderCommerce(commerce);
+    const orderCommerce = selectPassportDisplayCommerce(commerce);
     const useTransactionOrder = canAttributePassportOrderToTransaction({
         sourceTrustLevel: transaction.sourceTrustLevel ?? null,
         externalOrderId: transaction.externalOrderId,
         merchantReference: transaction.merchantReference,
         sourcePlatform: transaction.sourcePlatform,
     });
-    const omittedPageDeclared = Boolean(commerce && commerce.trustLevel === 'PAGE_DECLARED' && !orderCommerce);
+    const omittedPageDeclared = Boolean(commerce && commerce.trustLevel === 'PAGE_DECLARED' && !selectPassportOrderCommerce(commerce));
     return {
         orderCommerce,
         omittedPageDeclared,
@@ -315,7 +335,7 @@ function orderContextSelection(transaction, commerce) {
 function sourceFact(value, commerce, transaction) {
     if (commerce) {
         return fact(value, 'SOURCE_ASSERTION', {
-            assertingSource: commerce.assertingSource ?? (commerce.trustLevel === 'PLATFORM_API_ATTESTED' ? 'PLATFORM_API' : 'MERCHANT_API'),
+            assertingSource: commerce.assertingSource ?? (commerce.trustLevel === 'PLATFORM_API_ATTESTED' ? 'PLATFORM_API' : commerce.trustLevel === 'USER_PROVIDED_COMMERCE_ARTIFACT' ? 'EMAIL_RECEIPT' : commerce.trustLevel === 'PAGE_DECLARED' ? 'MERCHANT_PAGE_STRUCTURED_DATA' : 'MERCHANT_API'),
             trustClass: commerce.trustLevel,
             recordedAt: commerce.capturedAt,
             sourceRecordId: commerce.id,
@@ -539,7 +559,7 @@ function fulfillmentEvents(input, packing, seal, label) {
             return;
         events.push({ eventId, occurredAt, source, provenanceClass, title, evidenceReference });
     };
-    const orderCommerce = selectPassportOrderCommerce(input.commerce);
+    const orderCommerce = selectPassportDisplayCommerce(input.commerce);
     push('ORDER_CONTEXT', orderCommerce?.capturedAt ?? (canAttributePassportOrderToTransaction(input.transaction) ? input.transaction.createdAt : null), orderCommerce?.assertingSource ?? 'PACKPROOF_SERVICE', 'SOURCE_ASSERTION', 'Order context recorded', orderCommerce?.id ?? input.transaction.id);
     const sessionId = packing?.captureSessionId ?? packing?.evidenceSessionId;
     push('CAPTURE_SESSION_STARTED', packing?.createdAt ?? packing?.clientCreatedAt ?? null, 'PACKPROOF_CAPTURE', 'PACKPROOF_OBSERVATION', 'Capture session started', sessionId ?? null);
@@ -631,7 +651,7 @@ function aggregatePassport(input) {
     const trackingMismatch = input.artifacts.some((item) => item.carrierTrackingMatchStatus === 'MISMATCH');
     const inventory = exports.inventoryCategories.map((category) => {
         const row = inventoryStateFor(category, {
-            hasCommerceSource: Boolean(commerce?.id || input.transaction.externalOrderId || (input.transaction.merchantReference && input.transaction.sourceTrustLevel !== 'PAGE_DECLARED')),
+            hasCommerceSource: Boolean((commerce?.id && (0, commerce_1.commerceContextMayAppearAsPassportOrderContext)(commerce.trustLevel)) || input.transaction.externalOrderId || (input.transaction.merchantReference && input.transaction.sourceTrustLevel !== 'PAGE_DECLARED')),
             unattributed: false,
             identifierArtifacts,
             conditionArtifacts: input.artifacts.filter((item) => CONDITION.has(item.type)),

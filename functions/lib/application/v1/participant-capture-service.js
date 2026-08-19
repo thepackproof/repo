@@ -240,6 +240,9 @@ class ParticipantCaptureApplicationService {
             expiresAt: expiresAt.toISOString(),
             startedAt: null,
             completedAt: null,
+            originalArtifactSha256: transaction.originalArtifactSha256,
+            normalizedSnapshotSha256: transaction.normalizedSnapshotSha256,
+            intakeFrozenAt: null,
             createdAt: timestamp.toISOString(),
             updatedAt: timestamp.toISOString(),
         });

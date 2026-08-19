@@ -10,6 +10,7 @@ export * from './merchant-transaction-service';
 export * from './merchant-types';
 export * from './public-commerce-handoff-service';
 export * from './participant-capture-service';
+export * from './transaction-intake-service';
 export * from './merchant-evidence-types';
 export * from './merchant-evidence-ports';
 export * from './merchant-evidence-service';

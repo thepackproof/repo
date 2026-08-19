@@ -1427,7 +1427,7 @@
       "EvidenceSession": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["id", "object", "schemaVersion", "transactionId", "commerceContextId", "returnPassportId", "actorRole", "type", "protocolVersion", "allowedArtifactTypes", "status", "captureState", "syncState", "processingState", "maximumRedemptions", "redemptionCount", "requestedEvidenceCount", "captureProfileId", "captureGroupId", "expiresAt", "startedAt", "completedAt", "createdAt", "updatedAt"],
+        "required": ["id", "object", "schemaVersion", "transactionId", "commerceContextId", "returnPassportId", "actorRole", "type", "protocolVersion", "allowedArtifactTypes", "status", "captureState", "syncState", "processingState", "maximumRedemptions", "redemptionCount", "requestedEvidenceCount", "captureProfileId", "captureGroupId", "expiresAt", "startedAt", "completedAt", "originalArtifactSha256", "normalizedSnapshotSha256", "intakeFrozenAt", "createdAt", "updatedAt"],
         "properties": {
           "id": { "type": "string", "pattern": "^es_[a-f0-9]{40}$" },
           "object": { "const": "evidence_session" },
@@ -1451,6 +1451,9 @@
           "expiresAt": { "type": "string", "format": "date-time" },
           "startedAt": { "type": ["string", "null"], "format": "date-time" },
           "completedAt": { "type": ["string", "null"], "format": "date-time" },
+          "originalArtifactSha256": { "type": ["string", "null"], "pattern": "^([a-f0-9]{64})?$" },
+          "normalizedSnapshotSha256": { "type": ["string", "null"], "pattern": "^([a-f0-9]{64})?$" },
+          "intakeFrozenAt": { "type": ["string", "null"], "format": "date-time" },
           "createdAt": { "type": "string", "format": "date-time" },
           "updatedAt": { "type": "string", "format": "date-time" }
         },
@@ -1737,7 +1740,7 @@
           "value": {},
           "provenanceClass": { "$ref": "#/components/schemas/PassportProvenanceClass" },
           "assertingSource": { "type": ["string", "null"] },
-          "trustClass": { "type": ["string", "null"], "enum": ["MERCHANT_SERVER_ATTESTED", "PLATFORM_API_ATTESTED", "PAGE_DECLARED", "PACKPROOF_CAPTURE", "PACKPROOF_SERVICE", null] },
+          "trustClass": { "type": ["string", "null"], "enum": ["MERCHANT_SERVER_ATTESTED", "PLATFORM_API_ATTESTED", "USER_PROVIDED_COMMERCE_ARTIFACT", "PAGE_DECLARED", "PACKPROOF_CAPTURE", "PACKPROOF_SERVICE", null] },
           "recordedAt": { "type": ["string", "null"], "format": "date-time" },
           "sourceRecordId": { "type": ["string", "null"] },
           "sourceReference": { "type": ["string", "null"] },
@@ -1821,7 +1824,7 @@
             "sellerReference": { "$ref": "#/components/schemas/PassportFact" },
             "destination": { "$ref": "#/components/schemas/PassportFact" },
             "itemCount": { "$ref": "#/components/schemas/PassportFact" },
-            "sourceTrustClass": { "type": ["string", "null"], "enum": ["MERCHANT_SERVER_ATTESTED", "PLATFORM_API_ATTESTED", "PAGE_DECLARED", null] },
+            "sourceTrustClass": { "type": ["string", "null"], "enum": ["MERCHANT_SERVER_ATTESTED", "PLATFORM_API_ATTESTED", "USER_PROVIDED_COMMERCE_ARTIFACT", "PAGE_DECLARED", null] },
             "importedAt": { "type": ["string", "null"], "format": "date-time" },
             "canonicalPayloadSha256": { "type": ["string", "null"] }
           }},

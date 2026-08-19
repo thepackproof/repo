@@ -32,6 +32,9 @@ export type EvidenceSession = {
     expiresAt: string;
     startedAt: string | null;
     completedAt: string | null;
+    originalArtifactSha256: string | null;
+    normalizedSnapshotSha256: string | null;
+    intakeFrozenAt: string | null;
     createdAt: string;
     updatedAt: string;
 };

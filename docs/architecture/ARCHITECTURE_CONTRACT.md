@@ -61,7 +61,9 @@ Every externally supplied field must retain:
 
 The original imported snapshot is immutable after claim or order binding. Corrections supersede it through explicit lineage; they do not rewrite history.
 
-Browser or page-declared data may prefill a draft. It cannot establish payment, an authoritative order, a buyer identity, custody, physical truth or product authenticity. Merchant-server or platform-API confirmation is required for authoritative order binding.
+Browser or page-declared data may prefill a draft. It cannot establish payment, an authoritative order, a buyer identity, custody, physical truth or product authenticity. Seller-provided commerce correspondence (email receipts, share-sheet payloads, screenshots, PDFs) may prefill a draft and appear on a Passport as a source assertion under `USER_PROVIDED_COMMERCE_ARTIFACT`. It cannot authoritatively bind an order. Merchant-server or platform-API confirmation is required for authoritative order binding.
+
+When capture starts, the evidence session freezes the original intake artifact hash and the normalized commerce-context digest. Later edits or superseding contexts do not rewrite the snapshot the session was initiated against.
 
 ## 6. Identity and authorization rule
 

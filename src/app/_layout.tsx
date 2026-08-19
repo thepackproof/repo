@@ -20,6 +20,8 @@ export default function RootLayout() {
             <Stack.Screen name="welcome" options={{ animation: 'fade' }} />
             <Stack.Screen name="(tabs)" options={{ animation: 'fade' }} />
             <Stack.Screen name="transaction/new" options={{ presentation: 'modal' }} />
+            <Stack.Screen name="transaction/orders" options={{ presentation: 'modal' }} />
+            <Stack.Screen name="transaction/import" options={{ presentation: 'modal' }} />
             <Stack.Screen name="transaction/[id]" />
             <Stack.Screen name="passport/[id]" />
             <Stack.Screen name="transaction/invite/[id]" options={{ presentation: 'modal' }} />

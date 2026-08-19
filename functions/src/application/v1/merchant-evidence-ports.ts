@@ -41,7 +41,7 @@ export type AccessibleMerchantTransaction = {
   externalSellerId: string | null;
   declaredWeightGrams: number | null;
   sourceTrackingNumber: string | null;
-  sourceTrustLevel: 'MERCHANT_SERVER_ATTESTED' | 'PLATFORM_API_ATTESTED' | 'PAGE_DECLARED' | null;
+  sourceTrustLevel: 'MERCHANT_SERVER_ATTESTED' | 'PLATFORM_API_ATTESTED' | 'USER_PROVIDED_COMMERCE_ARTIFACT' | 'PAGE_DECLARED' | null;
   passportId: string | null;
   passportDisplayId: string | null;
   passportIssuedAt: Date | null;

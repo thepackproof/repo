@@ -45,7 +45,7 @@ Completed PackProofs lead with **View Passport**. Information is useful after th
 
 Manual create: Selling/Buying → item + price → share link. Extra fields stay collapsed. After create, go to invite.
 
-Commerce ingest and share-to-PackProof remain later phases.
+Find my order is the create hub. Home plus and empty-state start open the imported-purchase list. Share-to-PackProof and Import a receipt feed the same intake service. Confirm only fields the parser could not establish. Mailbox OAuth remains later.
 
 ## Integrity boundary
 

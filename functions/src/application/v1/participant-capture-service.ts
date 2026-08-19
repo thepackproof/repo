@@ -28,6 +28,8 @@ export type ParticipantTransactionSnapshot = {
   organizationId: string;
   status: string;
   commerceContextId: string | null;
+  originalArtifactSha256: string | null;
+  normalizedSnapshotSha256: string | null;
   participantReferences: Array<{ role: ParticipantRole; externalReference: string }>;
   requiredArtifactTypes: EvidenceArtifactType[];
 };
@@ -430,6 +432,9 @@ export class ParticipantCaptureApplicationService {
       expiresAt: expiresAt.toISOString(),
       startedAt: null,
       completedAt: null,
+      originalArtifactSha256: transaction.originalArtifactSha256,
+      normalizedSnapshotSha256: transaction.normalizedSnapshotSha256,
+      intakeFrozenAt: null,
       createdAt: timestamp.toISOString(),
       updatedAt: timestamp.toISOString(),
     });

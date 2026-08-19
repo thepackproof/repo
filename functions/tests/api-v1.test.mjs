@@ -524,7 +524,8 @@ class FakeParticipantCaptureService {
       allowedArtifactTypes: input.allowedArtifactTypes, status: 'READY', captureState: 'READY', syncState: 'NOT_STARTED', processingState: 'NOT_STARTED',
       maximumRedemptions: input.maximumRedemptions, redemptionCount: 0, requestedEvidenceCount: input.requestedEvidenceCount,
       captureProfileId: input.captureProfileId, captureGroupId: input.captureGroupId, expiresAt: '2026-08-12T12:00:00.000Z',
-      startedAt: null, completedAt: null, createdAt: '2026-08-11T12:00:00.000Z', updatedAt: '2026-08-11T12:00:00.000Z',
+      startedAt: null, completedAt: null, originalArtifactSha256: null, normalizedSnapshotSha256: null, intakeFrozenAt: null,
+      createdAt: '2026-08-11T12:00:00.000Z', updatedAt: '2026-08-11T12:00:00.000Z',
     };
     this.sessions.set(session.id, session);
     return { session, token: `pp_capture_v1_${'B'.repeat(43)}`, replayed: false };

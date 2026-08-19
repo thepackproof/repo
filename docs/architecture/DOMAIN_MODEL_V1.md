@@ -110,28 +110,34 @@ Every imported field can carry:
 
 - assertion source;
 - `ASSERTED`, `OBSERVED` or `DERIVED` confidence class;
-- import time; and
-- source reference.
+- import time;
+- source reference;
+- optional extraction method (parser identity); and
+- optional source-artifact SHA-256.
 
-The context also records platform, external shop/product/listing/variant/order/line-item references, product URL, canonical payload SHA-256, lineage to a superseded context and optional expiry.
+The context also records platform, optional intake source type and platform identifier, original artifact SHA-256, external shop/product/listing/variant/order/line-item references, product URL, canonical payload SHA-256, lineage to a superseded context and optional expiry.
 
 ### Trust classes
 
-| Trust class | May prefill a draft | May authoritatively bind an order | Meaning |
-|---|---:|---:|---|
-| `MERCHANT_SERVER_ATTESTED` | Yes | Yes, after authorization and command policy | Supplied by an authenticated merchant backend |
-| `PLATFORM_API_ATTESTED` | Yes | Yes, after authorization and command policy | Obtained through an authenticated commerce-platform API |
-| `PAGE_DECLARED` | Yes | No | Browser/page data such as JSON-LD, DOM attributes or button parameters |
+| Trust class | May prefill a draft | May appear as Passport order context | May authoritatively bind an order | Meaning |
+|---|---:|---:|---:|---|
+| `MERCHANT_SERVER_ATTESTED` | Yes | Yes | Yes, after authorization and command policy | Supplied by an authenticated merchant backend |
+| `PLATFORM_API_ATTESTED` | Yes | Yes | Yes, after authorization and command policy | Obtained through an authenticated commerce-platform API |
+| `USER_PROVIDED_COMMERCE_ARTIFACT` | Yes | Yes, as `SOURCE_ASSERTION` | No | Seller-provided correspondence such as a receipt email, share payload, screenshot, or PDF |
+| `PAGE_DECLARED` | Yes | No | No | Browser/page data such as JSON-LD, DOM attributes, button parameters, or a browser-extension scrape |
 
-Page-declared input is useful convenience data, but it does not establish payment, authoritative order existence, buyer identity, custody, product authenticity or physical truth. Listing image references are source references, not PackProof evidence artifacts. The runtime policy tests both restrictions.
+Page-declared input is useful convenience data, but it does not establish payment, authoritative order existence, buyer identity, custody, product authenticity or physical truth. User-provided correspondence may identify an item and order number for capture without becoming a merchant- or platform-attested order. Listing image references are source references, not PackProof evidence artifacts. The runtime policy tests these restrictions. Consumer intake adapters and capture-session freeze hashes are specified in [ADR 0013](../adr/0013-transaction-intake-layer.md).
 
 ### Commerce-context lifecycle
 
 ```text
 CREATED -> HANDOFF_ISSUED -> CLAIMED -> ORDER_BOUND
+CREATED ------------------> CLAIMED
    |              |            |
    +--------------+------------+-> EXPIRED or REVOKED
 ```
+
+Consumer intake claims a `CREATED` context when the seller starts a PackProof from an imported snapshot. Public button handoffs still pass through `HANDOFF_ISSUED`.
 
 `ORDER_BOUND`, `EXPIRED` and `REVOKED` are terminal in v1. A changed source snapshot becomes an explicitly superseding context; it does not rewrite a claimed or order-bound snapshot.
 

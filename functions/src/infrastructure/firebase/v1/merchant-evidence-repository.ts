@@ -19,6 +19,12 @@ import type {
   StoredReportRecord,
 } from '../../../application/v1/merchant-evidence-ports';
 import type { PassportCommerceInput } from '../../../domain/v1/passport';
+import {
+  assertionSourceForIntakeSource,
+  commerceIntakeSourceTypes,
+  parseCommerceTrustLevel,
+  type CommerceIntakeSourceType,
+} from '../../../domain/v1/commerce';
 import type { MerchantDeliveryDto, MerchantReturnPassportDto, MerchantShipmentDto, MerchantTimelineEventDto } from '../../../application/v1/merchant-evidence-types';
 import type { MerchantPrincipal } from '../../../application/v1/merchant-types';
 import { sha256 } from '../../../application/v1/merchant-transaction-service';
@@ -161,11 +167,8 @@ function toAccessible(id: string, data: DocumentData): AccessibleMerchantTransac
     externalSellerId: optionalString(source?.externalSellerId),
     declaredWeightGrams: Number.isFinite(declaredWeight) ? Number(declaredWeight) : null,
     sourceTrackingNumber: optionalString(source?.trackingNumber),
-    sourceTrustLevel: source?.trustLevel === 'MERCHANT_SERVER_ATTESTED' || source?.trustLevel === 'PLATFORM_API_ATTESTED' || source?.trustLevel === 'PAGE_DECLARED'
-      ? source.trustLevel
-      : optionalString(source?.type) === 'PACKPROOF_BUTTON'
-        ? 'PAGE_DECLARED'
-        : null,
+    sourceTrustLevel: parseCommerceTrustLevel(source?.trustLevel)
+      ?? (optionalString(source?.type) === 'PACKPROOF_BUTTON' ? 'PAGE_DECLARED' : null),
     passportId: optionalString(data.passportId),
     passportDisplayId: optionalString(data.passportDisplayId),
     passportIssuedAt: data.passportIssuedAt ? dateValue(data.passportIssuedAt, createdAt) : null,
@@ -203,14 +206,17 @@ function toCommerce(id: string, data: DocumentData): PassportCommerceInput {
     .map((entry) => `${typeof entry.name === 'string' ? entry.name : ''}: ${typeof entry.value === 'string' ? entry.value : ''}`.trim())
     .filter(Boolean)
     .join('; ') || null;
-  const trust = source?.trustLevel === 'MERCHANT_SERVER_ATTESTED' || source?.trustLevel === 'PLATFORM_API_ATTESTED' || source?.trustLevel === 'PAGE_DECLARED'
-    ? source.trustLevel
+  const trust = parseCommerceTrustLevel(source?.trustLevel);
+  const intakeSourceType = typeof source?.intakeSourceType === 'string' && (commerceIntakeSourceTypes as readonly string[]).includes(source.intakeSourceType)
+    ? source.intakeSourceType as CommerceIntakeSourceType
     : null;
   return {
     id,
-    platform: optionalString(source?.platform),
+    platform: optionalString(source?.platformIdentifier) ?? optionalString(source?.platform),
     trustLevel: trust,
-    assertingSource: trust === 'PAGE_DECLARED' ? 'PAGE_DECLARED' : trust === 'PLATFORM_API_ATTESTED' ? 'PLATFORM_API' : 'MERCHANT_API',
+    assertingSource: trust === 'USER_PROVIDED_COMMERCE_ARTIFACT'
+      ? (intakeSourceType ? assertionSourceForIntakeSource(intakeSourceType) : 'EXTERNAL_ADAPTER')
+      : trust === 'PAGE_DECLARED' ? 'PAGE_DECLARED' : trust === 'PLATFORM_API_ATTESTED' ? 'PLATFORM_API' : 'MERCHANT_API',
     externalOrderId: optionalString(source?.externalOrderId),
     externalSellerId: optionalString(data.externalSellerId),
     capturedAt: source?.capturedAt ? dateValue(source.capturedAt, new Date(0)).toISOString() : null,

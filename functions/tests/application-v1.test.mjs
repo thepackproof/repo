@@ -12,6 +12,7 @@ const {
   MerchantTransactionApplicationService,
   ParticipantCaptureApplicationService,
   PublicCommerceHandoffApplicationService,
+  TransactionIntakeApplicationService,
   canonicalize,
   passThroughIdempotencyFence,
   sha256,
@@ -479,6 +480,7 @@ test('public handoff redemption preserves the consumer-plan quota boundary', asy
 class MemoryParticipantCaptureRepository {
   transaction = {
     id: 'txn_1234567890abcdef1234567890abcdef', organizationId: 'org-1', status: 'CREATED', commerceContextId: null,
+    originalArtifactSha256: null, normalizedSnapshotSha256: null,
     participantReferences: [{ role: 'SELLER', externalReference: 'seller@example.test' }],
     requiredArtifactTypes: ['PACKING_VIDEO'],
   };
@@ -560,10 +562,14 @@ class MemoryParticipantCaptureRepository {
     const decision = decide(snapshot?.session.id === id ? snapshot : null, this.capture?.id === captureId ? this.capture : null);
     if (decision.type === 'REPLAY') return decision.result;
     this.capture = decision.captureSession;
+    const frozenAt = decision.captureSession.issuedAt.toISOString();
     this.sessionMutation.session = {
       ...this.sessionMutation.session,
       status: 'CAPTURING', captureState: 'CAPTURING', redemptionCount: 1,
-      startedAt: decision.captureSession.issuedAt.toISOString(), updatedAt: decision.captureSession.issuedAt.toISOString(),
+      startedAt: frozenAt, updatedAt: frozenAt,
+      originalArtifactSha256: this.sessionMutation.session.originalArtifactSha256 ?? null,
+      normalizedSnapshotSha256: this.sessionMutation.session.normalizedSnapshotSha256 ?? null,
+      intakeFrozenAt: this.sessionMutation.session.intakeFrozenAt ?? frozenAt,
     };
     return {
       evidenceSession: this.sessionMutation.session,
@@ -688,6 +694,7 @@ test('evidence session is role/type/artifact bounded, one-time redeemable, App-C
   });
   assert.equal(redeemed.replayed, false);
   assert.equal(redeemed.captureAttestation.appId, 'app-1');
+  assert.equal(redeemed.evidenceSession.intakeFrozenAt, now.toISOString());
   assert.deepEqual(repository.capture.allowedEvidenceTypes, ['PACKING_VIDEO']);
   const redeemReplay = await service.redeemEvidenceSession({
     principal: { type: 'PACKPROOF_USER', actorId: 'user-1', appId: 'app-1' }, evidenceSessionId: issued.session.id,
@@ -700,3 +707,186 @@ test('evidence session is role/type/artifact bounded, one-time redeemable, App-C
   const cancelReplay = await service.cancelEvidenceSession({ principal: participantMerchant, evidenceSessionId: issued.session.id, requestId: 'cancel-2' });
   assert.equal(cancelReplay.replayed, true);
 });
+
+test('consumer intake normalizes share and email artifacts into pending commerce contexts', async () => {
+  const records = [];
+  const claimed = new Map();
+  const repository = {
+    async createOrReplay(mutation) {
+      const existing = records.find((entry) => entry.actorId === mutation.actorId && entry.operationKey === mutation.operationKey);
+      if (existing && existing.requestFingerprint !== mutation.requestFingerprint) {
+        throw new ApplicationError('CONFLICT', 'IDEMPOTENCY_KEY_REUSED', 'changed intake');
+      }
+      if (existing) return { created: false };
+      records.push(mutation);
+      return { created: true };
+    },
+    async listPendingForActor(actorId) {
+      return records.filter((entry) => entry.actorId === actorId && !claimed.has(entry.commerceContextId)).map((entry) => ({
+        commerceContextId: entry.commerceContextId,
+        passportDraftId: entry.passportDraftId,
+        title: entry.commerceContext.item.title,
+        variant: entry.commerceContext.item.selectedOptions.map((option) => `${option.name}: ${option.value}`).join('; ') || null,
+        quantity: entry.commerceContext.item.quantity,
+        amount: entry.commerceContext.item.amount,
+        orderNumber: entry.commerceContext.source.externalOrderId,
+        intakeSourceType: entry.commerceContext.source.intakeSourceType,
+        platformIdentifier: entry.commerceContext.source.platformIdentifier,
+        importedAt: entry.commerceContext.source.capturedAt,
+        missingFields: entry.pending.missingFields,
+      }));
+    },
+    async hasActiveTransactionForSeller() {
+      return claimed.size > 0;
+    },
+    async claim(commerceContextId, decide) {
+      const entry = records.find((item) => item.commerceContextId === commerceContextId) ?? null;
+      const snapshot = entry ? {
+        actorId: entry.actorId,
+        status: claimed.has(commerceContextId) ? 'CLAIMED' : 'PENDING',
+        transactionId: claimed.get(commerceContextId) ?? null,
+        expiresAt: new Date(entry.commerceContext.expiresAt),
+        commerceContext: entry.commerceContext,
+        passportDraft: entry.passportDraft,
+      } : null;
+      const transactionId = claimed.get(commerceContextId) ?? `txn_intake${String(claimed.size + 1).padStart(8, '0')}`;
+      const decision = decide(snapshot, transactionId);
+      if (decision.type === 'REPLAY') return decision.result;
+      claimed.set(commerceContextId, transactionId);
+      return { transactionId, commerceContextId: snapshot.commerceContext.id, passportDraftId: snapshot.passportDraft.id, replayed: false };
+    },
+  };
+  const service = new TransactionIntakeApplicationService(repository, () => now);
+  const item = {
+    title: 'Nintendo Switch 2',
+    description: 'Mario Kart World Bundle',
+    category: null,
+    brand: 'Nintendo',
+    model: 'Switch 2',
+    sku: null,
+    gtin: null,
+    upc: null,
+    mpn: null,
+    serialNumber: null,
+    selectedOptions: [{ name: 'Bundle', value: 'Mario Kart World' }],
+    identifiers: [],
+    quantity: 1,
+    amount: { currency: 'USD', minorUnits: 44900 },
+    imageReferences: [],
+  };
+  const first = await service.ingest({
+    actorId: 'seller-1',
+    integrationId: 'int_12345678',
+    organizationId: null,
+    operationKey: 'intake-1',
+    requestId: 'request-intake-1',
+    intakeSourceType: 'EMAIL_RECEIPT',
+    platformIdentifier: 'EBAY',
+    parserVersion: 'EBAY_EMAIL_PARSER_V1',
+    originalArtifactSha256: 'a'.repeat(64),
+    item,
+    externalOrderId: '784920',
+    externalListingId: null,
+    productUrl: null,
+  });
+  const replay = await service.ingest({
+    actorId: 'seller-1',
+    integrationId: 'int_12345678',
+    organizationId: null,
+    operationKey: 'intake-1',
+    requestId: 'request-intake-2',
+    intakeSourceType: 'EMAIL_RECEIPT',
+    platformIdentifier: 'EBAY',
+    parserVersion: 'EBAY_EMAIL_PARSER_V1',
+    originalArtifactSha256: 'a'.repeat(64),
+    item,
+    externalOrderId: '784920',
+    externalListingId: null,
+    productUrl: null,
+  });
+  assert.equal(first.replayed, false);
+  assert.equal(replay.replayed, true);
+  assert.equal(first.pending.title, 'Nintendo Switch 2');
+  assert.equal(first.pending.orderNumber, '784920');
+  assert.equal(first.parserVersion, 'EBAY_EMAIL_PARSER_V1');
+  assert.equal(records[0].commerceContext.source.trustLevel, 'USER_PROVIDED_COMMERCE_ARTIFACT');
+  assert.equal(records[0].commerceContext.status, 'CREATED');
+  const pending = await service.listPending('seller-1');
+  assert.equal(pending.length, 1);
+  assert.equal(pending[0].variant, 'Bundle: Mario Kart World');
+  await assert.rejects(
+    () => service.ingest({
+      actorId: 'seller-1',
+      integrationId: 'int_12345678',
+      organizationId: null,
+      operationKey: 'intake-1',
+      requestId: 'request-intake-3',
+      intakeSourceType: 'EMAIL_RECEIPT',
+      platformIdentifier: 'EBAY',
+      parserVersion: 'EBAY_EMAIL_PARSER_V1',
+      originalArtifactSha256: 'b'.repeat(64),
+      item,
+      externalOrderId: '784920',
+      externalListingId: null,
+      productUrl: null,
+    }),
+    (error) => error instanceof ApplicationError && error.code === 'IDEMPOTENCY_KEY_REUSED',
+  );
+
+  const artifactText = [
+    'From: "eBay" <ebay@ebay.com>',
+    'Subject: You sold Nintendo Switch 2',
+    '',
+    'Congratulations! You sold an item.',
+    'Item: Nintendo Switch 2',
+    'Sold for: US $449.00',
+    'Order number: 12-34567-89012',
+    'Variant: Mario Kart World Bundle',
+  ].join('\n');
+  const parsed = service.preview(artifactText, 'EMAIL_RECEIPT');
+  assert.equal(parsed.parserVersion, 'EBAY_EMAIL_PARSER_V1');
+  assert.equal(parsed.item.title, 'Nintendo Switch 2');
+  const imported = await service.ingestArtifact({
+    actorId: 'seller-1',
+    operationKey: 'intake-email-1',
+    requestId: 'request-intake-email-1',
+    intakeSourceType: 'EMAIL_RECEIPT',
+    originalArtifactSha256: sha256(artifactText),
+    artifactText,
+  });
+  assert.equal(imported.pending.orderNumber, '12-34567-89012');
+  assert.equal(imported.pending.missingFields.includes('title'), false);
+  await assert.rejects(
+    () => service.ingestArtifact({
+      actorId: 'seller-1',
+      operationKey: 'intake-email-bad',
+      requestId: 'request-intake-email-bad',
+      intakeSourceType: 'EMAIL_RECEIPT',
+      originalArtifactSha256: 'c'.repeat(64),
+      artifactText,
+    }),
+    (error) => error instanceof ApplicationError && error.code === 'ARTIFACT_HASH_MISMATCH',
+  );
+
+  const started = await service.start({
+    actorId: 'seller-1',
+    plan: 'PRO',
+    commerceContextId: imported.commerceContextId,
+    requestId: 'request-intake-start-1',
+  });
+  assert.equal(started.replayed, false);
+  assert.match(started.transactionId, /^txn_/);
+  const startedReplay = await service.start({
+    actorId: 'seller-1',
+    plan: 'PRO',
+    commerceContextId: imported.commerceContextId,
+    requestId: 'request-intake-start-2',
+  });
+  assert.equal(startedReplay.replayed, true);
+  assert.equal(startedReplay.transactionId, started.transactionId);
+  await assert.rejects(
+    () => service.start({ actorId: 'attacker', plan: 'PRO', commerceContextId: imported.commerceContextId, requestId: 'request-intake-start-3' }),
+    (error) => error instanceof ApplicationError && error.code === 'INTAKE_ACTOR_MISMATCH',
+  );
+});
+

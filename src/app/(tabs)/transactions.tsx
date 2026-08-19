@@ -36,7 +36,7 @@ export default function TransactionsScreen() {
           <EmptyState
             title="No PackProofs yet"
             body="Start one from Home when you have something to protect."
-            action={<Button label="Start a PackProof" onPress={() => router.push('/transaction/new')} />}
+            action={<Button label="Start a PackProof" onPress={() => router.push('/transaction/orders')} />}
           />
         ) : !visible.length ? (
           <EmptyState

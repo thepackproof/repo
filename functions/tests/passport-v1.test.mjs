@@ -297,6 +297,48 @@ test('PAGE_DECLARED commerce is draft lineage only and cannot satisfy Passport i
   assert.equal(aggregated.integrity.banner, 'AUTHENTIC_PACKPROOF');
 });
 
+test('USER_PROVIDED commerce artifacts identify Passport order context without becoming attested', () => {
+  const imported = {
+    ...baseInput().commerce,
+    trustLevel: 'USER_PROVIDED_COMMERCE_ARTIFACT',
+    assertingSource: 'EMAIL_RECEIPT',
+    platform: 'EBAY',
+    sku: 'DUNK-LOW-11',
+    title: 'Nike Dunk Low',
+    variant: 'Size 11',
+  };
+  const eligible = passport.evaluatePassportEligibility({
+    transactionExists: true,
+    merchantReference: null,
+    commerceContextId: imported.id,
+    commerceTrustLevel: 'USER_PROVIDED_COMMERCE_ARTIFACT',
+    sourceTrustLevel: 'USER_PROVIDED_COMMERCE_ARTIFACT',
+    externalOrderId: null,
+    artifacts: [artifact()],
+    displayedUnattributedFacts: 0,
+  });
+  assert.equal(eligible.ok, true);
+
+  const aggregated = passport.aggregatePassport(baseInput({
+    commerce: imported,
+    transaction: {
+      ...baseInput().transaction,
+      sourceTrustLevel: 'USER_PROVIDED_COMMERCE_ARTIFACT',
+      sourceType: 'EMAIL_RECEIPT',
+      sourcePlatform: 'EBAY',
+      merchantReference: null,
+      externalOrderId: null,
+      title: 'Nike Dunk Low',
+    },
+  }));
+  assert.equal(aggregated.transaction.sourceTrustClass, 'USER_PROVIDED_COMMERCE_ARTIFACT');
+  assert.equal(aggregated.transaction.commerceContextId, imported.id);
+  assert.equal(aggregated.items[0].expected.title.value, 'Nike Dunk Low');
+  assert.equal(aggregated.items[0].expected.sku.value, 'DUNK-LOW-11');
+  assert.equal(aggregated.items[0].expected.title.assertingSource, 'EMAIL_RECEIPT');
+  assert.equal(aggregated.integrity.banner, 'AUTHENTIC_PACKPROOF');
+});
+
 test('PAGE_DECLARED facts stay omitted after an attested Connect order is present', () => {
   const aggregated = passport.aggregatePassport(baseInput({
     commerce: {

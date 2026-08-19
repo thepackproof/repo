@@ -26,6 +26,7 @@ __exportStar(require("./merchant-transaction-service"), exports);
 __exportStar(require("./merchant-types"), exports);
 __exportStar(require("./public-commerce-handoff-service"), exports);
 __exportStar(require("./participant-capture-service"), exports);
+__exportStar(require("./transaction-intake-service"), exports);
 __exportStar(require("./merchant-evidence-types"), exports);
 __exportStar(require("./merchant-evidence-ports"), exports);
 __exportStar(require("./merchant-evidence-service"), exports);
