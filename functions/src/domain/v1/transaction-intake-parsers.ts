@@ -71,7 +71,7 @@ export function extractCommerceMessage(raw: string): ExtractedCommerceMessage {
   const headerSplit = normalized.indexOf('\n\n');
   const looksLikeEmail = /^(from|subject|mime-version|content-type):/im.test(normalized.slice(0, 800));
   if (!looksLikeEmail || headerSplit < 0) {
-    return { from: '', subject: '', body: decodeQuotedPrintable(normalized).trim() };
+    return { from: '', subject: '', body: stripHtml(decodeQuotedPrintable(normalized)).trim() };
   }
   const headers = normalized.slice(0, headerSplit);
   const body = decodeQuotedPrintable(unwrapMimeBody(normalized.slice(headerSplit + 2))).trim();
@@ -306,7 +306,12 @@ function unwrapMimeBody(body: string): string {
 
 function stripHtml(value: string): string {
   if (!/<[a-z][\s\S]*>/i.test(value)) return value;
-  return value.replace(/<style[\s\S]*?<\/style>/gi, ' ').replace(/<script[\s\S]*?<\/script>/gi, ' ').replace(/<[^>]+>/g, ' ').replace(/&nbsp;/gi, ' ').replace(/&amp;/gi, '&');
+  return value
+    .replace(/<style\b[\s\S]*?<\/style\s*>/gi, ' ')
+    .replace(/<script\b[\s\S]*?<\/script\s*>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&');
 }
 
 function decodeQuotedPrintable(value: string): string {

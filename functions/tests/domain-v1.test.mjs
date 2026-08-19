@@ -434,4 +434,12 @@ test('versioned commerce parsers extract order metadata from eBay, Etsy, Shopify
   const screenshot = parseCommerceArtifact(null, 'SCREENSHOT_IMPORT');
   assert.deepEqual(screenshot.missingFields, ['title', 'price', 'variant', 'orderNumber']);
   assert.equal(canTransition(commerceContextTransitions, 'CREATED', 'CLAIMED'), true);
+
+  const html = parseCommerceArtifact(
+    '<html><script>window.steal="secret"</script ><p>Item: Safe listing</p><p>Order: 99-88888-77777</p></html>',
+    'EMAIL_RECEIPT',
+  );
+  assert.equal(html.item.title.includes('secret'), false);
+  assert.equal(html.item.description.includes('secret'), false);
+  assert.match(html.item.title, /Safe listing/);
 });
