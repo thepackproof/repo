@@ -112,7 +112,7 @@ export default function CaptureScreen() {
   const [shippingLabel, setShippingLabel] = useState<ShippingLabelTelemetry | null>(null);
   const [barcodeFlash, setBarcodeFlash] = useState(false);
   const [labelStillUri, setLabelStillUri] = useState<string | null>(null);
-  const shutterScale = useRef(new Animated.Value(1)).current;
+  const shutterScale = useMemo(() => new Animated.Value(1), []);
   const shippingLabelRef = useRef<ShippingLabelTelemetry | null>(null);
   const labelStillUriRef = useRef<string | null>(null);
   const labelScanPromiseRef = useRef<Promise<void> | null>(null);

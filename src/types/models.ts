@@ -239,11 +239,11 @@ export type PackProofPassportView = {
     transactionDate: { value: string | null };
     amount: { value: { currency: string; minorUnits: number } | null };
   };
-  items: Array<{
+  items: {
     expected: { title: { value: string | null } };
-    comparisons: Array<{ attribute: string; expected: string | null; observed: string | null; result: string }>;
-  }>;
-  evidenceInventory: Array<{ category: string; state: string }>;
+    comparisons: { attribute: string; expected: string | null; observed: string | null; result: string }[];
+  }[];
+  evidenceInventory: { category: string; state: string }[];
   fulfillment: {
     packingArtifactId: string | null;
     sealArtifactId: string | null;
