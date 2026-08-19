@@ -142,7 +142,7 @@ export function capturePreflightFor(type: EvidenceType): CapturePreflight {
         'Place and seal it in the package',
         'Capture the shipping label or barcode',
       ],
-      startLabel: 'Start capture',
+      startLabel: "I'm ready",
     };
   }
   if (type === 'UNBOXING_VIDEO' || type === 'RETURN_UNBOXING_VIDEO') {
@@ -156,7 +156,7 @@ export function capturePreflightFor(type: EvidenceType): CapturePreflight {
         'Open it continuously on camera',
         'Show the contents before ending',
       ],
-      startLabel: 'Start capture',
+      startLabel: "I'm ready",
     };
   }
   if (type === 'SHIPPING_LABEL' || type === 'RETURN_SHIPPING_LABEL') {
@@ -168,7 +168,7 @@ export function capturePreflightFor(type: EvidenceType): CapturePreflight {
         'Include the seal and nearby cardboard',
         'Keep any barcode readable',
       ],
-      startLabel: 'Start capture',
+      startLabel: 'Take photo',
     };
   }
   if (type === 'DELIVERY_PHOTO') {
@@ -180,7 +180,7 @@ export function capturePreflightFor(type: EvidenceType): CapturePreflight {
         'Include the label and seams',
         'Keep the package closed',
       ],
-      startLabel: 'Start capture',
+      startLabel: 'Take photo',
     };
   }
   return {

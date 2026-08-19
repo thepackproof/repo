@@ -8,6 +8,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { Button, Card, Choice, Field, LoadingScreen } from '@/components/ui';
 import { NextActionCard, WorkflowProgress } from '@/components/ux-orchestration';
 import { colors } from '@/constants/brand';
+import { featureFlags } from '@/constants/features';
 import { callFunction, downloadUrl, subscribeEvents, subscribeEvidence, subscribeReturnPassports, subscribeTransaction } from '@/lib/api';
 import { forceFreshCallableCredentials } from '@/lib/firebase';
 import { enqueueEvidence, syncEvidenceQueue } from '@/lib/offline-evidence-queue';
@@ -50,7 +51,7 @@ export default function TransactionDetail() {
   const [returnCarrier, setReturnCarrier] = useState('USPS');
   const [returnTracking, setReturnTracking] = useState('');
   const [physicalStatus, setPhysicalStatus] = useState<PhysicalStatusView | null>(null);
-  const [showMore, setShowMore] = useState(false);
+  const [showDetails, setShowDetails] = useState(false);
   const [showTechnical, setShowTechnical] = useState(false);
   const [outcome, setOutcome] = useState<{ succeeded: string; nextStep: string } | null>(null);
 
@@ -64,7 +65,7 @@ export default function TransactionDetail() {
   }, [id]);
 
   useEffect(() => {
-    if (!id) return;
+    if (!id || !featureFlags.researchMode) return;
     let active = true;
     callFunction<{ transactionId: string }, unknown>('getPhysicalCorrespondenceStatus', { transactionId: id })
       .then((status) => { if (active) setPhysicalStatus(normalizePhysicalStatus(status)); })
@@ -245,86 +246,48 @@ export default function TransactionDetail() {
   if (!item || !user || !ux) return <LoadingScreen />;
   const order = orderLabel(item);
   const sourcePlatform = item.source && 'platform' in item.source ? item.source.platform : null;
+  const shippingJob = ux.primaryAction?.kind === 'ADD_SHIPMENT' || showShipping;
+  const returnShippingJob = (ux.primaryAction?.kind === 'ADD_RETURN_SHIPMENT' || showReturnShipping) && Boolean(activeReturn);
+  const detailsForced = ux.consumerState === 'complete' || ux.consumerState === 'blocked';
+  const detailsOpen = detailsForced || showDetails;
+  const primaryKind = ux.primaryAction?.kind;
+  const hidePrimaryButton = primaryKind === 'ADD_SHIPMENT' || primaryKind === 'ADD_RETURN_SHIPMENT';
 
   return <SafeAreaView style={styles.safe}><ScrollView contentContainerStyle={styles.container}>
     <Button label="Back" variant="ghost" onPress={() => router.back()} style={styles.back} />
     <View style={styles.top}>
       <View style={{ flex: 1 }}>
+        <Text style={styles.kicker}>{role === 'SELLER' ? 'Selling' : 'Buying'} · {formatMoney(item.priceMinor, item.currency)}</Text>
         <Text style={styles.title}>{item.title}</Text>
         {order ? <Text style={styles.order}>{order}</Text> : null}
       </View>
-      <Text style={styles.price}>{formatMoney(item.priceMinor, item.currency)}</Text>
     </View>
 
     <NextActionCard
       ux={ux}
       busy={busy === ux.primaryAction?.kind}
       outcome={outcome}
-      onPrimary={ux.primaryAction ? () => handlePrimary(ux.primaryAction!.kind) : undefined}
-      onSecondary={ux.secondaryAction ? () => handleSecondary(ux.secondaryAction!.kind) : undefined}
+      onPrimary={!hidePrimaryButton && ux.primaryAction ? () => handlePrimary(ux.primaryAction!.kind) : undefined}
+      onQuietSecondary={ux.secondaryAction?.kind === 'RESEND_INVITE' ? () => handleSecondary('RESEND_INVITE') : undefined}
     />
 
-    {ux.waitingReason === 'BUYER_JOIN' || ux.waitingReason === 'BUYER_CONFIRMATION' ? (
-      <Text style={styles.waitingMeta}>
-        {inviteSentAt ? `Invitation sent ${formatDate(inviteSentAt)}. ` : ''}
-        {ux.lockedExplanation}
-      </Text>
-    ) : null}
-
-    <Card style={styles.card}>
-      <WorkflowProgress steps={ux.progressSteps} />
-    </Card>
-
-    <Card style={styles.card}>
-      <Text style={styles.cardEyebrow}>TRANSACTION DETAILS</Text>
-      <Text style={styles.detailLine}>
-        {[formatMoney(item.priceMinor, item.currency), sourcePlatform, order].filter(Boolean).join(' · ') || item.category}
-      </Text>
-      <Text style={styles.body}>{item.description || 'No additional description supplied.'}</Text>
-      <Text style={styles.small}>{item.terms.saleType === 'SHIPPED' ? 'Shipped' : 'Local handoff'} · Returns {formatRuntimeEnum(item.terms.returns).toLowerCase()}</Text>
-    </Card>
-
-    <View style={styles.sectionHead}><Text style={styles.sectionTitle}>Activity</Text></View>
-    <Card style={styles.timeline}>
-      {events.map((event, index) => (
-        <View key={event.id} style={styles.event}>
-          <View style={styles.eventRail}>
-            <View style={styles.eventDot} />
-            {index < events.length - 1 ? <View style={styles.eventLine} /> : null}
-          </View>
-          <View style={{ flex: 1, paddingBottom: 17 }}>
-            <Text style={styles.eventSummary}>{activityCtx ? humanActivitySentence(event, activityCtx) : event.summary}</Text>
-            <Text style={styles.eventDate}>{formatActivityTime(event.createdAt)}</Text>
-          </View>
-        </View>
-      ))}
-      {!events.length ? <Text style={styles.small}>Activity appears here as each step completes.</Text> : null}
-    </Card>
-
-    {showShipping ? <Card style={styles.form}>
-      <Text style={styles.cardTitle}>Shipment details</Text>
+    {shippingJob ? <Card style={styles.form}>
       <View style={styles.choices}>{['USPS', 'UPS', 'FedEx', 'DHL', 'Other'].map((value) => <Choice key={value} label={value} selected={carrier === value} onPress={() => setCarrier(value)} />)}</View>
-      <Field label="Tracking number" value={tracking} onChangeText={setTracking} autoCapitalize="characters" placeholder="Enter the carrier tracking number" />
-      <Button label="Record shipment" busy={busy === 'shipping'} disabled={tracking.trim().length < 3} onPress={() => run('shipping', async () => { await callFunction('submitShipping', { transactionId: id, carrier, trackingNumber: tracking.trim() }); setShowShipping(false); })} />
-      {tracking.trim().length < 3 ? <Text style={styles.small}>Enter a tracking number to continue.</Text> : null}
-      <Button label="Cancel" variant="ghost" onPress={() => setShowShipping(false)} />
+      <Field label="Tracking number" value={tracking} onChangeText={setTracking} autoCapitalize="characters" placeholder="Tracking number" />
+      <Button label="Looks right" busy={busy === 'ADD_SHIPMENT'} disabled={tracking.trim().length < 3} onPress={() => run('ADD_SHIPMENT', async () => { await callFunction('submitShipping', { transactionId: id, carrier, trackingNumber: tracking.trim() }); setShowShipping(false); }, ux)} />
+    </Card> : null}
+
+    {returnShippingJob && activeReturn ? <Card style={styles.form}>
+      <View style={styles.choices}>{['USPS', 'UPS', 'FedEx', 'DHL', 'Other'].map((value) => <Choice key={value} label={value} selected={returnCarrier === value} onPress={() => setReturnCarrier(value)} />)}</View>
+      <Field label="Tracking number" value={returnTracking} onChangeText={setReturnTracking} autoCapitalize="characters" placeholder="Return tracking number" />
+      <Button label="Looks right" busy={busy === 'ADD_RETURN_SHIPMENT'} disabled={returnTracking.trim().length < 3} onPress={() => run('ADD_RETURN_SHIPMENT', async () => { await callFunction('submitReturnShipping', { transactionId: id, returnPassportId: activeReturn.id, carrier: returnCarrier, trackingNumber: returnTracking.trim() }); setShowReturnShipping(false); }, ux)} />
     </Card> : null}
 
     {showReturnRequest ? <Card style={styles.form}>
       <Text style={styles.cardTitle}>Start a return</Text>
-      <Text style={styles.small}>The other participant must authorize this before return packing begins.</Text>
-      <Field label="Reason for return" value={returnReason} onChangeText={setReturnReason} multiline placeholder="Describe the return reason factually." />
+      <Field label="Reason for return" value={returnReason} onChangeText={setReturnReason} multiline placeholder="What happened?" />
       <Button label="Request return" busy={busy === 'requestReturn'} disabled={returnReason.trim().length < 5} onPress={() => run('requestReturn', async () => { await callFunction('initiateReturnPassport', { transactionId: id, reason: returnReason.trim() }); setShowReturnRequest(false); setReturnReason(''); })} />
-      {returnReason.trim().length < 5 ? <Text style={styles.small}>Add a short reason so the other participant knows what to review.</Text> : null}
       <Button label="Cancel" variant="ghost" onPress={() => setShowReturnRequest(false)} />
-    </Card> : null}
-
-    {showReturnShipping && activeReturn ? <Card style={styles.form}>
-      <Text style={styles.cardTitle}>Return shipment details</Text>
-      <View style={styles.choices}>{['USPS', 'UPS', 'FedEx', 'DHL', 'Other'].map((value) => <Choice key={value} label={value} selected={returnCarrier === value} onPress={() => setReturnCarrier(value)} />)}</View>
-      <Field label="Return tracking number" value={returnTracking} onChangeText={setReturnTracking} autoCapitalize="characters" placeholder="Enter the return tracking number" />
-      <Button label="Record return shipment" busy={busy === 'returnShipping'} disabled={returnTracking.trim().length < 3} onPress={() => run('returnShipping', async () => { await callFunction('submitReturnShipping', { transactionId: id, returnPassportId: activeReturn.id, carrier: returnCarrier, trackingNumber: returnTracking.trim() }); setShowReturnShipping(false); })} />
-      <Button label="Cancel" variant="ghost" onPress={() => setShowReturnShipping(false)} />
     </Card> : null}
 
     {showConcern ? <Card style={styles.form}>
@@ -333,23 +296,41 @@ export default function TransactionDetail() {
       <View style={styles.choices}>{(['FRAUD', 'HARASSMENT', 'PROHIBITED_ITEM', 'IMPERSONATION', 'PRIVACY', 'OTHER'] as const).map((value) => <Choice key={value} label={formatRuntimeEnum(value).toLowerCase()} selected={concernReason === value} onPress={() => setConcernReason(value)} />)}</View>
       <Field label="What happened?" value={concernDetails} onChangeText={setConcernDetails} multiline placeholder="Describe the issue factually." />
       <Button label="Submit concern" variant="danger" busy={busy === 'concern'} disabled={concernDetails.trim().length < 5} onPress={() => run('concern', async () => { await callFunction('raiseConcern', { transactionId: id, targetUserId: role === 'SELLER' ? item.buyerId : item.sellerId, reason: concernReason, details: concernDetails.trim() }); setShowConcern(false); })} />
-      <Button label="Block the other participant" variant="ghost" busy={busy === 'block'} onPress={() => Alert.alert('Block this user?', 'They will be unable to join new PackProofs with you. Existing shared records remain available to both parties.', [{ text: 'Cancel', style: 'cancel' }, { text: 'Block', style: 'destructive', onPress: () => run('block', () => callFunction('blockUser', { targetUserId: role === 'SELLER' ? item.buyerId : item.sellerId }).then(() => undefined)) }])} />
       <Button label="Cancel" variant="ghost" onPress={() => setShowConcern(false)} />
     </Card> : null}
 
-    <Button label={showMore ? 'Hide more options' : 'More options'} variant="ghost" onPress={() => setShowMore(!showMore)} />
+    {detailsForced ? null : <Button label={detailsOpen ? 'Hide details' : 'View details'} variant="ghost" onPress={() => setShowDetails(!showDetails)} />}
 
-    {showMore ? <View style={styles.more}>
-      {role === 'SELLER' && ['DRAFT', 'AWAITING_BUYER', 'TERMS_REVIEW'].includes(item.status) && ux.primaryAction?.kind !== 'EDIT_TERMS' ? <Button label="Edit proposed terms" icon="pencil" variant="secondary" onPress={() => router.push({ pathname: '/transaction/new', params: { transactionId: id } })} /> : null}
-      {role === 'SELLER' && ['DRAFT', 'AWAITING_BUYER', 'TERMS_REVIEW'].includes(item.status) ? <Button label="Add item photo" icon="camera.fill" variant="secondary" onPress={() => capture('ITEM_PHOTO')} /> : null}
-      {role === 'SELLER' && ['TERMS_LOCKED', 'PACKED'].includes(item.status) ? <Button label="Optional research series" icon="camera.metering.center.weighted" variant="secondary" onPress={() => router.push({ pathname: '/capture/physical/[id]', params: { id, intent: 'REFERENCE' } })} /> : null}
-      {role === 'BUYER' && ['SHIPPED', 'BUYER_REVIEW', 'DISPUTED'].includes(item.status) ? <Button label="Optional research series" icon="viewfinder" variant="secondary" onPress={() => router.push({ pathname: '/capture/physical/[id]', params: { id, intent: 'VERIFICATION' } })} /> : null}
-      {!['COMPLETED', 'CANCELLED', 'ARCHIVED'].includes(item.status) ? <Button label="Attach supporting PDF" icon="doc.fill" variant="secondary" busy={busy === 'document'} onPress={attachPdf} /> : null}
-      {ux.passportReady && ux.primaryAction?.kind !== 'OPEN_PASSPORT' ? <Button label="View Passport" icon="checkmark.shield.fill" variant="secondary" onPress={() => router.push({ pathname: '/passport/[id]', params: { id } })} /> : null}
-      {!['DRAFT', 'CANCELLED', 'ARCHIVED'].includes(item.status) ? <Button label="Download evidence packet" icon="doc.text.fill" variant="secondary" busy={busy === 'packet'} onPress={createPacket} /> : null}
-      {!activeReturn && item.buyerId && ['SHIPPED', 'BUYER_REVIEW', 'COMPLETED', 'DISPUTED'].includes(item.status) && (item.terms.returns !== 'NO_RETURNS' || item.status === 'DISPUTED') ? <Button label="Start a return" icon="arrow.uturn.backward.circle.fill" variant="secondary" onPress={() => setShowReturnRequest(true)} /> : null}
-      {item.buyerId && !['COMPLETED', 'CANCELLED', 'ARCHIVED'].includes(item.status) ? <Button label="Raise a concern" icon="exclamationmark.triangle.fill" variant="danger" onPress={() => setShowConcern(true)} /> : null}
-      {role === 'SELLER' && ['DRAFT', 'AWAITING_BUYER', 'TERMS_REVIEW'].includes(item.status) ? <Button label="Cancel PackProof" icon="xmark.circle.fill" variant="danger" busy={busy === 'cancel'} onPress={cancelTransaction} /> : null}
+    {detailsOpen ? <View style={styles.more}>
+      <Card style={styles.card}>
+        <Text style={styles.cardEyebrow}>TRANSACTION</Text>
+        <Text style={styles.detailLine}>
+          {[formatMoney(item.priceMinor, item.currency), sourcePlatform, order].filter(Boolean).join(' · ') || item.category}
+        </Text>
+        <Text style={styles.body}>{item.description || 'No additional description supplied.'}</Text>
+        <Text style={styles.small}>{item.terms.saleType === 'SHIPPED' ? 'Shipped' : 'Local handoff'} · Returns {formatRuntimeEnum(item.terms.returns).toLowerCase()}</Text>
+      </Card>
+
+      <Card style={styles.card}>
+        <WorkflowProgress steps={ux.progressSteps} />
+      </Card>
+
+      <View style={styles.sectionHead}><Text style={styles.sectionTitle}>Activity</Text></View>
+      <Card style={styles.timeline}>
+        {events.map((event, index) => (
+          <View key={event.id} style={styles.event}>
+            <View style={styles.eventRail}>
+              <View style={styles.eventDot} />
+              {index < events.length - 1 ? <View style={styles.eventLine} /> : null}
+            </View>
+            <View style={{ flex: 1, paddingBottom: 17 }}>
+              <Text style={styles.eventSummary}>{activityCtx ? humanActivitySentence(event, activityCtx) : event.summary}</Text>
+              <Text style={styles.eventDate}>{formatActivityTime(event.createdAt)}</Text>
+            </View>
+          </View>
+        ))}
+        {!events.length ? <Text style={styles.small}>Activity appears here as each step completes.</Text> : null}
+      </Card>
 
       {item.shipping ? <Card style={styles.card}><Text style={styles.cardEyebrow}>SHIPMENT</Text><Text style={styles.body}>{item.shipping.carrier} · {item.shipping.trackingNumber}</Text><Text style={styles.small}>Recorded {formatDate(item.shipping.shippedAt)}</Text></Card> : null}
 
@@ -373,7 +354,20 @@ export default function TransactionDetail() {
           <Text onPress={() => downloadUrl(record.storagePath).then(Linking.openURL).catch((error) => Alert.alert('Could not open evidence', readableError(error)))} style={styles.open}>OPEN</Text>
         </Card>
       ))}
-      {!evidence.length ? <Text style={styles.small}>Evidence appears here after PackProof finishes securing it.</Text> : null}
+      {!evidence.length ? <Text style={styles.small}>Evidence appears here after PackProof finishes saving it.</Text> : null}
+
+      {role === 'SELLER' && ['DRAFT', 'AWAITING_BUYER', 'TERMS_REVIEW'].includes(item.status) && ux.primaryAction?.kind !== 'EDIT_TERMS' ? <Button label="Edit details" icon="pencil" variant="secondary" onPress={() => router.push({ pathname: '/transaction/new', params: { transactionId: id } })} /> : null}
+      {role === 'SELLER' && ['DRAFT', 'AWAITING_BUYER', 'TERMS_REVIEW'].includes(item.status) ? <Button label="Add item photo" icon="camera.fill" variant="secondary" onPress={() => capture('ITEM_PHOTO')} /> : null}
+      {featureFlags.researchMode && role === 'SELLER' && ['TERMS_LOCKED', 'PACKED'].includes(item.status) ? <Button label="Optional research series" icon="camera.metering.center.weighted" variant="secondary" onPress={() => router.push({ pathname: '/capture/physical/[id]', params: { id, intent: 'REFERENCE' } })} /> : null}
+      {featureFlags.researchMode && role === 'BUYER' && ['SHIPPED', 'BUYER_REVIEW', 'DISPUTED'].includes(item.status) ? <Button label="Optional research series" icon="viewfinder" variant="secondary" onPress={() => router.push({ pathname: '/capture/physical/[id]', params: { id, intent: 'VERIFICATION' } })} /> : null}
+      {!['COMPLETED', 'CANCELLED', 'ARCHIVED'].includes(item.status) ? <Button label="Add more information" icon="doc.fill" variant="secondary" busy={busy === 'document'} onPress={attachPdf} /> : null}
+      {ux.passportReady && ux.primaryAction?.kind !== 'OPEN_PASSPORT' ? <Button label="View Passport" icon="checkmark.shield.fill" variant="secondary" onPress={() => router.push({ pathname: '/passport/[id]', params: { id } })} /> : null}
+      {!['DRAFT', 'CANCELLED', 'ARCHIVED'].includes(item.status) ? <Button label="Download record" icon="doc.text.fill" variant="secondary" busy={busy === 'packet'} onPress={createPacket} /> : null}
+      {ux.secondaryAction?.kind === 'MARK_RECEIVED' ? <Button label="Skip photos" variant="ghost" onPress={() => handleSecondary('MARK_RECEIVED')} /> : null}
+      {ux.secondaryAction?.kind === 'MARK_RETURN_RECEIVED' ? <Button label="Skip video" variant="ghost" onPress={() => handleSecondary('MARK_RETURN_RECEIVED')} /> : null}
+      {!activeReturn && item.buyerId && ['SHIPPED', 'BUYER_REVIEW', 'COMPLETED', 'DISPUTED'].includes(item.status) && (item.terms.returns !== 'NO_RETURNS' || item.status === 'DISPUTED') ? <Button label="Start a return" icon="arrow.uturn.backward.circle.fill" variant="secondary" onPress={() => setShowReturnRequest(true)} /> : null}
+      {item.buyerId && !['COMPLETED', 'CANCELLED', 'ARCHIVED'].includes(item.status) ? <Button label="Raise a concern" icon="exclamationmark.triangle.fill" variant="danger" onPress={() => setShowConcern(true)} /> : null}
+      {role === 'SELLER' && ['DRAFT', 'AWAITING_BUYER', 'TERMS_REVIEW'].includes(item.status) ? <Button label="Cancel PackProof" icon="xmark.circle.fill" variant="danger" busy={busy === 'cancel'} onPress={cancelTransaction} /> : null}
 
       <Button label={showTechnical ? 'Hide technical details' : 'Show technical details'} variant="ghost" onPress={() => setShowTechnical(!showTechnical)} />
       {showTechnical ? <>
@@ -394,10 +388,9 @@ const styles = StyleSheet.create({
   container: { padding: 20, paddingBottom: 48, gap: 15 },
   back: { alignSelf: 'flex-start', minHeight: 40 },
   top: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
-  title: { color: colors.ink, fontSize: 27, lineHeight: 33, fontWeight: '900' },
+  kicker: { color: colors.muted, fontSize: 12, fontWeight: '800', marginBottom: 6 },
+  title: { color: colors.ink, fontSize: 22, lineHeight: 28, fontWeight: '900' },
   order: { color: colors.muted, fontSize: 13, marginTop: 4, fontWeight: '700' },
-  price: { color: colors.teal, fontSize: 18, fontWeight: '900' },
-  waitingMeta: { color: colors.muted, fontSize: 12, lineHeight: 18, marginTop: -6 },
   card: { gap: 10 },
   cardEyebrow: { color: colors.teal, fontSize: 10, fontWeight: '900', letterSpacing: 1.4 },
   cardTitle: { color: colors.ink, fontSize: 18, fontWeight: '900' },

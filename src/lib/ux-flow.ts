@@ -75,6 +75,8 @@ export type ProgressStep = { id: ProgressStage; label: string; state: ProgressSt
 
 export type EvidenceProcessingPhase = 'UPLOADING' | 'SECURING' | 'FAILED_RETRY' | 'FAILED_RECAPTURE';
 
+export type ConsumerState = 'action_required' | 'waiting' | 'complete' | 'blocked';
+
 export type NextRequiredAction = {
   humanState: HumanState;
   humanStateLabel: string;
@@ -92,6 +94,11 @@ export type NextRequiredAction = {
   waitingOnTask: string | null;
   lockedExplanation: string | null;
   prerequisites: { label: string; complete: boolean }[];
+  completedContext: readonly string[];
+  consumerState: ConsumerState;
+  waitingOn: string | null;
+  stepCurrent: number;
+  stepTotal: number;
   notificationCopy: { title: string; body: string };
   inboxBucket: InboxBucket;
   inboxSentence: string;
@@ -116,17 +123,17 @@ export type UxFlowInput = {
 };
 
 export const HUMAN_STATE_LABEL: Record<HumanState, string> = {
-  YOUR_ACTION_REQUIRED: 'YOUR TURN',
-  WAITING_ON_BUYER: 'WAITING ON BUYER',
-  WAITING_ON_SELLER: 'WAITING ON SELLER',
-  READY_TO_PACK: 'READY TO PACK',
-  EVIDENCE_PROCESSING: 'SECURING EVIDENCE',
-  READY_TO_SHIP: 'READY TO SHIP',
+  YOUR_ACTION_REQUIRED: 'ACTION NEEDED',
+  WAITING_ON_BUYER: 'WAITING',
+  WAITING_ON_SELLER: 'WAITING',
+  READY_TO_PACK: 'ACTION NEEDED',
+  EVIDENCE_PROCESSING: 'SAVING',
+  READY_TO_SHIP: 'ACTION NEEDED',
   IN_TRANSIT: 'IN TRANSIT',
-  DELIVERY_REVIEW: 'DELIVERY REVIEW',
+  DELIVERY_REVIEW: 'ACTION NEEDED',
   COMPLETE: 'COMPLETE',
   CANCELLED: 'CANCELLED',
-  CONCERN_OPEN: 'CONCERN OPEN',
+  CONCERN_OPEN: 'ACTION NEEDED',
 };
 
 export const EVIDENCE_PROCESSING_STAGES = [
@@ -156,6 +163,7 @@ const EMPTY_PROTOCOL: PackageSealProtocolStatus = {
 };
 
 const NO_ACTION = "You don't need to do anything right now.";
+const DONE_FOR_NOW = "We'll notify you when anything else needs your attention.";
 
 function roleOf(transaction: PackProofTransaction, viewerId: string): ParticipantRole {
   return transaction.sellerId === viewerId ? 'SELLER' : 'BUYER';
@@ -230,7 +238,31 @@ function notify(title: string, body: string): { title: string; body: string } {
   return { title, body };
 }
 
-type DraftView = Omit<NextRequiredAction, 'humanStateLabel' | 'progressSteps' | 'inboxCta' | 'passportReady' | 'canLeaveWhileProcessing'>;
+type DraftView = Omit<NextRequiredAction, 'humanStateLabel' | 'progressSteps' | 'inboxCta' | 'passportReady' | 'canLeaveWhileProcessing' | 'consumerState' | 'waitingOn' | 'stepCurrent' | 'stepTotal' | 'completedContext'> & {
+  completedContext?: readonly string[];
+};
+
+function consumerStateOf(draft: DraftView, status: TransactionStatus): ConsumerState {
+  if (status === 'DISPUTED' || draft.humanState === 'CONCERN_OPEN') return 'blocked';
+  if (status === 'COMPLETED' || status === 'ARCHIVED' || draft.humanState === 'COMPLETE' || draft.humanState === 'CANCELLED') return 'complete';
+  if (draft.noActionRequired || !draft.primaryAction) return 'waiting';
+  return 'action_required';
+}
+
+function stepOf(status: TransactionStatus, kind: UxPrimaryActionKind | undefined, saleType: 'SHIPPED' | 'LOCAL_HANDOFF'): { current: number; total: number } {
+  const total = saleType === 'LOCAL_HANDOFF' ? 4 : 5;
+  if (status === 'DRAFT' || status === 'AWAITING_BUYER' || status === 'TERMS_REVIEW' || kind === 'INVITE_BUYER' || kind === 'CONFIRM_TERMS' || kind === 'EDIT_TERMS') {
+    return { current: 1, total };
+  }
+  if (kind === 'START_PACKING' || kind === 'CONFIRM_HANDOFF') return { current: 2, total };
+  if (kind === 'RECORD_SEAL') return { current: 3, total };
+  if (kind === 'ADD_SHIPMENT') return { current: 4, total };
+  if (kind === 'RECORD_ARRIVAL' || kind === 'RECORD_UNBOXING') return { current: 5, total };
+  if (status === 'PACKED') return { current: 3, total };
+  if (status === 'SHIPPED' || status === 'BUYER_REVIEW' || status === 'COMPLETED' || status === 'ARCHIVED') return { current: total, total };
+  if (status === 'TERMS_LOCKED') return { current: 2, total };
+  return { current: 1, total };
+}
 
 function finish(
   input: UxFlowInput,
@@ -240,8 +272,18 @@ function finish(
   const status = input.transaction.status;
   const saleType = input.transaction.terms.saleType;
   const ready = passportReady(status, input.transaction.passportId);
+  const completedContext = draft.completedContext
+    ?? draft.prerequisites.filter((item) => item.complete).map((item) => item.label);
+  const step = stepOf(status, draft.primaryAction?.kind, saleType);
   return {
     ...draft,
+    completedContext,
+    consumerState: consumerStateOf(draft, status),
+    waitingOn: draft.noActionRequired && draft.waitingOnTask
+      ? `${draft.waitingOnName ?? 'PackProof'} to ${draft.waitingOnTask}`
+      : null,
+    stepCurrent: step.current,
+    stepTotal: step.total,
     humanStateLabel: HUMAN_STATE_LABEL[draft.humanState],
     progressSteps: buildProgressSteps(saleType, draft.progressStage, status),
     inboxCta: draft.primaryAction?.label ?? null,
@@ -266,6 +308,7 @@ function waitingView(
     secondaryAction?: UxAction<UxSecondaryActionKind> | null;
     lockedExplanation?: string | null;
     prerequisites?: { label: string; complete: boolean }[];
+    completedContext?: readonly string[];
     notificationCopy: { title: string; body: string };
     inboxSentence: string;
     inboxBucket?: InboxBucket;
@@ -276,7 +319,7 @@ function waitingView(
     humanState: waitingState(role),
     headline: details.headline,
     description: details.description,
-    instruction: NO_ACTION,
+    instruction: DONE_FOR_NOW,
     nextHappens: details.nextHappens,
     actionRequiredBy: waitingBy(role),
     primaryAction: null,
@@ -287,6 +330,7 @@ function waitingView(
     waitingOnTask: details.waitingOnTask,
     lockedExplanation: details.lockedExplanation ?? null,
     prerequisites: details.prerequisites ?? [],
+    completedContext: details.completedContext,
     notificationCopy: details.notificationCopy,
     inboxBucket: details.inboxBucket ?? 'WAITING',
     inboxSentence: details.inboxSentence,
@@ -306,6 +350,7 @@ function actionView(
     progressStage: ProgressStage;
     lockedExplanation?: string | null;
     prerequisites?: { label: string; complete: boolean }[];
+    completedContext?: readonly string[];
     notificationCopy: { title: string; body: string };
     inboxSentence: string;
     waitingReason?: WaitingReason;
@@ -327,6 +372,7 @@ function actionView(
     waitingOnTask: null,
     lockedExplanation: details.lockedExplanation ?? null,
     prerequisites: details.prerequisites ?? [],
+    completedContext: details.completedContext,
     notificationCopy: details.notificationCopy,
     inboxBucket: details.inboxBucket ?? 'NEEDS_ATTENTION',
     inboxSentence: details.inboxSentence,
@@ -375,14 +421,14 @@ function resolveReturn(
   if (active.status === 'AUTHORIZED') {
     if (returning) {
       return actionView({
-        headline: 'Ready to pack the return',
+        headline: 'Pack the return',
         description: 'The return is authorized.',
-        instruction: 'Record the item being repacked, sealed, and associated with its return label.',
-        nextHappens: 'After the evidence is ready, you can add return tracking.',
-        primaryAction: { kind: 'RECORD_RETURN_PACKING', label: 'Start return packing', captureType: 'RETURN_PACKING_VIDEO' },
+        instruction: "We'll record while you pack and seal the returned item.",
+        nextHappens: 'Then photograph the sealed return with the label attached.',
+        primaryAction: { kind: 'RECORD_RETURN_PACKING', label: 'Start packing', captureType: 'RETURN_PACKING_VIDEO' },
         progressStage: stage,
-        notificationCopy: notify('Ready to pack the return', 'Record the returned item being packed and sealed.'),
-        inboxSentence: 'Ready to record return packing evidence.',
+        notificationCopy: notify('Ready to pack the return', 'Pack the returned item on camera.'),
+        inboxSentence: 'Pack the return.',
       });
     }
     return waitingView(input, role, {
@@ -400,31 +446,33 @@ function resolveReturn(
   if (active.status === 'PACKED') {
     if (returning && !protocol.sellerReferenceComplete) {
       return actionView({
-        headline: 'Finish return packing evidence',
-        description: 'Return packing was recorded. Capture the return seal and label next.',
-        instruction: 'Record a clear photo of the sealed return label.',
-        nextHappens: 'Then you can add return tracking.',
-        primaryAction: { kind: 'RECORD_RETURN_SEAL', label: 'Record return seal', captureType: 'RETURN_SHIPPING_LABEL' },
+        headline: 'Photograph the sealed return',
+        description: 'Your packing video is saved. Attach the return label, then take one clear photo.',
+        instruction: 'Show the return label on the sealed package.',
+        nextHappens: 'Then add return tracking if it is not already filled in.',
+        primaryAction: { kind: 'RECORD_RETURN_SEAL', label: 'Take photo', captureType: 'RETURN_SHIPPING_LABEL' },
         progressStage: stage,
         lockedExplanation: 'Return shipment can be recorded after packing video and seal evidence are ready.',
         prerequisites: [
           { label: 'Return packing recorded', complete: protocol.hasPackingVideo },
           { label: 'Return seal and label captured', complete: protocol.hasSealReference },
         ],
-        notificationCopy: notify('Finish return packing', 'Capture the return seal and label.'),
-        inboxSentence: 'Return packing still needs a seal photo.',
+        completedContext: protocol.hasPackingVideo ? ['Packing video'] : [],
+        notificationCopy: notify('Photograph the sealed return', 'Your packing video is saved.'),
+        inboxSentence: 'Photograph the sealed return.',
       });
     }
     if (returning) {
       return actionView({
-        headline: 'Ready to ship the return',
-        description: 'Return packing evidence is ready.',
-        instruction: 'Add the return carrier and tracking number.',
-        nextHappens: `${name} will record the returned package when it arrives.`,
-        primaryAction: { kind: 'ADD_RETURN_SHIPMENT', label: 'Add return tracking' },
+        headline: 'Add return tracking',
+        description: 'Return packing is complete.',
+        instruction: 'Add the carrier and tracking number if they are not already filled in.',
+        nextHappens: `${name} will be notified when the return is on the way.`,
+        primaryAction: { kind: 'ADD_RETURN_SHIPMENT', label: 'Add tracking' },
         progressStage: stage,
-        notificationCopy: notify('You can ship the return', 'Add return tracking to finish this step.'),
-        inboxSentence: 'Add return tracking to ship the package.',
+        completedContext: ['Packing video', 'Package photo'],
+        notificationCopy: notify('Return packing complete', 'Add tracking if PackProof did not already find it.'),
+        inboxSentence: 'Add return tracking.',
       });
     }
     return waitingView(input, role, {
@@ -442,15 +490,15 @@ function resolveReturn(
   if (active.status === 'IN_TRANSIT') {
     if (recipient) {
       return actionView({
-        headline: 'Return arrived',
-        description: 'Record the returned package being opened.',
-        instruction: 'Start with the sealed return package, then record a continuous unboxing.',
-        nextHappens: 'After that, both of you can complete the return passport.',
-        primaryAction: { kind: 'RECORD_RETURN_UNBOXING', label: 'Record return unboxing', captureType: 'RETURN_UNBOXING_VIDEO' },
-        secondaryAction: { kind: 'MARK_RETURN_RECEIVED', label: 'Mark received without video' },
+        headline: 'The return arrived',
+        description: 'Photograph the sealed return, then open it on camera.',
+        instruction: 'Start with the sealed package. Keep the opening in one take.',
+        nextHappens: 'Then you can finish the return.',
+        primaryAction: { kind: 'RECORD_RETURN_UNBOXING', label: 'Record unboxing', captureType: 'RETURN_UNBOXING_VIDEO' },
+        secondaryAction: { kind: 'MARK_RETURN_RECEIVED', label: 'Skip video' },
         progressStage: stage,
-        notificationCopy: notify('Return in transit', 'Record the returned package when it arrives.'),
-        inboxSentence: 'Record the returned package when it arrives.',
+        notificationCopy: notify('The return arrived', 'Record the sealed package before opening it.'),
+        inboxSentence: 'Record the returned package.',
       });
     }
     return waitingView(input, role, {
@@ -480,14 +528,14 @@ function resolveReturn(
       });
     }
     return actionView({
-      headline: 'Complete the return',
+      headline: 'Finish the return',
       description: 'The returned package has been recorded.',
-      instruction: 'Confirm that the return passport is complete.',
+      instruction: 'Confirm that the return looks complete.',
       nextHappens: 'When both of you confirm, the return is finished.',
-      primaryAction: { kind: 'COMPLETE_RETURN', label: 'Complete return' },
+      primaryAction: { kind: 'COMPLETE_RETURN', label: 'Finish' },
       progressStage: 'COMPLETE',
-      notificationCopy: notify('Your turn', 'Complete the return passport.'),
-      inboxSentence: 'Confirm that the return is complete.',
+      notificationCopy: notify('Finish the return', 'Confirm that the return looks complete.'),
+      inboxSentence: 'Finish the return.',
     });
   }
 
@@ -555,10 +603,10 @@ function resolveStatus(input: UxFlowInput, role: ParticipantRole, protocol: Pack
   if (status === 'ARCHIVED' || status === 'COMPLETED') {
     return {
       humanState: 'COMPLETE',
-      headline: 'Complete',
+      headline: 'PackProof complete',
       description: 'This PackProof is finished.',
-      instruction: 'Your PackProof Passport is ready.',
-      nextHappens: 'You can view or share the Passport where permitted.',
+      instruction: 'The finished record is ready when you need it.',
+      nextHappens: 'You can view or share it where permitted.',
       actionRequiredBy: 'NONE',
       primaryAction: { kind: 'OPEN_PASSPORT', label: 'View Passport' },
       secondaryAction: null,
@@ -602,15 +650,15 @@ function resolveStatus(input: UxFlowInput, role: ParticipantRole, protocol: Pack
     if (role === 'SELLER') {
       if (!transaction.buyerId) {
         return actionView({
-          headline: 'Invite the buyer',
-          description: 'The sale details are saved. The buyer still needs a private invitation.',
-          instruction: 'Send the invite so they can review and confirm the transaction details.',
+          headline: 'Invite the other person',
+          description: 'The sale details are saved.',
+          instruction: 'Send a private link so they can confirm the item, price, and terms.',
           nextHappens: "We'll notify you when they join.",
-          primaryAction: { kind: 'INVITE_BUYER', label: 'Invite buyer' },
+          primaryAction: { kind: 'INVITE_BUYER', label: 'Invite' },
           secondaryAction: { kind: 'EDIT_TERMS', label: 'Edit details' },
           progressStage: status === 'DRAFT' ? 'CREATED' : 'TERMS',
-          notificationCopy: notify('Invite the buyer', 'Send the invitation so the buyer can confirm the sale details.'),
-          inboxSentence: 'Invite the buyer to confirm the transaction details.',
+          notificationCopy: notify('Invite the buyer', 'Send the invitation so they can confirm the sale details.'),
+          inboxSentence: 'Invite the other person to confirm.',
         });
       }
       return waitingView(input, role, {
@@ -626,35 +674,33 @@ function resolveStatus(input: UxFlowInput, role: ParticipantRole, protocol: Pack
       });
     }
     return actionView({
-      headline: 'Review the sale details',
+      headline: 'Confirm the transaction',
       description: 'You were invited to this PackProof.',
-      instruction: 'Open the invitation, review the details, and confirm them.',
-      nextHappens: 'Packing can start after both of you confirm.',
-      primaryAction: { kind: 'CONFIRM_TERMS', label: 'Review and confirm terms' },
+      instruction: 'Confirm only if the item, price, and terms are right.',
+      nextHappens: "We'll notify you when packing starts.",
+      primaryAction: { kind: 'CONFIRM_TERMS', label: 'Confirm' },
       progressStage: 'TERMS',
-      notificationCopy: notify('Your turn', 'Review the sale details and confirm them.'),
-      inboxSentence: 'Review the sale details and confirm them.',
+      notificationCopy: notify('Confirm the transaction', 'Review the details and confirm them.'),
+      inboxSentence: 'Confirm the transaction details.',
     });
   }
 
   if (status === 'TERMS_REVIEW') {
     if (!viewerConfirmed) {
       return actionView({
-        headline: 'Your turn',
+        headline: 'Confirm the transaction',
         description: role === 'BUYER'
-          ? 'Review the sale details and confirm them.'
-          : 'Review and confirm the transaction details.',
-        instruction: 'Confirm only if the item, price, and terms are exactly right.',
+          ? 'Review the item, price, and terms.'
+          : 'Review the item, price, and terms.',
+        instruction: 'Confirm only if everything is exactly right.',
         nextHappens: buyerConfirmed || sellerConfirmed
-          ? 'After you confirm, both of you can move on.'
+          ? 'After you confirm, packing can start.'
           : `${name} still needs to confirm after you.`,
-        primaryAction: { kind: 'CONFIRM_TERMS', label: 'Review and confirm terms' },
+        primaryAction: { kind: 'CONFIRM_TERMS', label: 'Confirm' },
         secondaryAction: role === 'SELLER' ? { kind: 'EDIT_TERMS', label: 'Edit details' } : null,
         progressStage: 'TERMS',
-        notificationCopy: notify('Your turn', 'Review the sale details and confirm them.'),
-        inboxSentence: role === 'BUYER'
-          ? 'Review the sale details and confirm them.'
-          : 'Review and confirm the transaction details.',
+        notificationCopy: notify('Confirm the transaction', 'Review the details and confirm them.'),
+        inboxSentence: 'Confirm the transaction details.',
       });
     }
     return waitingView(input, role, {
@@ -703,27 +749,27 @@ function resolveStatus(input: UxFlowInput, role: ParticipantRole, protocol: Pack
     if (role === 'SELLER') {
       return actionView({
         humanState: 'READY_TO_PACK',
-        headline: 'Ready to pack',
-        description: 'Both participants confirmed the transaction.',
-        instruction: 'Next, record the item being packed, sealed, and associated with its shipping label.',
-        nextHappens: 'PackProof will secure the evidence, then you can ship.',
-        primaryAction: { kind: 'START_PACKING', label: 'Start packing evidence', captureType: 'PACKING_VIDEO' },
+        headline: 'Pack your item',
+        description: "We'll record while you put the item in the box and seal it.",
+        instruction: 'Set your phone somewhere stable. Make sure the item and box stay visible.',
+        nextHappens: 'Then photograph the sealed package with the shipping label attached.',
+        primaryAction: { kind: 'START_PACKING', label: 'Start packing', captureType: 'PACKING_VIDEO' },
         progressStage: 'PACKING',
-        notificationCopy: notify('Both parties confirmed — ready for packing', 'Next, record the item being packed, sealed, and associated with its shipping label.'),
-        inboxSentence: 'Ready for packing evidence.',
+        notificationCopy: notify('The buyer confirmed. Ready to pack.', 'Start packing whenever you are ready.'),
+        inboxSentence: 'Pack your item.',
         inboxBucket: 'NEEDS_ATTENTION',
       });
     }
     return waitingView(input, role, {
-      headline: 'Seller is preparing the shipment',
-      description: `${name} will pack and seal the item.`,
+      headline: "You're done for now",
+      description: 'Waiting for the seller to prepare your shipment.',
       nextHappens: "We'll notify you when the package is on the way.",
       waitingReason: 'SELLER_PACKING',
       waitingOnTask: 'pack and seal the item',
       progressStage: 'PACKING',
       lockedExplanation: 'Packing begins after both participants confirm the transaction details.',
-      notificationCopy: notify('Both parties confirmed', 'The seller is preparing the shipment. You don\'t need to do anything right now.'),
-      inboxSentence: `${name} is preparing the shipment.`,
+      notificationCopy: notify('Confirmed', 'The seller is preparing your shipment. You are done for now.'),
+      inboxSentence: 'Waiting for the seller to prepare your shipment.',
     });
   }
 
@@ -735,41 +781,43 @@ function resolveStatus(input: UxFlowInput, role: ParticipantRole, protocol: Pack
     if (role === 'SELLER' && !protocol.sellerReferenceComplete) {
       return actionView({
         humanState: 'READY_TO_PACK',
-        headline: 'Finish packing evidence',
-        description: 'The packing recording is in. Capture the sealed label next.',
-        instruction: 'Record a clear photo of the shipping label and seal.',
-        nextHappens: 'Then you can add tracking and ship.',
-        primaryAction: { kind: 'RECORD_SEAL', label: 'Capture shipping label', captureType: 'SHIPPING_LABEL' },
+        headline: 'Photograph the sealed package',
+        description: 'Your packing video is saved. Attach your shipping label, then take one clear photo showing the label and sealed package.',
+        instruction: 'Attach your shipping label, then take one clear photo showing the label and sealed package.',
+        nextHappens: 'PackProof will try to read the tracking number from the label.',
+        primaryAction: { kind: 'RECORD_SEAL', label: 'Take photo', captureType: 'SHIPPING_LABEL' },
         progressStage: 'PACKING',
         lockedExplanation: 'Shipping begins after packing video and seal evidence are ready.',
         prerequisites,
-        notificationCopy: notify('Finish packing evidence', 'Capture the shipping label and seal, then you can ship.'),
-        inboxSentence: 'Packing still needs a shipping-label photo.',
+        completedContext: protocol.hasPackingVideo ? ['Packing video'] : [],
+        notificationCopy: notify('Photograph the sealed package', 'Your packing video is saved. Now photograph the label on the sealed box.'),
+        inboxSentence: 'Photograph your sealed package.',
       });
     }
     if (role === 'SELLER') {
       return actionView({
         humanState: 'READY_TO_SHIP',
-        headline: 'You can ship the package',
-        description: 'Packing evidence is ready.',
-        instruction: 'Add the carrier and tracking number.',
-        nextHappens: `${name} will record the package when it arrives.`,
+        headline: 'Add tracking',
+        description: 'Packing is complete.',
+        instruction: 'Add the carrier and tracking number if they are not already filled in.',
+        nextHappens: `${name} will be notified when the package is on the way.`,
         primaryAction: { kind: 'ADD_SHIPMENT', label: 'Add tracking' },
         progressStage: 'SHIPPING',
         prerequisites,
-        notificationCopy: notify('Evidence ready', 'You can ship the package. Add tracking to finish this step.'),
-        inboxSentence: 'Add tracking to ship the package.',
+        completedContext: ['Packing video', 'Package photo'],
+        notificationCopy: notify('Packing complete', 'Add tracking if PackProof did not already find it.'),
+        inboxSentence: 'Add tracking.',
       });
     }
     return waitingView(input, role, {
-      headline: 'Seller is preparing the shipment',
-      description: `${name} finished packing evidence and can ship next.`,
+      headline: "You're done for now",
+      description: 'Waiting for the seller to ship your package.',
       nextHappens: "We'll notify you when the package is on the way.",
       waitingReason: 'SELLER_SHIPMENT',
       waitingOnTask: 'ship the package',
       progressStage: 'SHIPPING',
-      notificationCopy: notify('Evidence ready', 'The seller can now ship the package.'),
-      inboxSentence: `${name} is getting the package ready to ship.`,
+      notificationCopy: notify('Packing complete', 'The seller can now ship the package.'),
+      inboxSentence: 'Waiting for the seller to ship your package.',
     });
   }
 
@@ -778,36 +826,37 @@ function resolveStatus(input: UxFlowInput, role: ParticipantRole, protocol: Pack
       if (!protocol.hasArrivalPhoto) {
         return actionView({
           humanState: 'DELIVERY_REVIEW',
-          headline: 'Delivery review',
-          description: 'The package is on the way — record it when it arrives.',
-          instruction: 'Photograph the sealed package before opening it.',
-          nextHappens: 'Then record a continuous unboxing.',
-          primaryAction: { kind: 'RECORD_ARRIVAL', label: 'Record arrival', captureType: 'DELIVERY_PHOTO' },
-          secondaryAction: { kind: 'MARK_RECEIVED', label: 'Mark received without video' },
+          headline: 'Your package arrived',
+          description: 'Photograph the sealed package before you open it.',
+          instruction: 'Take one photo of the unopened package, including the shipping label.',
+          nextHappens: 'Then you can open it on camera.',
+          primaryAction: { kind: 'RECORD_ARRIVAL', label: 'Take photo', captureType: 'DELIVERY_PHOTO' },
+          secondaryAction: { kind: 'MARK_RECEIVED', label: 'Skip photos' },
           progressStage: 'DELIVERY',
-          notificationCopy: notify('In transit', 'Record the sealed package when it arrives.'),
-          inboxSentence: 'Record the sealed package when it arrives.',
+          notificationCopy: notify('Your package arrived', 'Photograph the sealed package before you open it.'),
+          inboxSentence: 'Photograph the arrived package.',
         });
       }
       return actionView({
         humanState: 'DELIVERY_REVIEW',
-        headline: 'Record unboxing',
-        description: 'Arrival photo is in. Next, record opening the package.',
-        instruction: 'Keep the opening continuous from sealed package to contents.',
-        nextHappens: 'Then you can mark the PackProof complete.',
+        headline: 'Record the unboxing',
+        description: 'Arrival photo is saved. Keep the opening in one take.',
+        instruction: 'Start with the sealed package and keep recording until the contents are visible.',
+        nextHappens: 'Then you can finish this PackProof.',
         primaryAction: { kind: 'RECORD_UNBOXING', label: 'Record unboxing', captureType: 'UNBOXING_VIDEO' },
-        secondaryAction: { kind: 'MARK_RECEIVED', label: 'Mark received without video' },
+        secondaryAction: { kind: 'MARK_RECEIVED', label: 'Skip video' },
         progressStage: 'DELIVERY',
-        notificationCopy: notify('Delivery review', 'Record a continuous unboxing of the arrived package.'),
+        completedContext: ['Arrival photo'],
+        notificationCopy: notify('Record the unboxing', 'Keep the opening in one continuous take.'),
         inboxSentence: 'Record unboxing of the arrived package.',
       });
     }
     return {
       humanState: 'IN_TRANSIT',
-      headline: 'In transit',
-      description: `${name} will record the package when it arrives.`,
-      instruction: NO_ACTION,
-      nextHappens: "We'll notify you after they record delivery.",
+      headline: "You're done for now",
+      description: 'Your packing evidence has been saved. We\'re waiting for the shipment to arrive.',
+      instruction: DONE_FOR_NOW,
+      nextHappens: "We'll notify you after delivery is recorded.",
       actionRequiredBy: 'BUYER',
       primaryAction: null,
       secondaryAction: null,
@@ -817,9 +866,10 @@ function resolveStatus(input: UxFlowInput, role: ParticipantRole, protocol: Pack
       waitingOnTask: 'record delivery',
       lockedExplanation: null,
       prerequisites: [],
-      notificationCopy: notify('In transit', 'The buyer will record the package on arrival.'),
+      completedContext: ['Packing video', 'Package photo'],
+      notificationCopy: notify('On the way', 'We\'ll notify you when anything else needs your attention.'),
       inboxBucket: 'WAITING',
-      inboxSentence: `Waiting for ${name} to record delivery.`,
+      inboxSentence: "You're done for now. We'll notify you when something needs your attention.",
       noActionRequired: true,
     };
   }
@@ -838,14 +888,14 @@ function resolveStatus(input: UxFlowInput, role: ParticipantRole, protocol: Pack
       });
     }
     return actionView({
-      headline: 'Complete this PackProof',
+      headline: 'Finish',
       description: shipped ? 'Delivery has been recorded.' : 'Both of you confirmed the handoff.',
-      instruction: 'Confirm that everything is complete.',
-      nextHappens: 'When both of you confirm, your PackProof Passport is ready.',
-      primaryAction: { kind: 'COMPLETE_TRANSACTION', label: 'Mark complete' },
+      instruction: 'Confirm that everything looks complete.',
+      nextHappens: 'When both of you confirm, this PackProof is finished.',
+      primaryAction: { kind: 'COMPLETE_TRANSACTION', label: 'Finish' },
       progressStage: 'COMPLETE',
-      notificationCopy: notify('Your turn', 'Mark this PackProof complete.'),
-      inboxSentence: 'Mark this PackProof complete.',
+      notificationCopy: notify('Finish this PackProof', 'Confirm that everything looks complete.'),
+      inboxSentence: 'Finish this PackProof.',
     });
   }
 
@@ -872,46 +922,46 @@ function applyProcessing(
     return {
       ...view,
       humanState: 'EVIDENCE_PROCESSING',
-      headline: securing ? 'Securing your evidence' : 'Uploading evidence',
+      headline: securing ? 'Evidence securely saved' : 'Evidence saved securely',
       description: securing
-        ? 'PackProof is finishing the evidence record.'
-        : 'Your capture is on its way to PackProof.',
-      instruction: 'You can leave this screen. PackProof will update when it finishes.',
-      nextHappens: 'When processing completes, the next step appears automatically.',
+        ? 'PackProof is finishing the record. You can leave.'
+        : 'Uploading when your connection is available. You can leave.',
+      instruction: DONE_FOR_NOW,
+      nextHappens: 'The next step appears automatically when this finishes.',
       actionRequiredBy: 'PACKPROOF',
       primaryAction: null,
       secondaryAction: null,
       waitingReason: 'EVIDENCE_PROCESSING',
       waitingOnName: 'PackProof',
       waitingOnTask: securing ? 'secure the evidence record' : 'upload the evidence',
-      notificationCopy: notify(securing ? 'Securing evidence' : 'Uploading evidence', 'You can leave the screen. PackProof will update when it finishes.'),
+      notificationCopy: notify(securing ? 'Evidence saved' : 'Uploading evidence', 'You can leave. PackProof will keep going.'),
       inboxBucket: 'IN_PROGRESS',
-      inboxSentence: securing ? 'PackProof is securing your evidence.' : 'Uploading packing evidence.',
+      inboxSentence: securing ? 'PackProof is saving your evidence.' : 'Uploading packing evidence.',
       noActionRequired: true,
     };
   }
   if (processing.phase === 'FAILED_RETRY') {
     return {
       ...view,
-      headline: 'Upload paused',
-      description: 'The capture is still saved on this device.',
-      instruction: 'Retry the upload. You do not need to recapture.',
-      nextHappens: 'After the retry succeeds, PackProof will secure the evidence record.',
+      headline: 'Your recording is safe',
+      description: "We couldn't upload it yet because your connection dropped.",
+      instruction: "You can leave PackProof. We'll retry automatically. You do not need to recapture.",
+      nextHappens: 'After the upload succeeds, PackProof will continue.',
       lockedExplanation: 'The original capture is still on this device. Do not clear app data or uninstall.',
-      notificationCopy: notify('Retry the upload', 'Your capture is saved. Retry the upload — you do not need to recapture.'),
+      notificationCopy: notify('Your recording is safe', 'We will retry the upload. You do not need to recapture.'),
       inboxBucket: 'NEEDS_ATTENTION',
-      inboxSentence: 'Retry the evidence upload. You do not need to recapture.',
+      inboxSentence: 'Your recording is safe. We will retry the upload.',
       noActionRequired: false,
     };
   }
   return {
     ...view,
-    headline: 'Capture didn’t go through',
-    description: 'PackProof could not use that recording.',
+    headline: 'We could not use that recording',
+    description: 'Your previous work was not saved as finished evidence.',
     instruction: 'Record the step again from the start.',
     nextHappens: 'A new capture replaces the failed one.',
     lockedExplanation: 'Recapture this step. A retry of the old file will not work.',
-    notificationCopy: notify('Please recapture', 'That evidence could not be used. Record the step again.'),
+    notificationCopy: notify('Please recapture', 'That recording could not be used. Try again.'),
     inboxBucket: 'NEEDS_ATTENTION',
     inboxSentence: 'Please recapture this step.',
     noActionRequired: false,
@@ -973,33 +1023,36 @@ export function actionOutcomeCopy(kind: UxPrimaryActionKind, next: NextRequiredA
   switch (kind) {
     case 'CONFIRM_TERMS':
       return {
-        working: 'Confirming terms…',
-        succeeded: 'Terms confirmed',
+        working: 'Confirming…',
+        succeeded: 'Confirmed ✓',
         nextStep: next.humanState === 'READY_TO_PACK'
-          ? 'Both parties confirmed — you can now pack the order.'
+          ? 'The buyer confirmed. You can start packing.'
           : next.noActionRequired
             ? `Waiting for ${next.waitingOnName ?? 'the other participant'}.`
             : nextStep,
       };
     case 'START_PACKING':
+      return { working: 'Opening camera…', succeeded: 'Packing video saved ✓', nextStep };
     case 'RECORD_SEAL':
+      return { working: 'Opening camera…', succeeded: 'Package captured ✓', nextStep };
     case 'RECORD_ARRIVAL':
+      return { working: 'Opening camera…', succeeded: 'Package captured ✓', nextStep };
     case 'RECORD_UNBOXING':
-      return { working: 'Opening capture…', succeeded: 'Ready to capture', nextStep };
+      return { working: 'Opening camera…', succeeded: 'Unboxing saved ✓', nextStep };
     case 'ADD_SHIPMENT':
-      return { working: 'Saving shipment…', succeeded: 'Shipment recorded', nextStep: 'The package is in transit.' };
+      return { working: 'Saving tracking…', succeeded: 'Tracking added ✓', nextStep: "You're done for now. We'll take it from here." };
     case 'CONFIRM_HANDOFF':
-      return { working: 'Confirming handoff…', succeeded: 'Handoff confirmed', nextStep };
+      return { working: 'Confirming handoff…', succeeded: 'Handoff confirmed ✓', nextStep };
     case 'COMPLETE_TRANSACTION':
-      return { working: 'Completing PackProof…', succeeded: 'Completion confirmed', nextStep };
+      return { working: 'Finishing…', succeeded: 'PackProof complete ✓', nextStep };
     case 'AUTHORIZE_RETURN':
-      return { working: 'Authorizing return…', succeeded: 'Return authorized', nextStep };
+      return { working: 'Authorizing return…', succeeded: 'Return authorized ✓', nextStep };
     case 'ADD_RETURN_SHIPMENT':
-      return { working: 'Saving return shipment…', succeeded: 'Return shipment recorded', nextStep };
+      return { working: 'Saving tracking…', succeeded: 'Tracking added ✓', nextStep };
     case 'COMPLETE_RETURN':
-      return { working: 'Completing return…', succeeded: 'Return completion confirmed', nextStep };
+      return { working: 'Finishing…', succeeded: 'Return complete ✓', nextStep };
     default:
-      return { working: 'Working…', succeeded: 'Done', nextStep };
+      return { working: 'Working…', succeeded: 'Done ✓', nextStep };
   }
 }
 
@@ -1007,6 +1060,62 @@ export function orderLabel(transaction: PackProofTransaction): string | null {
   const source = transaction.source;
   if (source && 'externalOrderId' in source && source.externalOrderId) return `Order #${source.externalOrderId}`;
   return null;
+}
+
+export const DIRECT_CAPTURE_ACTIONS = new Set<UxPrimaryActionKind>([
+  'START_PACKING',
+  'RECORD_SEAL',
+  'RECORD_ARRIVAL',
+  'RECORD_UNBOXING',
+]);
+
+export type PrimaryActionHref =
+  | { pathname: '/transaction/[id]'; params: { id: string } }
+  | { pathname: '/capture/[id]'; params: { id: string; type: EvidenceType } }
+  | { pathname: '/transaction/invite/[id]'; params: { id: string } }
+  | { pathname: '/transaction/new'; params: { transactionId: string } }
+  | { pathname: '/passport/[id]'; params: { id: string } };
+
+export function hrefForPrimaryAction(
+  kind: UxPrimaryActionKind | undefined,
+  transactionId: string,
+): PrimaryActionHref {
+  const captureType = kind ? captureTypeForAction(kind) : null;
+  if (kind && DIRECT_CAPTURE_ACTIONS.has(kind) && captureType) {
+    return { pathname: '/capture/[id]', params: { id: transactionId, type: captureType } };
+  }
+  if (kind === 'INVITE_BUYER') {
+    return { pathname: '/transaction/invite/[id]', params: { id: transactionId } };
+  }
+  if (kind === 'EDIT_TERMS') {
+    return { pathname: '/transaction/new', params: { transactionId } };
+  }
+  if (kind === 'OPEN_PASSPORT') {
+    return { pathname: '/passport/[id]', params: { id: transactionId } };
+  }
+  return { pathname: '/transaction/[id]', params: { id: transactionId } };
+}
+
+export function groupHomeInbox<T>(
+  items: T[],
+  resolve: (item: T) => NextRequiredAction,
+): { needsAttention: T[]; waiting: T[] } {
+  const grouped = groupByInboxBucket(items, resolve);
+  return {
+    needsAttention: grouped.NEEDS_ATTENTION,
+    waiting: [...grouped.WAITING, ...grouped.IN_PROGRESS],
+  };
+}
+
+export function groupLibrary<T>(
+  items: T[],
+  resolve: (item: T) => NextRequiredAction,
+): { active: T[]; completed: T[] } {
+  const grouped = groupByInboxBucket(items, resolve);
+  return {
+    active: [...grouped.NEEDS_ATTENTION, ...grouped.WAITING, ...grouped.IN_PROGRESS],
+    completed: grouped.COMPLETED,
+  };
 }
 
 export { otherLabel, roleOf as roleFromViewer };

@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { Button, Card } from '@/components/ui';
+import { Button } from '@/components/ui';
 import { colors, radius } from '@/constants/brand';
 import type { AppIconName } from '@/components/app-icon';
 import type { HumanState, NextRequiredAction, ProgressStep, UxPrimaryActionKind, UxSecondaryActionKind } from '@/lib/ux-flow';
@@ -78,17 +78,19 @@ export function NextActionCard({
   busy = false,
   outcome,
   onPrimary,
-  onSecondary,
+  onQuietSecondary,
 }: {
   ux: NextRequiredAction;
   busy?: boolean;
   outcome?: { succeeded: string; nextStep: string } | null;
   onPrimary?: () => void;
-  onSecondary?: () => void;
+  onQuietSecondary?: () => void;
 }) {
+  const showStep = ux.consumerState !== 'complete' && ux.consumerState !== 'blocked';
+  const quietSecondary = ux.secondaryAction && ux.secondaryAction.kind === 'RESEND_INVITE' ? ux.secondaryAction : null;
   return (
-    <Card style={styles.nextCard}>
-      <HumanStateBadge state={ux.humanState} label={ux.humanStateLabel} />
+    <View style={styles.nextCard}>
+      {showStep ? <Text style={styles.step}>Step {ux.stepCurrent} of {ux.stepTotal}</Text> : null}
       {outcome ? (
         <View style={styles.outcome}>
           <Text style={styles.outcomeTitle}>{outcome.succeeded}</Text>
@@ -97,18 +99,14 @@ export function NextActionCard({
       ) : null}
       <Text style={styles.headline}>{ux.headline}</Text>
       <Text style={styles.body}>{ux.description}</Text>
-      <Text style={styles.instruction}>{ux.instruction}</Text>
-      {ux.nextHappens ? <Text style={styles.nextHappens}>{ux.nextHappens}</Text> : null}
-      {ux.prerequisites.length ? (
+      {ux.instruction && ux.instruction !== ux.description ? <Text style={styles.instruction}>{ux.instruction}</Text> : null}
+      {ux.completedContext.length ? (
         <View style={styles.prereqList}>
-          {ux.prerequisites.map((item) => (
-            <Text key={item.label} style={[styles.prereq, item.complete && styles.prereqDone]}>
-              {item.complete ? '✓' : '○'} {item.label}
-            </Text>
+          {ux.completedContext.map((item) => (
+            <Text key={item} style={[styles.prereq, styles.prereqDone]}>✓ {item}</Text>
           ))}
         </View>
       ) : null}
-      {ux.lockedExplanation && !ux.primaryAction ? <Text style={styles.lock}>{ux.lockedExplanation}</Text> : null}
       {ux.primaryAction && onPrimary ? (
         <Button
           label={ux.primaryAction.label}
@@ -117,15 +115,10 @@ export function NextActionCard({
           onPress={onPrimary}
         />
       ) : null}
-      {ux.secondaryAction && onSecondary && ux.secondaryAction.kind !== 'OPEN_PASSPORT' ? (
-        <Button
-          label={ux.secondaryAction.label}
-          icon={iconForAction(ux.secondaryAction.kind)}
-          variant="secondary"
-          onPress={onSecondary}
-        />
+      {quietSecondary && onQuietSecondary ? (
+        <Button label={quietSecondary.label} variant="ghost" onPress={onQuietSecondary} />
       ) : null}
-    </Card>
+    </View>
   );
 }
 
@@ -160,14 +153,13 @@ const styles = StyleSheet.create({
   badgeText_progress: { color: colors.blue },
   badgeText_done: { color: colors.tealDark },
   badgeText_warn: { color: colors.danger },
-  nextCard: { gap: 10 },
-  headline: { color: colors.ink, fontSize: 24, lineHeight: 30, fontWeight: '900' },
-  body: { color: colors.muted, fontSize: 14, lineHeight: 21 },
-  instruction: { color: colors.ink, fontSize: 15, lineHeight: 22, fontWeight: '700' },
-  nextHappens: { color: colors.muted, fontSize: 13, lineHeight: 19 },
-  lock: { color: colors.amber, fontSize: 12, lineHeight: 18 },
+  nextCard: { gap: 12 },
+  step: { color: colors.muted, fontSize: 12, fontWeight: '800' },
+  headline: { color: colors.ink, fontSize: 28, lineHeight: 34, fontWeight: '900' },
+  body: { color: colors.muted, fontSize: 15, lineHeight: 22 },
+  instruction: { color: colors.ink, fontSize: 16, lineHeight: 23, fontWeight: '600' },
   prereqList: { gap: 6, marginTop: 2 },
-  prereq: { color: colors.muted, fontSize: 13, fontWeight: '700' },
+  prereq: { color: colors.muted, fontSize: 14, fontWeight: '700' },
   prereqDone: { color: colors.teal },
   outcome: { gap: 4, padding: 12, borderRadius: 14, backgroundColor: 'rgba(70,124,99,0.10)' },
   outcomeTitle: { color: colors.tealDark, fontSize: 16, fontWeight: '900' },

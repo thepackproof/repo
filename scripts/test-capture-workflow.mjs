@@ -57,7 +57,7 @@ assert.match(captureGuideFor('PACKING_VIDEO', true).instruction, /PP mark/);
 assert.match(captureChecklists.PACKING_VIDEO.join(' '), /paid postage is not required/i);
 assert.match(captureChecklists.PACKING_VIDEO.join(' '), /Scanning the tracking barcode is optional/);
 assert.match(captureChecklists.RETURN_PACKING_VIDEO.join(' '), /paid postage is not required/i);
-assert.equal(capturePreflightFor('PACKING_VIDEO').startLabel, 'Start capture');
+assert.equal(capturePreflightFor('PACKING_VIDEO').startLabel, "I'm ready");
 assert.match(capturePreflightFor('PACKING_VIDEO').title, /packing process/);
 assert.deepEqual(capturePreflightFor('PACKING_VIDEO').expectations, [
   'Show the item',

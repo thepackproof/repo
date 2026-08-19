@@ -265,11 +265,13 @@ export default function CaptureScreen() {
     if (!cameraResult?.granted || (isVideo && !micResult?.granted)) {
       const blocked = cameraResult?.canAskAgain === false || (isVideo && micResult?.canAskAgain === false);
       Alert.alert(
-        'Permission required',
-        isVideo ? 'Camera and microphone access are required to record evidence video.' : 'Camera access is required to photograph transaction evidence.',
+        'Camera access is needed',
+        isVideo
+          ? 'PackProof needs camera and microphone access to record packing. Enable Camera for PackProof in Settings.'
+          : 'PackProof needs camera access to photograph the package. Enable Camera for PackProof in Settings.',
         blocked
-          ? [{ text: 'Cancel', style: 'cancel' }, { text: 'Open settings', onPress: () => { void Linking.openSettings(); } }]
-          : [{ text: 'OK' }],
+          ? [{ text: 'Not now', style: 'cancel' }, { text: 'Open Settings', onPress: () => { void Linking.openSettings(); } }]
+          : [{ text: 'Continue' }],
       );
       return;
     }

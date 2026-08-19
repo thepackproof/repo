@@ -426,10 +426,10 @@ export const onEvidenceUploaded = onObjectFinalized({ timeoutSeconds: 540, memor
     await notifyOtherParticipants(
       transactionId,
       uploaderId,
-      integrityAccepted ? 'Evidence ready' : 'Please recapture',
+      integrityAccepted ? 'Evidence saved' : 'Please recapture',
       integrityAccepted
-        ? 'PackProof finished processing the evidence. Open the transaction to see what happens next.'
-        : 'That evidence could not be used. Open the PackProof to recapture this step.',
+        ? 'PackProof finished saving the evidence. Open the PackProof to see what happens next.'
+        : 'That recording could not be used. Open the PackProof to try this step again.',
     );
   }
 });

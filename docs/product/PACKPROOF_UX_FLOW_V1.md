@@ -1,37 +1,66 @@
-# PackProof UX Flow v1
+# PackProof consumer UX
 
-Presentation-layer specification. **Do not change** evidence, authorization, state-transition, hashing, Passport, or API semantics to implement this.
+Presentation-layer contract. **Do not change** evidence, authorization, state-transition, hashing, Passport, or API semantics to implement this.
 
-## Design standard
+## Goal
 
-At any moment a user should answer three questions in about two seconds:
+Make participating in a PackProof require so little thought that using it feels easier than not using it.
 
-1. What is happening?
-2. What am I supposed to do?
-3. What happens next?
+Evidence collection stays comprehensive. User participation stays minimal. Complexity is automated, combined, hidden, pre-populated, and sequenced — never stripped from the integrity layer.
 
-Users never navigate the backend state machine (`TERMS_REVIEW`, `TERMS_LOCKED`, `PACKED`, …) directly. Screens consume `resolveNextRequiredAction()` in `src/lib/ux-flow.ts` — the single UX source of truth.
+## UX contract
 
-## Mental model
+- The software determines who needs to act, what they should do, whether they can do it yet, what is complete, and where to go next.
+- One screen, one primary CTA.
+- PackProof terminology is not prerequisite knowledge.
+- Every tap, field, decision, permission, screen, wait, confirmation, and explanation must justify itself against the friction budget.
 
-Create transaction → agree on what is being sent → record it being packed → ship it → optionally record receipt/return → Passport.
+## Information architecture
 
-## Next Required Action
+Bottom navigation: **Home | PackProofs | Account**
 
-**Input:** transaction state, participant role, evidence/protocol state, pending participant actions, return state, shipment state, optional evidence-processing phase.
+Capture is an operation (`/capture/[id]`), not a tab.
 
-**Output:** headline, description, instruction, `actionRequiredBy`, primary/secondary action, progress stage, waiting reason, notification copy, inbox bucket.
+- **Home** answers “What do I need to do?” — Needs your attention, then Waiting. No completed library.
+- **PackProofs** is Active | Completed records. No competing workflow dashboard.
+- **Account** stays settings. Research tooling is behind `featureFlags.researchMode`.
 
-Each screen presents **one action** or explicitly says **no action required from you**. Waiting is a first-class state (who, what they must do, what happens after, optional remind/share). Never show an unexplained disabled button.
+## Next Action Engine
 
-## Inbox buckets
+Single source of truth: `resolveNextRequiredAction()` in `src/lib/ux-flow.ts`.
 
-Needs your attention → Waiting on someone else → In progress → Completed.
+Screens must not independently interpret backend states such as `READY_TO_PACK`. The consumer sees an instruction (`Photograph the sealed package`) and one button (`Take photo`).
 
-## Role-aware copy
+Home capture actions deep-link through `hrefForPrimaryAction()` straight into camera when the next job is packing, label, arrival, or unboxing.
 
-The same backend state is a different sentence for seller vs buyer. Notification title/body must match the in-app headline the deep link opens onto.
+## Active PackProof
 
-## Forbidden on primary surfaces
+Identity, step, instruction, one CTA, completed context, then quiet **View details**.
 
-Technical IDs, backend enums as badges, multiple equally prominent CTAs, capture chrome unrelated to the current instruction, generic vanishing toasts, unexplained Pro chrome.
+Details hold transaction, activity, evidence, optional extras, research (flagged), and export.
+
+Completed PackProofs lead with **View Passport**. Information is useful after the operational job is gone.
+
+## Creation
+
+Manual create: Selling/Buying → item + price → share link. Extra fields stay collapsed. After create, go to invite.
+
+Commerce ingest and share-to-PackProof remain later phases.
+
+## Integrity boundary
+
+```
+USER EXPERIENCE
+        ↓
+NEXT ACTION ENGINE
+        ↓
+DOMAIN WORKFLOW
+        ↓
+EVIDENCE ACQUISITION
+        ↓
+INTEGRITY / MANIFEST / AUDIT
+        ↓
+PACKPROOF PASSPORT
+```
+
+UX simplification must never mean evidentiary simplification.

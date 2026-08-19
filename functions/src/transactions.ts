@@ -211,7 +211,7 @@ export const acceptInvite = onCall(callOptions, async (request) => {
   });
 
   await appendEvent(result.transactionId, uid, 'BUYER_JOINED', 'Buyer joined the PackProof and can review the proposed terms.');
-  await notifyOtherParticipants(result.transactionId, uid, 'Buyer joined your PackProof', 'Review the transaction before confirming the terms.');
+  await notifyOtherParticipants(result.transactionId, uid, 'The buyer joined', 'Review the details and confirm them.');
   return result;
 });
 
@@ -248,14 +248,14 @@ export const confirmTerms = onCall(callOptions, async (request) => {
     uid,
     locked
       ? (actorIsSeller
-        ? 'Both parties confirmed'
-        : shippedSale ? 'Both parties confirmed — ready for packing' : 'Both parties confirmed')
-      : 'Your turn',
+        ? 'Confirmed'
+        : shippedSale ? 'The buyer confirmed. Ready to pack.' : 'Confirmed')
+      : 'Confirm the transaction',
     locked
       ? (actorIsSeller
-        ? (shippedSale ? 'The seller is preparing the shipment. You don\'t need to do anything right now.' : 'Confirm when the item changes hands.')
-        : (shippedSale ? 'Next, record the item being packed, sealed, and associated with its shipping label.' : 'Confirm when the item changes hands.'))
-      : 'Review the sale details and confirm them.',
+        ? (shippedSale ? 'The seller is preparing your shipment. You are done for now.' : 'Confirm when the item changes hands.')
+        : (shippedSale ? 'Start packing whenever you are ready.' : 'Confirm when the item changes hands.'))
+      : 'Review the details and confirm them.',
   );
   return { locked };
 });
@@ -792,7 +792,7 @@ export const submitShipping = onCall(callOptions, async (request) => {
     labelEvidenceMatchStatus,
     scannedTrackingNumber,
   });
-  await notifyOtherParticipants(input.transactionId, uid, 'Package is in transit', 'The buyer will record the package when it arrives.');
+  await notifyOtherParticipants(input.transactionId, uid, 'On the way', "We'll notify you when anything else needs your attention.");
   return { success: true, labelEvidenceMatchStatus };
 });
 
@@ -805,7 +805,7 @@ export const markReceived = onCall(callOptions, async (request) => {
   if (data.status !== 'SHIPPED') throw new HttpsError('failed-precondition', 'This item is not currently marked as shipped.');
   await ref.update({ status: 'BUYER_REVIEW', receivedAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() });
   await appendEvent(transactionId, uid, 'RECEIVED', 'Buyer confirmed receipt of the shipment.');
-  await notifyOtherParticipants(transactionId, uid, 'Buyer recorded delivery', 'The shipment is now in delivery review.');
+  await notifyOtherParticipants(transactionId, uid, 'Delivery recorded', 'Finish this PackProof when you are ready.');
   return { success: true };
 });
 
@@ -855,7 +855,7 @@ export const completeTransaction = onCall(callOptions, async (request) => {
     return both;
   });
   await appendEvent(transactionId, uid, 'COMPLETION_CONFIRMED', completed ? 'Both parties marked the PackProof complete.' : 'A participant marked the transaction complete.');
-  await notifyOtherParticipants(transactionId, uid, completed ? 'PackProof complete' : 'Your turn', completed ? 'Your PackProof Passport is ready.' : 'Mark this PackProof complete.');
+  await notifyOtherParticipants(transactionId, uid, completed ? 'PackProof complete' : 'Finish this PackProof', completed ? 'The finished record is ready when you need it.' : 'Confirm that everything looks complete.');
   return { completed };
 });
 

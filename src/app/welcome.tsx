@@ -40,15 +40,15 @@ export default function WelcomeScreen() {
       <View style={styles.hero}>
         <BrandIcon style={styles.logo} />
         <BrandLockup />
-        <Text style={styles.title}>A shared record from packing through arrival.</Text>
-        <Text style={styles.body}>Create a private, review-ready record of the item, the confirmed terms, packing, arrival, and return. PackProof organizes evidence; it does not decide disputes.</Text>
+        <Text style={styles.title}>Protect a shipment without extra chores.</Text>
+        <Text style={styles.body}>Confirm the sale, pack on camera, and PackProof keeps the record. You should not have to learn how it works.</Text>
       </View>
 
       <View style={styles.features}>
         {([
-          ['lock.shield.fill', 'Locked terms', 'Both parties confirm one version before fulfillment.'],
-          ['video.fill', 'Guided capture', 'Packing, the visible PP mark, and arrival observations stay connected to the transaction.'],
-          ['doc.text.fill', 'Exportable packet', 'Server receipt times, file hashes, and the audit timeline in one presentation dossier.'],
+          ['checkmark.shield.fill', 'Confirm the details', 'Both of you agree on the item and price before packing starts.'],
+          ['video.fill', 'Pack on camera', 'PackProof records while you do what you were already doing.'],
+          ['checkmark.circle.fill', 'We’ll tell you what’s next', 'One button when it’s your turn. Nothing to hunt for when it isn’t.'],
         ] satisfies [AppIconName, string, string][]).map(([icon, title, body]) => <View key={title} style={styles.feature}>
           <View style={styles.featureIcon}><AppIcon name={icon} size={20} tintColor={colors.teal} /></View>
           <View style={{ flex: 1 }}><Text style={styles.featureTitle}>{title}</Text><Text style={styles.featureBody}>{body}</Text></View>

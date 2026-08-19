@@ -1,10 +1,10 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Button, Card } from './ui';
-import { HumanStateBadge, iconForAction } from './ux-orchestration';
+import { iconForAction } from './ux-orchestration';
 import { colors } from '@/constants/brand';
 import { formatMoney } from '@/lib/format';
-import { resolveNextRequiredAction, viewerRole, type NextRequiredAction } from '@/lib/ux-flow';
+import { hrefForPrimaryAction, resolveNextRequiredAction, viewerRole, type NextRequiredAction } from '@/lib/ux-flow';
 import type { PackProofTransaction } from '@/types/models';
 
 export function transactionUx(transaction: PackProofTransaction, uid: string): NextRequiredAction {
@@ -14,27 +14,42 @@ export function transactionUx(transaction: PackProofTransaction, uid: string): N
   });
 }
 
-export function TransactionCard({ transaction, uid }: { transaction: PackProofTransaction; uid: string }) {
+export function TransactionCard({
+  transaction,
+  uid,
+  surface = 'library',
+}: {
+  transaction: PackProofTransaction;
+  uid: string;
+  surface?: 'home-task' | 'home-wait' | 'library';
+}) {
   const router = useRouter();
   const role = viewerRole(transaction, uid);
   const ux = transactionUx(transaction, uid);
+  const detailHref = { pathname: '/transaction/[id]' as const, params: { id: transaction.id } };
+  const actionHref = ux.primaryAction
+    ? hrefForPrimaryAction(ux.primaryAction.kind, transaction.id)
+    : detailHref;
+  const open = surface === 'home-task' ? actionHref : detailHref;
+
   return (
-    <Pressable onPress={() => router.push(`/transaction/${transaction.id}`)}>
+    <Pressable onPress={() => router.push(open)}>
       <Card style={styles.card}>
         <View style={styles.top}>
           <View style={styles.copy}>
-            <Text style={styles.role}>{role === 'SELLER' ? 'Selling' : 'Buying'}</Text>
+            <Text style={styles.role}>{role === 'SELLER' ? 'Selling' : 'Buying'} · {formatMoney(transaction.priceMinor, transaction.currency)}</Text>
             <Text numberOfLines={2} style={styles.title}>{transaction.title}</Text>
           </View>
-          <Text style={styles.price}>{formatMoney(transaction.priceMinor, transaction.currency)}</Text>
         </View>
-        <HumanStateBadge state={ux.humanState} label={ux.humanStateLabel} />
-        <Text style={styles.sentence}>{ux.inboxSentence}</Text>
-        {ux.primaryAction ? (
+        <Text style={styles.sentence}>{surface === 'library' ? ux.headline : ux.inboxSentence}</Text>
+        {surface === 'home-task' && ux.completedContext.length ? (
+          <Text style={styles.saved}>{ux.completedContext.map((item) => `${item} ✓`).join('  ')}</Text>
+        ) : null}
+        {surface === 'home-task' && ux.primaryAction ? (
           <Button
             label={ux.primaryAction.label}
             icon={iconForAction(ux.primaryAction.kind)}
-            onPress={() => router.push(`/transaction/${transaction.id}`)}
+            onPress={() => router.push(actionHref)}
           />
         ) : null}
       </Card>
@@ -48,6 +63,6 @@ const styles = StyleSheet.create({
   copy: { flex: 1, gap: 5 },
   role: { color: colors.muted, fontSize: 10, letterSpacing: 1.1, fontWeight: '800' },
   title: { color: colors.ink, fontSize: 18, lineHeight: 23, fontWeight: '800' },
-  price: { color: colors.teal, fontSize: 16, fontWeight: '900' },
-  sentence: { color: colors.ink, fontSize: 14, lineHeight: 20, fontWeight: '600' },
+  sentence: { color: colors.ink, fontSize: 15, lineHeight: 21, fontWeight: '600' },
+  saved: { color: colors.teal, fontSize: 13, fontWeight: '700' },
 });

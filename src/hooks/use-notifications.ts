@@ -18,8 +18,7 @@ export function useNotifications(uid?: string) {
     const register = async () => {
       if (Platform.OS === 'android') await Notifications.setNotificationChannelAsync('transactions', { name: 'Transaction updates', importance: Notifications.AndroidImportance.DEFAULT, vibrationPattern: [0, 180, 100, 180], lightColor: '#467C63' });
       const existing = await Notifications.getPermissionsAsync();
-      const permission = existing.status === 'granted' ? existing : await Notifications.requestPermissionsAsync();
-      if (permission.status !== 'granted' || !active) return;
+      if (existing.status !== 'granted' || !active) return;
       const projectId = Constants.expoConfig?.extra?.eas?.projectId ?? Constants.easConfig?.projectId;
       if (!projectId) return;
       const token = (await Notifications.getExpoPushTokenAsync({ projectId })).data;

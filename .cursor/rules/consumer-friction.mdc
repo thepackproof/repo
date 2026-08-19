@@ -1,0 +1,24 @@
+---
+description: Consumer UX friction budget for PackProof
+globs: src/app/**/*.tsx,src/components/**/*.tsx,src/lib/ux-flow.ts,src/lib/ux-activity.ts,src/lib/capture-guides.ts
+alwaysApply: false
+---
+
+# Consumer friction budget
+
+Evidence collection stays comprehensive. User participation stays minimal. Do not weaken hashes, manifests, attestation, or Passport to make a screen simpler.
+
+Before adding a consumer-facing tap, field, decision, permission, screen, wait, confirmation, or explanation, answer:
+
+- Can PackProof derive, pre-populate, or sequence this instead?
+- Does the user need this word, or is it domain jargon (`Passport`, `evidence packet`, `substrate`, `identifier region`, `attestation`, `READY_TO_PACK`)?
+- Is there already a next-action path in `src/lib/ux-flow.ts`? Do not re-interpret lifecycle in a screen.
+
+Rules:
+
+- Software decides the next action. The user should never choose between Capture and PackProofs.
+- One screen, one primary CTA. Optional work lives under Details.
+- Ask for a permission at the moment its usefulness is obvious.
+- Waiting states must say the user is done for now and that PackProof will notify them.
+- Errors must say what happened, whether prior work is saved, and what to do now.
+- Capture is an operation, not a tab. Home is the action queue. PackProofs is the library.
