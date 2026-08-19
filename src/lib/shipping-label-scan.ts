@@ -10,9 +10,9 @@ import {
 } from '@/lib/shipping-tracker';
 import type { ShippingLabelStillTelemetry, ShippingLabelTelemetry } from '@/types/telemetry';
 
-function decodeBase64ToBytes(base64: string): Uint8Array {
+function decodeBase64ToBytes(base64: string): Uint8Array<ArrayBuffer> {
   const binary = globalThis.atob(base64);
-  const bytes = new Uint8Array(binary.length);
+  const bytes = new Uint8Array(binary.length) as Uint8Array<ArrayBuffer>;
   for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
   return bytes;
 }

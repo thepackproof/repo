@@ -13,7 +13,7 @@ export class ConnectSessionsService {
     constructor(public readonly httpRequest: BaseHttpRequest) {}
     /**
      * Create or replay an order-bound Connect session
-     * Creates a seven-day order-bound capture session for an API client bound to an active PackProof Connect integration. This is merchant-server attested order binding, not the page-declared Button path. The capture URL and token are returned only here and on exact idempotent replay. Send the capture URL to the seller; do not log the token. After the seller redeems the handoff and packing evidence is server-finalized, PackProof posts packproof.evidence.finalized to callbackUrl.
+     * Creates a seven-day order-bound capture session for an API client bound to an active PackProof API integration. This is merchant-server attested order binding, not the page-declared Button path. The capture URL and token are returned only here and on exact idempotent replay. Send the capture URL to the seller; do not log the token. After the seller redeems the handoff and packing evidence is server-finalized, PackProof posts packproof.evidence.finalized to callbackUrl.
      * @returns CreateConnectSessionResponse The original Connect session for an exact idempotent retry.
      * @throws ApiError
      */

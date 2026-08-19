@@ -32,10 +32,10 @@ function evaluateConnectSessionCancel(session, principal, requestId, now) {
         return { type: 'REPLAY', session };
     }
     if (session.status === 'READY_FOR_CAPTURE' || session.transactionId) {
-        throw new errors_1.ApplicationError('CONFLICT', 'CONNECT_SESSION_NOT_CANCELLABLE', 'This PackProof Connect session was already redeemed and cannot be cancelled.');
+        throw new errors_1.ApplicationError('CONFLICT', 'CONNECT_SESSION_NOT_CANCELLABLE', 'This PackProof API session was already redeemed and cannot be cancelled.');
     }
     if (session.status !== 'PENDING_REDEMPTION') {
-        throw new errors_1.ApplicationError('FAILED_PRECONDITION', 'CONNECT_SESSION_NOT_CANCELLABLE', 'This PackProof Connect session cannot be cancelled in its current state.');
+        throw new errors_1.ApplicationError('FAILED_PRECONDITION', 'CONNECT_SESSION_NOT_CANCELLABLE', 'This PackProof API session cannot be cancelled in its current state.');
     }
     const event = {
         id: `evt_${(0, merchant_transaction_service_1.sha256)(`connect-cancelled\n${session.id}`).slice(0, 40)}`,
@@ -82,7 +82,7 @@ class MerchantConnectApplicationService {
         this.authorization.requireScope(principal, 'transactions:write');
         const integration = await this.integrations.findBoundIntegration(principal);
         if (!integration) {
-            throw new errors_1.ApplicationError('FORBIDDEN', 'INTEGRATION_NOT_BOUND', 'This API credential is not bound to an active PackProof Connect integration.');
+            throw new errors_1.ApplicationError('FORBIDDEN', 'INTEGRATION_NOT_BOUND', 'This API credential is not bound to an active PackProof API integration.');
         }
         await this.callbacks.validate(input.callbackUrl, integration.callbackOrigins);
         const result = await this.commerceContext.ingestConnectOrder({

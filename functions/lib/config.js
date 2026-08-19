@@ -16,7 +16,7 @@ exports.adminAppCheck = (0, app_check_1.getAppCheck)();
 exports.storage = (0, storage_1.getStorage)();
 exports.connectLinkBaseUrl = (0, params_1.defineString)('CONNECT_LINK_BASE_URL', {
     default: 'https://packproof.link',
-    description: 'Verified App Link domain used for PackProof Connect capture handoff.',
+    description: 'Verified App Link domain used for PackProof API capture handoff.',
 });
 exports.publicAppUrl = (0, params_1.defineString)('PUBLIC_APP_URL', {
     default: 'https://YOUR_PROJECT.web.app',
