@@ -16,6 +16,7 @@ import { MerchantEvidenceApplicationService } from '../../application/v1/merchan
 import { PublicCommerceHandoffApplicationService } from '../../application/v1/public-commerce-handoff-service';
 import { ParticipantCaptureApplicationService } from '../../application/v1/participant-capture-service';
 import { generateEvidencePacket } from '../../evidence';
+import { generatePassportPdfExport } from '../../passport-export';
 import { HmacConnectSessionTokenIssuer } from '../../infrastructure/crypto/connect-session-token-issuer';
 import { HmacParticipantHandoffTokenIssuer } from '../../infrastructure/crypto/participant-handoff-token-issuer';
 import { HmacPublicHandoffTokenIssuer } from '../../infrastructure/crypto/public-handoff-token-issuer';
@@ -109,6 +110,11 @@ function productionApp() {
       },
     },
     runtimeConfig,
+    () => new Date(),
+    {
+      verificationBaseUrl: () => connectLinkBaseUrl.value(),
+      generatePdf: (input) => generatePassportPdfExport(input),
+    },
   );
   const connectAdapter = new FirestoreMerchantConnectAdapter(db);
   const merchantConnectService = new MerchantConnectApplicationService(

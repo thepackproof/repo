@@ -96,6 +96,7 @@ function toAccessible(id, data) {
     const source = data.source && typeof data.source === 'object' && !Array.isArray(data.source)
         ? data.source
         : null;
+    const declaredWeight = source?.declaredWeightGrams;
     return {
         id,
         organizationId: optionalString(data.organizationId),
@@ -125,8 +126,75 @@ function toAccessible(id, data) {
             : [],
         shipment: toShipment(id, data.shipping, createdAt, updatedAt),
         delivery: toDelivery(id, data.delivery, createdAt, updatedAt),
+        commerceContextId: optionalString(source?.commerceContextId) ?? optionalString(data.commerceContextId),
+        sourceType: optionalString(source?.type),
+        sourcePlatform: optionalString(source?.platform),
+        externalOrderId: optionalString(source?.externalOrderId),
+        externalSellerId: optionalString(source?.externalSellerId),
+        declaredWeightGrams: Number.isFinite(declaredWeight) ? Number(declaredWeight) : null,
+        sourceTrackingNumber: optionalString(source?.trackingNumber),
+        passportId: optionalString(data.passportId),
+        passportDisplayId: optionalString(data.passportDisplayId),
+        passportIssuedAt: data.passportIssuedAt ? dateValue(data.passportIssuedAt, createdAt) : null,
         createdAt,
         updatedAt,
+    };
+}
+function toPassportSnapshot(id, data) {
+    const passport = data.passport && typeof data.passport === 'object' ? data.passport : null;
+    const digest = optionalString(data.canonicalPayloadSha256);
+    if (!passport || !digest)
+        return null;
+    return {
+        snapshotId: optionalString(data.snapshotId) ?? id,
+        passportId: optionalString(data.passportId) ?? '',
+        transactionId: optionalString(data.transactionId) ?? '',
+        snapshotVersion: optionalInteger(data.snapshotVersion) ?? 1,
+        passport,
+        canonicalPayloadSha256: digest,
+        rendererVersion: optionalString(data.rendererVersion) ?? 'packproof-passport-pdf@1.0.0',
+        generatedAt: dateValue(data.generatedAt, new Date(0)),
+        pdfStoragePath: optionalString(data.pdfStoragePath),
+        pdfSha256: optionalString(data.pdfSha256),
+    };
+}
+function toCommerce(id, data) {
+    const source = data.source && typeof data.source === 'object' ? data.source : null;
+    const item = data.item && typeof data.item === 'object' ? data.item : null;
+    const amount = item?.amount && typeof item.amount === 'object' ? item.amount : null;
+    const options = Array.isArray(item?.selectedOptions)
+        ? item.selectedOptions.filter((entry) => Boolean(entry && typeof entry === 'object'))
+        : [];
+    const variant = options
+        .map((entry) => `${typeof entry.name === 'string' ? entry.name : ''}: ${typeof entry.value === 'string' ? entry.value : ''}`.trim())
+        .filter(Boolean)
+        .join('; ') || null;
+    const trust = source?.trustLevel === 'MERCHANT_SERVER_ATTESTED' || source?.trustLevel === 'PLATFORM_API_ATTESTED' || source?.trustLevel === 'PAGE_DECLARED'
+        ? source.trustLevel
+        : null;
+    return {
+        id,
+        platform: optionalString(source?.platform),
+        trustLevel: trust,
+        assertingSource: trust === 'PAGE_DECLARED' ? 'PAGE_DECLARED' : trust === 'PLATFORM_API_ATTESTED' ? 'PLATFORM_API' : 'MERCHANT_API',
+        externalOrderId: optionalString(source?.externalOrderId),
+        externalSellerId: optionalString(data.externalSellerId),
+        capturedAt: source?.capturedAt ? dateValue(source.capturedAt, new Date(0)).toISOString() : null,
+        canonicalPayloadSha256: optionalString(data.canonicalPayloadSha256),
+        title: optionalString(item?.title),
+        sku: optionalString(item?.sku),
+        gtin: optionalString(item?.gtin),
+        upc: optionalString(item?.upc),
+        serialNumber: optionalString(item?.serialNumber),
+        quantity: item && Number.isSafeInteger(item.quantity) ? item.quantity : null,
+        amount: amount && typeof amount.currency === 'string' && Number.isSafeInteger(amount.minorUnits)
+            ? { currency: amount.currency, minorUnits: amount.minorUnits }
+            : null,
+        variant,
+        listingReference: optionalString(source?.externalListingId) ?? optionalString(source?.productUrl),
+        merchantItemId: optionalString(source?.externalProductId) ?? optionalString(source?.externalLineItemId),
+        declaredCondition: null,
+        declaredWeightGrams: Number.isFinite(data.declaredWeightGrams) ? Number(data.declaredWeightGrams) : null,
     };
 }
 function principalCanAccess(transaction, principal) {
@@ -166,6 +234,16 @@ function toEvidence(transactionId, id, data) {
         carrierTrackingMatchStatus: optionalString(data.carrierTrackingMatchStatus),
         scannedTrackingNumber: optionalString(data.scannedTrackingNumber),
         shippingTracker: (0, shipping_tracker_1.asShippingTrackerObservation)(data.shippingTracker),
+        captureSessionId: optionalString(data.captureSessionId),
+        clientCreatedAt: optionalString(data.clientCreatedAt),
+        acquisitionClass: optionalString(data.acquisitionClass),
+        bundleBindingProfile: optionalString(data.bundleBindingProfile),
+        manifestAuthentication: authentication ? {
+            type: optionalString(authentication.type),
+            algorithm: optionalString(authentication.algorithm),
+            keyId: optionalString(authentication.keyId),
+            verificationScope: optionalString(authentication.verificationScope),
+        } : null,
         createdAt,
         updatedAt,
         finalizedAt,
@@ -231,6 +309,95 @@ class FirestoreMerchantEvidenceRepository {
             return null;
         const transaction = toAccessible(snap.id, snap.data());
         return principalCanAccess(transaction, principal) ? transaction : null;
+    }
+    async loadTransaction(transactionId) {
+        const snap = await this.firestore.collection('transactions').doc(transactionId).get();
+        if (!snap.exists)
+            return null;
+        return toAccessible(snap.id, snap.data());
+    }
+    async loadTransactionByPassportIdentity(passportIdentity) {
+        const field = passportIdentity.startsWith('ppt_') ? 'passportId' : 'passportDisplayId';
+        const value = field === 'passportDisplayId' ? passportIdentity.toUpperCase() : passportIdentity;
+        const snap = await this.firestore.collection('transactions').where(field, '==', value).limit(1).get();
+        if (snap.empty)
+            return null;
+        return toAccessible(snap.docs[0].id, snap.docs[0].data());
+    }
+    async findAccessibleTransactionByPassportIdentity(passportIdentity, principal) {
+        const field = passportIdentity.startsWith('ppt_') ? 'passportId' : 'passportDisplayId';
+        const value = field === 'passportDisplayId' ? passportIdentity.toUpperCase() : passportIdentity;
+        const snap = await this.firestore.collection('transactions').where(field, '==', value).limit(1).get();
+        if (snap.empty)
+            return null;
+        const transaction = toAccessible(snap.docs[0].id, snap.docs[0].data());
+        return principalCanAccess(transaction, principal) ? transaction : null;
+    }
+    async bindPassportIdentity(transactionId, identity) {
+        const ref = this.firestore.collection('transactions').doc(transactionId);
+        return this.firestore.runTransaction(async (tx) => {
+            const snap = await tx.get(ref);
+            if (!snap.exists)
+                throw new Error('Transaction disappeared during Passport issuance.');
+            const data = snap.data();
+            const existingId = optionalString(data.passportId);
+            const existingDisplay = optionalString(data.passportDisplayId);
+            if (existingId && existingDisplay) {
+                return {
+                    passportId: existingId,
+                    displayId: existingDisplay,
+                    issuedAt: data.passportIssuedAt ? dateValue(data.passportIssuedAt, identity.issuedAt) : identity.issuedAt,
+                };
+            }
+            tx.update(ref, {
+                passportId: identity.passportId,
+                passportDisplayId: identity.displayId,
+                passportIssuedAt: firestore_1.Timestamp.fromDate(identity.issuedAt),
+            });
+            return identity;
+        });
+    }
+    async findCommerceContext(commerceContextId) {
+        const snap = await this.firestore.collection('commerceContexts').doc(commerceContextId).get();
+        if (!snap.exists)
+            return null;
+        return toCommerce(snap.id, snap.data());
+    }
+    async listPassportSnapshots(transactionId) {
+        const snap = await this.firestore.collection('transactions').doc(transactionId).collection('passportSnapshots').orderBy('snapshotVersion', 'asc').get();
+        return snap.docs.map((doc) => toPassportSnapshot(doc.id, doc.data())).filter((item) => item !== null);
+    }
+    async findPassportSnapshot(transactionId, snapshotId) {
+        const snap = await this.firestore.collection('transactions').doc(transactionId).collection('passportSnapshots').doc(snapshotId).get();
+        if (!snap.exists)
+            return null;
+        return toPassportSnapshot(snap.id, snap.data());
+    }
+    async createPassportSnapshot(transactionId, record) {
+        const ref = this.firestore.collection('transactions').doc(transactionId).collection('passportSnapshots').doc(record.snapshotId);
+        await ref.create({
+            id: record.snapshotId,
+            object: 'packproof_passport_snapshot',
+            schemaVersion: 1,
+            snapshotId: record.snapshotId,
+            passportId: record.passportId,
+            transactionId: record.transactionId,
+            snapshotVersion: record.snapshotVersion,
+            passport: record.passport,
+            canonicalPayloadSha256: record.canonicalPayloadSha256,
+            rendererVersion: record.rendererVersion,
+            generatedAt: firestore_1.Timestamp.fromDate(record.generatedAt),
+            pdfStoragePath: record.pdfStoragePath,
+            pdfSha256: record.pdfSha256,
+            createdAt: firestore_1.Timestamp.fromDate(record.generatedAt),
+        });
+        return record;
+    }
+    async savePassportExport(transactionId, snapshotId, record) {
+        await this.firestore.collection('transactions').doc(transactionId).collection('passportSnapshots').doc(snapshotId).update({
+            pdfStoragePath: record.storagePath,
+            pdfSha256: record.sha256,
+        });
     }
     async listEvidence(transactionId) {
         const snap = await this.firestore.collection('transactions').doc(transactionId).collection('evidence').orderBy('createdAt', 'asc').get();

@@ -9,6 +9,7 @@ import type {
 } from './merchant-evidence-types';
 import type { MerchantPrincipal } from './merchant-types';
 import type { ShippingTrackerObservation } from '../../shipping-tracker';
+import type { PackProofPassportV1, PassportCommerceInput } from '../../domain/v1/passport';
 
 export type AccessibleMerchantTransaction = {
   id: string;
@@ -33,6 +34,16 @@ export type AccessibleMerchantTransaction = {
   participantIds: string[];
   shipment: MerchantShipmentDto | null;
   delivery: MerchantDeliveryDto | null;
+  commerceContextId: string | null;
+  sourceType: string | null;
+  sourcePlatform: string | null;
+  externalOrderId: string | null;
+  externalSellerId: string | null;
+  declaredWeightGrams: number | null;
+  sourceTrackingNumber: string | null;
+  passportId: string | null;
+  passportDisplayId: string | null;
+  passportIssuedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -58,9 +69,38 @@ export type StoredEvidenceRecord = {
   carrierTrackingMatchStatus: string | null;
   scannedTrackingNumber: string | null;
   shippingTracker: ShippingTrackerObservation | null;
+  captureSessionId: string | null;
+  clientCreatedAt: string | null;
+  acquisitionClass: string | null;
+  bundleBindingProfile: string | null;
+  manifestAuthentication: {
+    type: string | null;
+    algorithm: string | null;
+    keyId: string | null;
+    verificationScope: string | null;
+  } | null;
   createdAt: Date;
   updatedAt: Date;
   finalizedAt: Date | null;
+};
+
+export type StoredPassportSnapshot = {
+  snapshotId: string;
+  passportId: string;
+  transactionId: string;
+  snapshotVersion: number;
+  passport: PackProofPassportV1;
+  canonicalPayloadSha256: string;
+  rendererVersion: string;
+  generatedAt: Date;
+  pdfStoragePath: string | null;
+  pdfSha256: string | null;
+};
+
+export type PassportIdentityBinding = {
+  passportId: string;
+  displayId: string;
+  issuedAt: Date;
 };
 
 export type StoredReportRecord = {
@@ -115,6 +155,13 @@ export type AssociateDeliveryRecord = {
 
 export interface MerchantEvidenceRepository {
   findAccessibleTransaction(transactionId: string, principal: MerchantPrincipal): Promise<AccessibleMerchantTransaction | null>;
+  findAccessibleTransactionByPassportIdentity(passportIdentity: string, principal: MerchantPrincipal): Promise<AccessibleMerchantTransaction | null>;
+  bindPassportIdentity(transactionId: string, identity: PassportIdentityBinding): Promise<PassportIdentityBinding>;
+  findCommerceContext(commerceContextId: string): Promise<PassportCommerceInput | null>;
+  listPassportSnapshots(transactionId: string): Promise<StoredPassportSnapshot[]>;
+  findPassportSnapshot(transactionId: string, snapshotId: string): Promise<StoredPassportSnapshot | null>;
+  createPassportSnapshot(transactionId: string, record: StoredPassportSnapshot): Promise<StoredPassportSnapshot>;
+  savePassportExport(transactionId: string, snapshotId: string, record: { storagePath: string; sha256: string }): Promise<void>;
   listEvidence(transactionId: string): Promise<StoredEvidenceRecord[]>;
   findEvidence(transactionId: string, artifactId: string): Promise<StoredEvidenceRecord | null>;
   listTimeline(transactionId: string): Promise<MerchantTimelineEventDto[]>;

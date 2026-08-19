@@ -35,6 +35,8 @@ class MemoryEvidenceRepo {
   timeline = new Map();
   returns = new Map();
   reports = new Map();
+  snapshots = new Map();
+  commerce = new Map();
 
   seedTransaction(record) { this.transactions.set(record.id, record); }
   seedEvidence(record) {
@@ -49,6 +51,38 @@ class MemoryEvidenceRepo {
     if (record.organizationId === principal.organizationId) return record;
     if (record.integrationId && record.integrationId === principal.integrationId) return record;
     return null;
+  }
+  async findAccessibleTransactionByPassportIdentity(passportIdentity, principal) {
+    const normalized = String(passportIdentity).toUpperCase();
+    for (const record of this.transactions.values()) {
+      if (record.passportId === passportIdentity || String(record.passportDisplayId ?? '').toUpperCase() === normalized) {
+        return this.findAccessibleTransaction(record.id, principal);
+      }
+    }
+    return null;
+  }
+  async bindPassportIdentity(transactionId, identity) {
+    const record = this.transactions.get(transactionId);
+    if (record.passportId && record.passportDisplayId) {
+      return { passportId: record.passportId, displayId: record.passportDisplayId, issuedAt: record.passportIssuedAt };
+    }
+    Object.assign(record, { passportId: identity.passportId, passportDisplayId: identity.displayId, passportIssuedAt: identity.issuedAt });
+    return identity;
+  }
+  async findCommerceContext(commerceContextId) { return this.commerce.get(commerceContextId) ?? null; }
+  async listPassportSnapshots(transactionId) { return this.snapshots.get(transactionId) ?? []; }
+  async findPassportSnapshot(transactionId, snapshotId) {
+    return (this.snapshots.get(transactionId) ?? []).find((item) => item.snapshotId === snapshotId) ?? null;
+  }
+  async createPassportSnapshot(transactionId, record) {
+    const list = this.snapshots.get(transactionId) ?? [];
+    list.push(record);
+    this.snapshots.set(transactionId, list);
+    return record;
+  }
+  async savePassportExport(transactionId, snapshotId, record) {
+    const item = (this.snapshots.get(transactionId) ?? []).find((entry) => entry.snapshotId === snapshotId);
+    if (item) Object.assign(item, { pdfStoragePath: record.storagePath, pdfSha256: record.sha256 });
   }
   async listEvidence(transactionId) { return this.evidence.get(transactionId) ?? []; }
   async findEvidence(transactionId, artifactId) {
@@ -397,4 +431,48 @@ test('Connect v1 get reports EXPIRED for unredeemed past-due sessions', async ()
   );
   const fetched = await service.getSession(orgA, 'e'.repeat(64));
   assert.equal(fetched.status, 'EXPIRED');
+});
+
+test('merchant passport service issues a stable identity and refuses ineligible transactions', async () => {
+  const repository = new MemoryEvidenceRepo();
+  repository.seedTransaction({
+    id: 'txn_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', organizationId: 'org-a', integrationId: null,
+    merchantReference: 'order-1', title: 'Camera', description: '', category: null, status: 'CREATED',
+    consumerStatus: 'DRAFT', amount: { currency: 'USD', minorUnits: 1000 }, terms: {
+      saleType: 'SHIPPED', shippingResponsibility: 'SELLER', returns: 'PLATFORM_POLICY', returnWindowDays: 0, customTerms: '',
+    }, shipment: null, delivery: null, sellerId: 'seller-1', buyerId: 'buyer-1',
+    participantIds: ['seller-1', 'buyer-1'], createdAt: now, updatedAt: now,
+  });
+  repository.seedEvidence(finalized('PACKING_VIDEO'));
+  const service = new MerchantEvidenceApplicationService(
+    repository, new MemoryIdempotency(), { append: async () => undefined }, new MerchantAuthorizationPolicy(),
+    { generate: async () => ({ reportId: 'report_1', storagePath: 'reports/x.pdf', sha256: 'd'.repeat(64), evidenceCount: 1 }) },
+    { sign: async () => 'https://files.example/x.pdf' },
+    { environment: 'sandbox' }, () => now,
+    { verificationBaseUrl: () => 'https://app.packproof.example' },
+  );
+  const first = await service.getPassport(orgA, 'txn_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
+  assert.equal(first.object, 'packproof_passport');
+  assert.match(first.identity.displayId, /^PP-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$/);
+  assert.equal(first.identity.passportId, repository.transactions.get('txn_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa').passportId);
+  const second = await service.getPassportByIdentity(orgA, first.identity.displayId);
+  assert.equal(second.identity.passportId, first.identity.passportId);
+  assert.equal(second.limitations.doesNotDecideFraudOrFault, true);
+
+  const empty = new MemoryEvidenceRepo();
+  empty.seedTransaction({
+    id: 'txn_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', organizationId: 'org-a', integrationId: null,
+    merchantReference: null, title: 'Untitled', description: '', category: null, status: 'CREATED',
+    consumerStatus: 'DRAFT', amount: null, terms: null, shipment: null, delivery: null,
+    sellerId: 'seller-1', buyerId: null, participantIds: ['seller-1'], createdAt: now, updatedAt: now,
+  });
+  const blocked = new MerchantEvidenceApplicationService(
+    empty, new MemoryIdempotency(), { append: async () => undefined }, new MerchantAuthorizationPolicy(),
+    { generate: async () => ({ reportId: 'report_1', storagePath: 'reports/x.pdf', sha256: 'd'.repeat(64), evidenceCount: 0 }) },
+    { sign: async () => 'https://files.example/x.pdf' },
+    { environment: 'sandbox' }, () => now,
+  );
+  await assert.rejects(() => blocked.getPassport(orgA, 'txn_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'), (error) => (
+    error instanceof ApplicationError && error.code === 'PASSPORT_NOT_READY'
+  ));
 });

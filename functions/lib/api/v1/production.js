@@ -9,6 +9,7 @@ const merchant_evidence_service_1 = require("../../application/v1/merchant-evide
 const public_commerce_handoff_service_1 = require("../../application/v1/public-commerce-handoff-service");
 const participant_capture_service_1 = require("../../application/v1/participant-capture-service");
 const evidence_1 = require("../../evidence");
+const passport_export_1 = require("../../passport-export");
 const connect_session_token_issuer_1 = require("../../infrastructure/crypto/connect-session-token-issuer");
 const participant_handoff_token_issuer_1 = require("../../infrastructure/crypto/participant-handoff-token-issuer");
 const public_handoff_token_issuer_1 = require("../../infrastructure/crypto/public-handoff-token-issuer");
@@ -75,7 +76,10 @@ function productionApp() {
             });
             return url;
         },
-    }, runtimeConfig);
+    }, runtimeConfig, () => new Date(), {
+        verificationBaseUrl: () => config_1.connectLinkBaseUrl.value(),
+        generatePdf: (input) => (0, passport_export_1.generatePassportPdfExport)(input),
+    });
     const connectAdapter = new merchant_evidence_repository_1.FirestoreMerchantConnectAdapter(config_1.db);
     const merchantConnectService = new merchant_connect_service_1.MerchantConnectApplicationService(new commerce_context_service_1.CommerceContextApplicationService(new commerce_context_repository_1.FirestoreCommerceContextRepository(config_1.db), new connect_session_token_issuer_1.HmacConnectSessionTokenIssuer()), connectAdapter, connectAdapter, new public_https_callback_1.DnsPublicHttpsCallbackValidator(), new security_1.AuthorizationService(), runtimeConfig, () => config_1.connectLinkBaseUrl.value());
     return (0, app_1.createApiV1App)({

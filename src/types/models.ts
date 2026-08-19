@@ -66,6 +66,9 @@ export type PackProofTransaction = {
   createdAt: DateLike;
   updatedAt: DateLike;
   lockedAt: DateLike;
+  passportId?: string | null;
+  passportDisplayId?: string | null;
+  passportIssuedAt?: DateLike;
   shipping?: {
     carrier: string;
     trackingNumber: string;
@@ -212,6 +215,49 @@ export type TimelineEvent = {
   type: string;
   summary: string;
   createdAt: DateLike;
+};
+
+export type PackProofPassportView = {
+  object: 'packproof_passport';
+  identity: {
+    passportId: string;
+    displayId: string;
+    transactionId: string;
+    verificationUrl: string;
+    qrPayload: string;
+    merchantPlatform: string | null;
+    externalOrderId: string | null;
+  };
+  integrity: {
+    banner: 'AUTHENTIC_PACKPROOF' | 'PACKPROOF_RECORD_WITH_LIMITATIONS';
+    summary: string;
+    meaning: string;
+  };
+  transaction: {
+    platform: { value: string | null };
+    externalOrderId: { value: string | null };
+    transactionDate: { value: string | null };
+    amount: { value: { currency: string; minorUnits: number } | null };
+  };
+  items: Array<{
+    expected: { title: { value: string | null } };
+    comparisons: Array<{ attribute: string; expected: string | null; observed: string | null; result: string }>;
+  }>;
+  evidenceInventory: Array<{ category: string; state: string }>;
+  fulfillment: {
+    packingArtifactId: string | null;
+    sealArtifactId: string | null;
+    labelArtifactId: string | null;
+    trackingObserved: { value: string | null };
+  };
+  limitations: {
+    doesNotAuthenticateItem: true;
+    doesNotProveCustody: true;
+    doesNotDecideFraudOrFault: true;
+    doesNotGuaranteeDisputeOutcome: true;
+    shippingTrackerInterpretation: string;
+    humanReviewDisclaimer: string;
+  };
 };
 
 export type UserProfile = {

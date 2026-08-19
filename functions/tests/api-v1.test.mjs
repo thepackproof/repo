@@ -184,6 +184,8 @@ class FakeMerchantEvidenceService {
   shipments = new Map();
   returns = new Map();
   deliveries = new Map();
+  passports = new Map();
+  snapshots = new Map();
 
   seedArtifact(transactionId, artifact) {
     const key = `${transactionId}:${artifact.id}`;
@@ -233,6 +235,121 @@ class FakeMerchantEvidenceService {
         manifestAuthenticationScope: 'PACKPROOF_SERVICE_ONLY', humanReviewDisclaimer: 'Human review only.',
       },
       createdAt: '2026-08-11T12:00:00.000Z', updatedAt: '2026-08-11T12:00:00.000Z',
+    };
+  }
+
+  passportFor(transactionId) {
+    const artifacts = this.artifacts.get(transactionId) ?? [];
+    if (!artifacts.some((item) => item.status === 'FINALIZED' && item.sha256 && item.manifestSha256)) {
+      throw new ApiError(409, 'PASSPORT_NOT_READY', 'This transaction does not yet qualify for a PackProof Passport.');
+    }
+    const passportId = `ppt_${'a'.repeat(40)}`;
+    const displayId = 'PP-AAAA-AAAA-AAAA';
+    this.passports.set(passportId, transactionId);
+    this.passports.set(displayId, transactionId);
+    return {
+      object: 'packproof_passport', schemaVersion: 1,
+      identity: {
+        passportId, displayId, schemaVersion: 1, rendererCompatibility: 'PASSPORT_WEB_V1',
+        transactionId, state: 'CURRENT', issuedAt: '2026-08-11T12:00:00.000Z', sourceUpdatedAt: '2026-08-11T12:00:00.000Z',
+        merchantPlatform: 'CUSTOM', externalOrderId: 'order-1',
+        verificationUrl: `https://packproof.example/passport/${displayId}`, qrPayload: `https://packproof.example/passport/${displayId}`,
+      },
+      integrity: {
+        banner: 'AUTHENTIC_PACKPROOF', summary: 'PackProof record integrity verified',
+        meaning: "PackProof's evidence records and integrity bindings associated with this Passport successfully verify.",
+        criteria: { passportRecord: 'VERIFIED', evidenceManifests: 'VERIFIED', evidenceFileDigests: 'VERIFIED', bundleBindings: 'VERIFIED', finalization: 'VERIFIED', provenance: 'VERIFIED', evidenceLineage: 'VERIFIED' },
+        manifestAuthentication: { type: 'SERVICE_MAC', algorithm: 'HMAC-SHA256', verificationScope: 'PACKPROOF_SERVICE_ONLY', keyId: 'packproof-manifest-v1', publiclyVerifiable: false },
+        canonicalizationProfile: 'PACKPROOF_JCS_1', bundleBindingProfile: 'PACKPROOF_EVIDENCE_BUNDLE_V2',
+      },
+      transaction: {
+        commerceContextId: null,
+        platform: { value: 'CUSTOM', provenanceClass: 'SOURCE_ASSERTION', assertingSource: 'MERCHANT_API', trustClass: 'MERCHANT_SERVER_ATTESTED', recordedAt: '2026-08-11T12:00:00.000Z', sourceRecordId: transactionId, sourceReference: 'order-1', digestSha256: null },
+        externalOrderId: { value: 'order-1', provenanceClass: 'SOURCE_ASSERTION', assertingSource: 'MERCHANT_API', trustClass: 'MERCHANT_SERVER_ATTESTED', recordedAt: '2026-08-11T12:00:00.000Z', sourceRecordId: transactionId, sourceReference: 'order-1', digestSha256: null },
+        transactionDate: { value: '2026-08-11T12:00:00.000Z', provenanceClass: 'SOURCE_ASSERTION', assertingSource: 'MERCHANT_API', trustClass: 'MERCHANT_SERVER_ATTESTED', recordedAt: '2026-08-11T12:00:00.000Z', sourceRecordId: transactionId, sourceReference: 'order-1', digestSha256: null },
+        amount: { value: null, provenanceClass: 'SOURCE_ASSERTION', assertingSource: 'MERCHANT_API', trustClass: 'MERCHANT_SERVER_ATTESTED', recordedAt: '2026-08-11T12:00:00.000Z', sourceRecordId: transactionId, sourceReference: 'order-1', digestSha256: null },
+        sellerReference: { value: null, provenanceClass: 'SOURCE_ASSERTION', assertingSource: null, trustClass: null, recordedAt: null, sourceRecordId: null, sourceReference: null, digestSha256: null },
+        destination: { value: null, provenanceClass: 'SOURCE_ASSERTION', assertingSource: null, trustClass: null, recordedAt: null, sourceRecordId: null, sourceReference: null, digestSha256: null },
+        itemCount: { value: null, provenanceClass: 'SOURCE_ASSERTION', assertingSource: null, trustClass: null, recordedAt: null, sourceRecordId: null, sourceReference: null, digestSha256: null },
+        sourceTrustClass: 'MERCHANT_SERVER_ATTESTED', importedAt: null, canonicalPayloadSha256: null,
+      },
+      items: [{ index: 0, expected: {
+        title: { value: 'Review camera', provenanceClass: 'SOURCE_ASSERTION', assertingSource: 'MERCHANT_API', trustClass: 'MERCHANT_SERVER_ATTESTED', recordedAt: '2026-08-11T12:00:00.000Z', sourceRecordId: transactionId, sourceReference: 'order-1', digestSha256: null },
+        sku: { value: null, provenanceClass: 'SOURCE_ASSERTION', assertingSource: null, trustClass: null, recordedAt: null, sourceRecordId: null, sourceReference: null, digestSha256: null },
+        gtin: { value: null, provenanceClass: 'SOURCE_ASSERTION', assertingSource: null, trustClass: null, recordedAt: null, sourceRecordId: null, sourceReference: null, digestSha256: null },
+        upc: { value: null, provenanceClass: 'SOURCE_ASSERTION', assertingSource: null, trustClass: null, recordedAt: null, sourceRecordId: null, sourceReference: null, digestSha256: null },
+        variant: { value: null, provenanceClass: 'SOURCE_ASSERTION', assertingSource: null, trustClass: null, recordedAt: null, sourceRecordId: null, sourceReference: null, digestSha256: null },
+        quantity: { value: null, provenanceClass: 'SOURCE_ASSERTION', assertingSource: null, trustClass: null, recordedAt: null, sourceRecordId: null, sourceReference: null, digestSha256: null },
+        declaredCondition: { value: null, provenanceClass: 'SOURCE_ASSERTION', assertingSource: null, trustClass: null, recordedAt: null, sourceRecordId: null, sourceReference: null, digestSha256: null },
+        serialExpected: { value: null, provenanceClass: 'SOURCE_ASSERTION', assertingSource: null, trustClass: null, recordedAt: null, sourceRecordId: null, sourceReference: null, digestSha256: null },
+        merchantItemId: { value: null, provenanceClass: 'SOURCE_ASSERTION', assertingSource: null, trustClass: null, recordedAt: null, sourceRecordId: null, sourceReference: null, digestSha256: null },
+        listingReference: { value: null, provenanceClass: 'SOURCE_ASSERTION', assertingSource: null, trustClass: null, recordedAt: null, sourceRecordId: null, sourceReference: null, digestSha256: null },
+      }, observations: [], comparisons: [] }],
+      fulfillment: {
+        captureSessionId: null, packingArtifactId: artifacts[0]?.id ?? null, sealArtifactId: null, labelArtifactId: null,
+        trackingObserved: { value: null, provenanceClass: 'PACKPROOF_OBSERVATION', assertingSource: null, trustClass: null, recordedAt: null, sourceRecordId: null, sourceReference: null, digestSha256: null },
+        shippingTracker: { value: null, provenanceClass: 'PACKPROOF_OBSERVATION', assertingSource: null, trustClass: null, recordedAt: null, sourceRecordId: null, sourceReference: null, digestSha256: null },
+      },
+      shipment: null, delivery: null, receiver: null, returns: [],
+      evidenceInventory: [{ category: 'PACKING_CAPTURE', state: 'AVAILABLE', artifactIds: artifacts.map((item) => item.id) }],
+      artifacts: [], timeline: [], reviewContext: null, provenance: [],
+      limitations: {
+        physicalCorrespondence: 'NOT_AVAILABLE', businessLegalRelevance: 'REVIEW_REQUIRED',
+        doesNotAuthenticateItem: true, doesNotProveCustody: true, doesNotDecideFraudOrFault: true,
+        doesNotGuaranteeDisputeOutcome: true, absenceOfEvidenceDoesNotAffectAuthenticity: true,
+        noEvidentiaryWeightScore: true, presentationExportIsNotSource: true,
+        manifestAuthenticationScope: 'PACKPROOF_SERVICE_ONLY',
+        shippingTrackerInterpretation: 'OPEN_SOURCE_TRACKING_NUMBER_VALIDATION_NOT_CARRIER_CUSTODY',
+        humanReviewDisclaimer: 'Human review only.',
+      },
+      createdAt: '2026-08-11T12:00:00.000Z', updatedAt: '2026-08-11T12:00:00.000Z',
+    };
+  }
+
+  async getPassport(principal, transactionId) {
+    this.requireScope(principal, 'evidence:read');
+    if (transactionId.endsWith('missing')) throw new ApiError(404, 'TRANSACTION_NOT_FOUND', 'missing');
+    return this.passportFor(transactionId);
+  }
+
+  async getPassportByIdentity(principal, passportIdentity) {
+    this.requireScope(principal, 'evidence:read');
+    const transactionId = this.passports.get(passportIdentity);
+    if (!transactionId) throw new ApiError(404, 'PASSPORT_NOT_FOUND', 'missing');
+    return this.passportFor(transactionId);
+  }
+
+  async createPassportSnapshot(principal, transactionId) {
+    this.requireScope(principal, 'evidence:read');
+    const passport = this.passportFor(transactionId);
+    const snapshot = {
+      object: 'packproof_passport_snapshot', schemaVersion: 1, snapshotId: `pps_${'b'.repeat(40)}`,
+      passportId: passport.identity.passportId, transactionId, snapshotVersion: 1, passport,
+      canonicalPayloadSha256: 'c'.repeat(64), rendererVersion: 'packproof-passport-pdf@1.0.0',
+      generatedAt: '2026-08-11T12:00:00.000Z',
+    };
+    this.snapshots.set(snapshot.snapshotId, snapshot);
+    return { snapshot, replayed: false };
+  }
+
+  async getPassportSnapshot(principal, passportIdentity, snapshotId) {
+    this.requireScope(principal, 'evidence:read');
+    const snapshot = this.snapshots.get(snapshotId);
+    if (!snapshot) throw new ApiError(404, 'PASSPORT_SNAPSHOT_NOT_FOUND', 'missing');
+    return snapshot;
+  }
+
+  async createPassportExport(principal, passportIdentity, snapshotId) {
+    this.requireScope(principal, 'evidence:read');
+    const snapshot = this.snapshots.get(snapshotId);
+    if (!snapshot) throw new ApiError(404, 'PASSPORT_SNAPSHOT_NOT_FOUND', 'missing');
+    return {
+      export: {
+        object: 'packproof_passport_export', schemaVersion: 1, snapshotId, format: 'PDF', presentationOnly: true,
+        downloadUrl: 'https://files.example/passport.pdf', downloadUrlExpiresAt: '2026-08-11T12:15:00.000Z',
+        fileSha256: 'd'.repeat(64), rendererVersion: 'packproof-passport-pdf@1.0.0',
+      },
+      replayed: false,
     };
   }
 
@@ -856,6 +973,33 @@ describe('PackProof API v1 headless Connect and claims-review routes', () => {
     assert.equal(review.body.data.limitations.physicalCorrespondence, 'NOT_AVAILABLE');
     assert.equal(review.body.data.limitations.doesNotDecideFraudOrFault, true);
     assert.equal(review.body.data.limitations.doesNotGuaranteeDisputeOutcome, true);
+    const passport = await jsonRequest(`/v1/transactions/${transactionId}/passport`, { headers: { authorization: 'Bearer evidence-a' } });
+    assert.equal(passport.response.status, 200);
+    assert.equal(passport.body.data.object, 'packproof_passport');
+    assert.equal(passport.body.data.integrity.banner, 'AUTHENTIC_PACKPROOF');
+    assert.equal(passport.body.data.limitations.doesNotDecideFraudOrFault, true);
+    assert.equal(passport.body.data.integrity.manifestAuthentication.publiclyVerifiable, false);
+    const byDisplay = await jsonRequest(`/v1/passports/${passport.body.data.identity.displayId}`, { headers: { authorization: 'Bearer evidence-a' } });
+    assert.equal(byDisplay.response.status, 200);
+    assert.equal(byDisplay.body.data.identity.passportId, passport.body.data.identity.passportId);
+    const snapshot = await jsonRequest(`/v1/transactions/${transactionId}/passport/snapshots`, {
+      method: 'POST',
+      headers: { authorization: 'Bearer evidence-a', 'content-type': 'application/json', 'idempotency-key': 'passport-snap-1' },
+      body: JSON.stringify({ schemaVersion: 1 }),
+    });
+    assert.equal(snapshot.response.status, 201);
+    assert.equal(snapshot.body.data.object, 'packproof_passport_snapshot');
+    const exported = await jsonRequest(`/v1/passports/${passport.body.data.identity.passportId}/snapshots/${snapshot.body.data.snapshotId}/exports`, {
+      method: 'POST',
+      headers: { authorization: 'Bearer evidence-a', 'content-type': 'application/json', 'idempotency-key': 'passport-export-1' },
+      body: JSON.stringify({ schemaVersion: 1 }),
+    });
+    assert.equal(exported.response.status, 201);
+    assert.equal(exported.body.data.presentationOnly, true);
+    const empty = await createRequest('headless-order-passport-empty', 'headless-create-passport-empty');
+    const notReady = await jsonRequest(`/v1/transactions/${empty.body.data.id}/passport`, { headers: { authorization: 'Bearer evidence-a' } });
+    assert.equal(notReady.response.status, 409);
+    assert.equal(notReady.body.error.code, 'PASSPORT_NOT_READY');
   });
 
   test('creates a presentation report and a Connect session through merchant credentials', async () => {

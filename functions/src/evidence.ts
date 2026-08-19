@@ -638,7 +638,7 @@ export const createPrivateDownloadUrl = onCall({ enforceAppCheck: true, invoker:
     throw new HttpsError('invalid-argument', 'A valid private object path is required.');
   }
 
-  const transactionMatch = /^(?:evidence|manifests|reports)\/([^/]+)\//.exec(storagePath);
+  const transactionMatch = /^(?:evidence|manifests|reports|passports)\/([^/]+)\//.exec(storagePath);
   const exportMatch = /^exports\/([^/]+)\/[^/]+\.json$/.exec(storagePath);
   if (transactionMatch) {
     const { data } = await getTransaction(transactionMatch[1]);

@@ -579,7 +579,7 @@ exports.createPrivateDownloadUrl = (0, https_1.onCall)({ enforceAppCheck: true, 
     if (!storagePath || storagePath.length > 500 || storagePath.includes('\\') || storagePath.includes('..')) {
         throw new https_1.HttpsError('invalid-argument', 'A valid private object path is required.');
     }
-    const transactionMatch = /^(?:evidence|manifests|reports)\/([^/]+)\//.exec(storagePath);
+    const transactionMatch = /^(?:evidence|manifests|reports|passports)\/([^/]+)\//.exec(storagePath);
     const exportMatch = /^exports\/([^/]+)\/[^/]+\.json$/.exec(storagePath);
     if (transactionMatch) {
         const { data } = await (0, helpers_1.getTransaction)(transactionMatch[1]);

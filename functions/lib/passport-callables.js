@@ -1,0 +1,70 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.getPackProofPassport = void 0;
+const https_1 = require("firebase-functions/v2/https");
+const config_1 = require("./config");
+const passport_projection_1 = require("./application/v1/passport-projection");
+const passport_1 = require("./domain/v1/passport");
+const merchant_evidence_repository_1 = require("./infrastructure/firebase/v1/merchant-evidence-repository");
+const helpers_1 = require("./helpers");
+const callOptions = { enforceAppCheck: true, invoker: 'public' };
+exports.getPackProofPassport = (0, https_1.onCall)(callOptions, async (request) => {
+    const uid = (0, helpers_1.requireUid)(request);
+    const transactionId = typeof request.data?.transactionId === 'string' ? request.data.transactionId : '';
+    const passportId = typeof request.data?.passportId === 'string' ? request.data.passportId : '';
+    if (!transactionId && !passportId)
+        throw new https_1.HttpsError('invalid-argument', 'A transactionId or passportId is required.');
+    const repository = new merchant_evidence_repository_1.FirestoreMerchantEvidenceRepository(config_1.db);
+    const transaction = transactionId
+        ? await repository.loadTransaction(transactionId)
+        : (0, passport_1.isPassportResourceId)(passportId) || (0, passport_1.isPassportDisplayId)(passportId)
+            ? await repository.loadTransactionByPassportIdentity(passportId)
+            : await repository.loadTransaction(passportId);
+    if (!transaction)
+        throw new https_1.HttpsError('not-found', 'This PackProof Passport was not found.');
+    if (!transaction.participantIds.includes(uid)) {
+        throw new https_1.HttpsError('permission-denied', 'You are not a participant in this transaction.');
+    }
+    const [records, timeline, returns] = await Promise.all([
+        repository.listEvidence(transaction.id),
+        repository.listTimeline(transaction.id),
+        repository.listReturns(transaction.id),
+    ]);
+    try {
+        (0, passport_projection_1.assertPassportEligible)(transaction, records);
+    }
+    catch (error) {
+        throw new https_1.HttpsError('failed-precondition', error instanceof Error ? error.message : 'This transaction does not yet qualify for a PackProof Passport.');
+    }
+    const issuedAt = new Date();
+    const identity = (0, passport_projection_1.boundOrIssuedIdentity)(transaction, issuedAt);
+    if (identity.bind) {
+        const bound = await repository.bindPassportIdentity(transaction.id, {
+            passportId: identity.passportId,
+            displayId: identity.displayId,
+            issuedAt: identity.issuedAt,
+        });
+        identity.passportId = bound.passportId;
+        identity.displayId = bound.displayId;
+        identity.issuedAt = bound.issuedAt;
+    }
+    const commerce = transaction.commerceContextId ? await repository.findCommerceContext(transaction.commerceContextId) : null;
+    return (0, passport_projection_1.projectPassport)({
+        transaction,
+        artifacts: records,
+        shipment: transaction.shipment,
+        delivery: transaction.delivery,
+        returns,
+        timeline,
+        commerce,
+        identity: {
+            passportId: identity.passportId,
+            displayId: identity.displayId,
+            issuedAt: identity.issuedAt.toISOString(),
+        },
+        verificationBaseUrl: config_1.connectLinkBaseUrl.value(),
+        reviewQuery: null,
+        now: issuedAt.toISOString(),
+    });
+});
+//# sourceMappingURL=passport-callables.js.map

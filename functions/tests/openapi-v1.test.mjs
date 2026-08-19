@@ -17,6 +17,9 @@ test('OpenAPI v1 contract is parseable, versioned, and operation-complete', asyn
     '/v1/evidence-sessions/{evidenceSessionId}/redeem',
     '/v1/health',
     '/v1/participant-claims',
+    '/v1/passports/{passportId}',
+    '/v1/passports/{passportId}/snapshots/{snapshotId}',
+    '/v1/passports/{passportId}/snapshots/{snapshotId}/exports',
     '/v1/public/integrations/{publishableKey}/handoffs',
     '/v1/ready',
     '/v1/transactions',
@@ -26,6 +29,8 @@ test('OpenAPI v1 contract is parseable, versioned, and operation-complete', asyn
     '/v1/transactions/{transactionId}/evidence-sessions',
     '/v1/transactions/{transactionId}/evidence/{artifactId}',
     '/v1/transactions/{transactionId}/participant-invitations',
+    '/v1/transactions/{transactionId}/passport',
+    '/v1/transactions/{transactionId}/passport/snapshots',
     '/v1/transactions/{transactionId}/reports',
     '/v1/transactions/{transactionId}/reports/{reportId}',
     '/v1/transactions/{transactionId}/returns',
@@ -56,6 +61,8 @@ test('OpenAPI v1 contract is parseable, versioned, and operation-complete', asyn
     'createEvidenceReport',
     'createEvidenceSession',
     'createParticipantInvitation',
+    'createPassportExport',
+    'createPassportSnapshot',
     'createPublicCommerceHandoff',
     'createReturnPassport',
     'createTransaction',
@@ -65,6 +72,9 @@ test('OpenAPI v1 contract is parseable, versioned, and operation-complete', asyn
     'getEvidenceReport',
     'getEvidenceSession',
     'getHealth',
+    'getPassport',
+    'getPassportById',
+    'getPassportSnapshot',
     'getReadiness',
     'getReturn',
     'getReviewPackage',
@@ -138,6 +148,12 @@ test('OpenAPI mutation and protected operations declare security controls', asyn
   assert.equal(contract.components.schemas.EvidenceFinalizedCallback.properties.event.const, 'packproof.evidence.finalized');
   assert.equal(contract.components.schemas.ShippingTrackerObservation.additionalProperties, false);
   assert.equal(contract.components.schemas.ShippingTrackerObservation.properties.interpretation.const, 'OPEN_SOURCE_TRACKING_NUMBER_VALIDATION_NOT_CARRIER_CUSTODY');
+  assert.equal(contract.components.schemas.PackProofPassport.additionalProperties, false);
+  assert.equal(contract.components.schemas.PackProofPassport.properties.object.const, 'packproof_passport');
+  assert.equal(contract.components.schemas.PackProofPassport.properties.limitations.properties.shippingTrackerInterpretation.const, 'OPEN_SOURCE_TRACKING_NUMBER_VALIDATION_NOT_CARRIER_CUSTODY');
+  assert.equal(contract.components.schemas.PackProofPassportExport.properties.presentationOnly.const, true);
+  assert.equal(contract.components.schemas.PassportComparison.properties.result.enum.includes('MATCH'), false);
+  assert.deepEqual(contract.paths['/v1/transactions/{transactionId}/passport'].get.security, [{ merchantApiKey: [] }]);
   assert.equal(contract.components.schemas.EvidenceArtifact.properties.shippingTracker.oneOf[0].$ref, '#/components/schemas/ShippingTrackerObservation');
   assert.equal(contract.components.schemas.EvidenceFinalizedCallback.properties.shippingTracker.oneOf[0].$ref, '#/components/schemas/ShippingTrackerObservation');
   assert.equal(contract.components.schemas.EvidenceArtifact.required.includes('shippingTracker'), false);

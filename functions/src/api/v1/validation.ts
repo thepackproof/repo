@@ -440,6 +440,48 @@ function parseHttpsCallbackUrl(value: unknown, field: string): string {
   return raw;
 }
 
+export function parsePassportId(value: unknown): string {
+  if (typeof value === 'string' && /^ppt_[a-f0-9]{40}$/.test(value)) return value;
+  if (typeof value === 'string' && /^PP-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$/i.test(value)) {
+    return value.toUpperCase();
+  }
+  throw new InputValidationError([{ field: 'passportId', code: 'INVALID_ID', message: 'passportId is not a valid PackProof Passport identifier.' }]);
+}
+
+export function parsePassportSnapshotId(value: unknown): string {
+  if (typeof value !== 'string' || !/^pps_[a-f0-9]{40}$/.test(value)) {
+    throw new InputValidationError([{ field: 'snapshotId', code: 'INVALID_ID', message: 'snapshotId is not a valid PackProof Passport snapshot identifier.' }]);
+  }
+  return value;
+}
+
+export function parsePassportReviewQuery(query: UnknownRecord): { framework: string; category: string } | null {
+  rejectUnknown(query, ['framework', 'category'], 'query');
+  const framework = oneQueryValue(query.framework, 'framework');
+  const category = oneQueryValue(query.category, 'category');
+  if (!framework && !category) return null;
+  if (!framework || !category) {
+    throw new InputValidationError([{ field: framework ? 'category' : 'framework', code: 'REQUIRED', message: 'framework and category must be supplied together.' }]);
+  }
+  return {
+    framework: string(framework, 'framework', 1, 80)!,
+    category: string(category, 'category', 1, 120)!,
+  };
+}
+
+export function parseCreatePassportSnapshot(value: unknown): { schemaVersion: 1 } {
+  const input = object(value, 'body');
+  rejectUnknown(input, ['schemaVersion']);
+  if (input.schemaVersion !== 1) {
+    throw new InputValidationError([{ field: 'schemaVersion', code: 'UNSUPPORTED_SCHEMA_VERSION', message: 'schemaVersion must equal 1.' }]);
+  }
+  return { schemaVersion: 1 };
+}
+
+export function parseCreatePassportExport(value: unknown): { schemaVersion: 1 } {
+  return parseCreatePassportSnapshot(value);
+}
+
 export function parseCreateConnectSession(value: unknown): CreateMerchantConnectSessionInput {
   const input = object(value, 'body');
   rejectUnknown(input, [
