@@ -18,6 +18,7 @@ import type {
 import type { MerchantDeliveryDto, MerchantReturnPassportDto, MerchantShipmentDto, MerchantTimelineEventDto } from '../../../application/v1/merchant-evidence-types';
 import type { MerchantPrincipal } from '../../../application/v1/merchant-types';
 import { sha256 } from '../../../application/v1/merchant-transaction-service';
+import { asShippingTrackerObservation } from '../../../shipping-tracker';
 import { storedOutboxEvent } from './outbox';
 
 function dateValue(value: unknown, fallback: Date): Date {
@@ -188,6 +189,7 @@ function toEvidence(transactionId: string, id: string, data: DocumentData): Stor
     assurance: data.assurance && typeof data.assurance === 'object' ? data.assurance as StoredEvidenceRecord['assurance'] : null,
     carrierTrackingMatchStatus: optionalString(data.carrierTrackingMatchStatus),
     scannedTrackingNumber: optionalString(data.scannedTrackingNumber),
+    shippingTracker: asShippingTrackerObservation(data.shippingTracker),
     createdAt,
     updatedAt,
     finalizedAt,

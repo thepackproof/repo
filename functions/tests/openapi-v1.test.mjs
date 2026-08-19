@@ -136,6 +136,11 @@ test('OpenAPI mutation and protected operations declare security controls', asyn
   assert.equal(contract.components.schemas.CreateConnectSessionRequest.additionalProperties, false);
   assert.equal(contract.components.schemas.EvidenceFinalizedCallback.additionalProperties, false);
   assert.equal(contract.components.schemas.EvidenceFinalizedCallback.properties.event.const, 'packproof.evidence.finalized');
+  assert.equal(contract.components.schemas.ShippingTrackerObservation.additionalProperties, false);
+  assert.equal(contract.components.schemas.ShippingTrackerObservation.properties.interpretation.const, 'OPEN_SOURCE_TRACKING_NUMBER_VALIDATION_NOT_CARRIER_CUSTODY');
+  assert.equal(contract.components.schemas.EvidenceArtifact.properties.shippingTracker.oneOf[0].$ref, '#/components/schemas/ShippingTrackerObservation');
+  assert.equal(contract.components.schemas.EvidenceFinalizedCallback.properties.shippingTracker.oneOf[0].$ref, '#/components/schemas/ShippingTrackerObservation');
+  assert.equal(contract.components.schemas.EvidenceArtifact.required.includes('shippingTracker'), false);
   assert.equal(contract.webhooks.packproofEvidenceFinalized.post.operationId, 'receivePackProofEvidenceFinalized');
   assert.equal(contract.components.schemas.ConnectCaptureInstructions.properties.token.writeOnly, true);
 });

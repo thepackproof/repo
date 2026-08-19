@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.FirestoreMerchantConnectAdapter = exports.FirestoreMerchantEvidenceRepository = void 0;
 const firestore_1 = require("firebase-admin/firestore");
 const merchant_transaction_service_1 = require("../../../application/v1/merchant-transaction-service");
+const shipping_tracker_1 = require("../../../shipping-tracker");
 const outbox_1 = require("./outbox");
 function dateValue(value, fallback) {
     if (value instanceof firestore_1.Timestamp)
@@ -164,6 +165,7 @@ function toEvidence(transactionId, id, data) {
         assurance: data.assurance && typeof data.assurance === 'object' ? data.assurance : null,
         carrierTrackingMatchStatus: optionalString(data.carrierTrackingMatchStatus),
         scannedTrackingNumber: optionalString(data.scannedTrackingNumber),
+        shippingTracker: (0, shipping_tracker_1.asShippingTrackerObservation)(data.shippingTracker),
         createdAt,
         updatedAt,
         finalizedAt,

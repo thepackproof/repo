@@ -362,6 +362,50 @@ function parseAttestation(value: unknown, schemaVersion: 1 | 2) {
   };
 }
 
+function parseCourierCodeList(value: unknown, path: string): string[] {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.length > 4) throw new ValidationError(path, 'must be an array with no more than 4 entries');
+  return value.map((item, index) => text(item, `${path}[${index}]`, 1, 20, { pattern: /^[a-z0-9_-]+$/ }) as string);
+}
+
+function parseShippingLabelTracker(value: unknown) {
+  if (value === null || value === undefined) return null;
+  const input = object(value, 'manifest.shippingLabel.tracker');
+  return {
+    profileId: enumValue(input.profileId, 'manifest.shippingLabel.tracker.profileId', ['PACKPROOF_OSS_TRACKING_NUMBER_V1'] as const),
+    dataset: text(input.dataset, 'manifest.shippingLabel.tracker.dataset', 1, 160) as string,
+    identified: booleanValue(input.identified, 'manifest.shippingLabel.tracker.identified'),
+    checksumValid: booleanValue(input.checksumValid, 'manifest.shippingLabel.tracker.checksumValid'),
+    courierCode: text(input.courierCode, 'manifest.shippingLabel.tracker.courierCode', 1, 20, { nullable: true, pattern: /^[a-z0-9_-]+$/ }) as string | null,
+    courierName: text(input.courierName, 'manifest.shippingLabel.tracker.courierName', 1, 80, { nullable: true }) as string | null,
+    trackerName: text(input.trackerName, 'manifest.shippingLabel.tracker.trackerName', 1, 80, { nullable: true }) as string | null,
+    publicTrackingUrl: input.publicTrackingUrl === null || input.publicTrackingUrl === undefined
+      ? null
+      : urlText(input.publicTrackingUrl, 'manifest.shippingLabel.tracker.publicTrackingUrl'),
+    alternateCourierCodes: parseCourierCodeList(input.alternateCourierCodes, 'manifest.shippingLabel.tracker.alternateCourierCodes'),
+    lookupStatus: enumValue(input.lookupStatus, 'manifest.shippingLabel.tracker.lookupStatus', ['DATASET_VALIDATED', 'UNRECOGNIZED', 'LOOKUP_INCOMPLETE'] as const),
+    interpretation: enumValue(input.interpretation, 'manifest.shippingLabel.tracker.interpretation', ['OPEN_SOURCE_TRACKING_NUMBER_VALIDATION_NOT_CARRIER_CUSTODY'] as const),
+    hashedAt: isoDate(input.hashedAt, 'manifest.shippingLabel.tracker.hashedAt') as string,
+    sha256: text(input.sha256, 'manifest.shippingLabel.tracker.sha256', 64, 64, { pattern: /^[a-f0-9]{64}$/i }) as string,
+  };
+}
+
+function parseShippingLabelStill(value: unknown) {
+  if (value === null || value === undefined) return null;
+  const input = object(value, 'manifest.shippingLabel.still');
+  const captureStatus = enumValue(input.captureStatus, 'manifest.shippingLabel.still.captureStatus', ['CAPTURED', 'FAILED', 'UNAVAILABLE_WHILE_RECORDING', 'NOT_ATTEMPTED'] as const);
+  const sha256 = text(input.sha256, 'manifest.shippingLabel.still.sha256', 64, 64, { nullable: true, pattern: /^[a-f0-9]{64}$/i }) as string | null;
+  if (captureStatus === 'CAPTURED' && !sha256) throw new ValidationError('manifest.shippingLabel.still.sha256', 'is required when a still was captured');
+  return {
+    capturedAt: isoDate(input.capturedAt, 'manifest.shippingLabel.still.capturedAt') as string,
+    sha256,
+    sizeBytes: numberValue(input.sizeBytes, 'manifest.shippingLabel.still.sizeBytes', 1, 40 * 1024 * 1024, { nullable: true, integer: true, positive: true }) as number | null,
+    widthPixels: numberValue(input.widthPixels, 'manifest.shippingLabel.still.widthPixels', 1, 20_000, { nullable: true, integer: true, positive: true }) as number | null,
+    heightPixels: numberValue(input.heightPixels, 'manifest.shippingLabel.still.heightPixels', 1, 20_000, { nullable: true, integer: true, positive: true }) as number | null,
+    captureStatus,
+  };
+}
+
 function parseShippingLabel(value: unknown) {
   if (value === null || value === undefined) return null;
   const input = object(value, 'manifest.shippingLabel');
@@ -381,6 +425,8 @@ function parseShippingLabel(value: unknown) {
     symbology: text(input.symbology, 'manifest.shippingLabel.symbology', 1, 80) as string,
     detectedAt: isoDate(input.detectedAt, 'manifest.shippingLabel.detectedAt') as string,
     source: enumValue(input.source, 'manifest.shippingLabel.source', ['CAMERA_BARCODE_SCANNER'] as const),
+    tracker: parseShippingLabelTracker(input.tracker),
+    still: parseShippingLabelStill(input.still),
   };
 }
 

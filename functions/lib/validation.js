@@ -364,6 +364,52 @@ function parseAttestation(value, schemaVersion) {
         } : {}),
     };
 }
+function parseCourierCodeList(value, path) {
+    if (value === undefined)
+        return [];
+    if (!Array.isArray(value) || value.length > 4)
+        throw new ValidationError(path, 'must be an array with no more than 4 entries');
+    return value.map((item, index) => text(item, `${path}[${index}]`, 1, 20, { pattern: /^[a-z0-9_-]+$/ }));
+}
+function parseShippingLabelTracker(value) {
+    if (value === null || value === undefined)
+        return null;
+    const input = object(value, 'manifest.shippingLabel.tracker');
+    return {
+        profileId: enumValue(input.profileId, 'manifest.shippingLabel.tracker.profileId', ['PACKPROOF_OSS_TRACKING_NUMBER_V1']),
+        dataset: text(input.dataset, 'manifest.shippingLabel.tracker.dataset', 1, 160),
+        identified: booleanValue(input.identified, 'manifest.shippingLabel.tracker.identified'),
+        checksumValid: booleanValue(input.checksumValid, 'manifest.shippingLabel.tracker.checksumValid'),
+        courierCode: text(input.courierCode, 'manifest.shippingLabel.tracker.courierCode', 1, 20, { nullable: true, pattern: /^[a-z0-9_-]+$/ }),
+        courierName: text(input.courierName, 'manifest.shippingLabel.tracker.courierName', 1, 80, { nullable: true }),
+        trackerName: text(input.trackerName, 'manifest.shippingLabel.tracker.trackerName', 1, 80, { nullable: true }),
+        publicTrackingUrl: input.publicTrackingUrl === null || input.publicTrackingUrl === undefined
+            ? null
+            : urlText(input.publicTrackingUrl, 'manifest.shippingLabel.tracker.publicTrackingUrl'),
+        alternateCourierCodes: parseCourierCodeList(input.alternateCourierCodes, 'manifest.shippingLabel.tracker.alternateCourierCodes'),
+        lookupStatus: enumValue(input.lookupStatus, 'manifest.shippingLabel.tracker.lookupStatus', ['DATASET_VALIDATED', 'UNRECOGNIZED', 'LOOKUP_INCOMPLETE']),
+        interpretation: enumValue(input.interpretation, 'manifest.shippingLabel.tracker.interpretation', ['OPEN_SOURCE_TRACKING_NUMBER_VALIDATION_NOT_CARRIER_CUSTODY']),
+        hashedAt: isoDate(input.hashedAt, 'manifest.shippingLabel.tracker.hashedAt'),
+        sha256: text(input.sha256, 'manifest.shippingLabel.tracker.sha256', 64, 64, { pattern: /^[a-f0-9]{64}$/i }),
+    };
+}
+function parseShippingLabelStill(value) {
+    if (value === null || value === undefined)
+        return null;
+    const input = object(value, 'manifest.shippingLabel.still');
+    const captureStatus = enumValue(input.captureStatus, 'manifest.shippingLabel.still.captureStatus', ['CAPTURED', 'FAILED', 'UNAVAILABLE_WHILE_RECORDING', 'NOT_ATTEMPTED']);
+    const sha256 = text(input.sha256, 'manifest.shippingLabel.still.sha256', 64, 64, { nullable: true, pattern: /^[a-f0-9]{64}$/i });
+    if (captureStatus === 'CAPTURED' && !sha256)
+        throw new ValidationError('manifest.shippingLabel.still.sha256', 'is required when a still was captured');
+    return {
+        capturedAt: isoDate(input.capturedAt, 'manifest.shippingLabel.still.capturedAt'),
+        sha256,
+        sizeBytes: numberValue(input.sizeBytes, 'manifest.shippingLabel.still.sizeBytes', 1, 40 * 1024 * 1024, { nullable: true, integer: true, positive: true }),
+        widthPixels: numberValue(input.widthPixels, 'manifest.shippingLabel.still.widthPixels', 1, 20_000, { nullable: true, integer: true, positive: true }),
+        heightPixels: numberValue(input.heightPixels, 'manifest.shippingLabel.still.heightPixels', 1, 20_000, { nullable: true, integer: true, positive: true }),
+        captureStatus,
+    };
+}
 function parseShippingLabel(value) {
     if (value === null || value === undefined)
         return null;
@@ -384,6 +430,8 @@ function parseShippingLabel(value) {
         symbology: text(input.symbology, 'manifest.shippingLabel.symbology', 1, 80),
         detectedAt: isoDate(input.detectedAt, 'manifest.shippingLabel.detectedAt'),
         source: enumValue(input.source, 'manifest.shippingLabel.source', ['CAMERA_BARCODE_SCANNER']),
+        tracker: parseShippingLabelTracker(input.tracker),
+        still: parseShippingLabelStill(input.still),
     };
 }
 exports.captureManifestInputSchema = schema((value) => {

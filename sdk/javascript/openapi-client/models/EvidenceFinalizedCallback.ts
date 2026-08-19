@@ -4,6 +4,7 @@
 /* eslint-disable */
 import type { AssuranceAssessment } from './AssuranceAssessment';
 import type { ConnectManifestAuthentication } from './ConnectManifestAuthentication';
+import type { ShippingTrackerObservation } from './ShippingTrackerObservation';
 /**
  * Inbound Connect callback. Verify the HMAC over the exact raw body before parsing. dossierUrl is added at delivery time and expires after 15 minutes.
  */
@@ -25,6 +26,7 @@ export type EvidenceFinalizedCallback = {
     assurance: (AssuranceAssessment | null);
     attestationStatus?: string;
     carrierTrackingMatchStatus?: string;
+    shippingTracker?: (ShippingTrackerObservation | null);
     declaredWeightGrams?: number | null;
     dossierUrl: string;
     dossierUrlExpiresAt: string;

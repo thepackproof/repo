@@ -20,6 +20,7 @@ import {
   type PendingEvidenceGrant,
 } from './evidence-finalization';
 import { HUMAN_REVIEW_DISCLAIMER, groupPackageSealObservations, isOutboundPackingEvidenceType } from './package-seal-protocol';
+import { asShippingTrackerObservation, type ShippingTrackerObservation } from './shipping-tracker';
 import { transactionIdSchema } from './validation';
 
 const MAX_EVIDENCE_BYTES = 600 * 1024 * 1024;
@@ -144,7 +145,11 @@ function pendingDocumentToGrant(input: {
         }
       : fields.attestationSnapshot,
     carrierContext: pending.carrierContext && typeof pending.carrierContext === 'object'
-      ? pending.carrierContext as { matchStatus?: string; scannedTrackingNumber?: string | null }
+      ? pending.carrierContext as {
+        matchStatus?: string;
+        scannedTrackingNumber?: string | null;
+        tracker?: ShippingTrackerObservation | null;
+      }
       : null,
     requestFingerprint: typeof pending.requestFingerprint === 'string' ? pending.requestFingerprint : null,
     acquisitionClass: fields.acquisitionClass,
@@ -327,6 +332,7 @@ export const onEvidenceUploaded = onObjectFinalized({ timeoutSeconds: 540, memor
     deviceKeyHardwareBackedSignal: pending?.attestationSnapshot?.deviceKeyProof?.hardwareBacked ?? null,
     carrierTrackingMatchStatus,
     scannedTrackingNumber: pending?.carrierContext?.scannedTrackingNumber ?? null,
+    shippingTracker: asShippingTrackerObservation(pending?.carrierContext?.tracker),
     captureSessionId: pending?.captureSessionId ?? null,
     returnPassportId: pending?.returnPassportId ?? null,
     connectSessionId: pending?.connectSessionId ?? null,
@@ -550,6 +556,17 @@ export async function generateEvidencePacket(transactionId: string, generatedBy:
     addLine(`Byte integrity: ${item.assurance?.byteIntegrity?.status ?? (item.clientHashMatched === false ? 'MISMATCH' : 'SERVER_HASH_ONLY')}; client hash matched: ${String(item.clientHashMatched ?? 'not supplied')}; size matched: ${String(item.clientSizeMatched ?? 'not supplied')}; declared media type matched: ${String(item.contentTypeMatched ?? 'not supplied')}`);
     addLine(`Acquisition quality: ${item.assurance?.acquisitionQuality?.status ?? 'NOT_EVALUATED'}; physical correspondence: ${item.assurance?.physicalCorrespondence?.status ?? 'NOT_AVAILABLE'}; business/legal relevance: ${item.assurance?.businessLegalRelevance?.status ?? 'REVIEW_REQUIRED'}`);
     addLine(`Capture-time tracking context: ${item.carrierTrackingMatchStatus ?? 'NOT_SCANNED'}${item.scannedTrackingNumber ? `; barcode ${item.scannedTrackingNumber}` : ''}`);
+    if (item.shippingTracker && typeof item.shippingTracker === 'object') {
+      const tracker = item.shippingTracker as {
+        lookupStatus?: string;
+        courierCode?: string | null;
+        observationSha256?: string;
+        hashMatched?: boolean | null;
+        stillCaptureStatus?: string | null;
+        stillSha256?: string | null;
+      };
+      addLine(`Open-source tracker observation: ${tracker.lookupStatus ?? 'NOT_RECORDED'}; courier ${tracker.courierCode ?? 'unrecognized'}; observation SHA-256 ${tracker.observationSha256 ?? 'not recorded'}; client hash matched: ${String(tracker.hashMatched ?? 'not supplied')}; still ${tracker.stillCaptureStatus ?? 'NOT_ATTEMPTED'}${tracker.stillSha256 ? `; still SHA-256 ${tracker.stillSha256}` : ''}. This is checksum and courier identification from published tracking-number data, not carrier custody or a live scan event.`);
+    }
     if (item.postSubmissionTrackingMatchStatus) {
       addLine(`Later submitted-tracking comparison: ${item.postSubmissionTrackingMatchStatus}${item.postSubmissionExpectedTrackingNumber ? `; submitted ${item.postSubmissionExpectedTrackingNumber}` : ''}; compared ${timestampIso(item.postSubmissionComparedAt) ?? 'after capture'}`, { gap: 6 });
     } else {

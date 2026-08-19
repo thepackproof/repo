@@ -90,6 +90,7 @@ export { ReviewPackage as ReviewPackageModel } from './models/ReviewPackage';
 export type { ReviewPackageResponse as ReviewPackageResponseModel } from './models/ReviewPackageResponse';
 export { Shipment as ShipmentModel } from './models/Shipment';
 export type { ShipmentResponse as ShipmentResponseModel } from './models/ShipmentResponse';
+export { ShippingTrackerObservation as ShippingTrackerObservationModel } from './models/ShippingTrackerObservation';
 export type { TimelineEvent as TimelineEventModel } from './models/TimelineEvent';
 export type { TimelineResponse as TimelineResponseModel } from './models/TimelineResponse';
 export { Transaction as TransactionModel } from './models/Transaction';

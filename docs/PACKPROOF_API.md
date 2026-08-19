@@ -129,6 +129,8 @@ Permanent reason codes on every callback:
 
 Additional codes appear when a gate did not pass. `statusReasonCodes` and the six `assurance` dimensions remain authoritative for policy decisions.
 
+`shippingTracker` is optional on the callback and on `GET /v1/transactions/{transactionId}/evidence` artifacts. When a shipping barcode was observed at capture, it reports open-source checksum and courier identification plus a canonical observation hash. It is not live carrier custody, a scan event, or a `DIGITAL_EVIDENCE_READY` gate.
+
 ## SDK
 
 ```js

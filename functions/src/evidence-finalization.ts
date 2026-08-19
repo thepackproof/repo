@@ -8,6 +8,7 @@ import {
   detectSupportedMediaType,
   sha256Hex,
 } from './evidence-format';
+import type { ShippingTrackerObservation } from './shipping-tracker';
 
 export type AcquisitionClass = 'NATIVE_MOBILE' | 'ENTERPRISE_EDGE' | 'EXTERNAL_DECLARED';
 
@@ -42,7 +43,7 @@ export type PendingEvidenceGrant = {
     captureProfileId?: string | null;
     captureGroupId?: string | null;
   } | null;
-  carrierContext: { matchStatus?: string; scannedTrackingNumber?: string | null } | null;
+  carrierContext: { matchStatus?: string; scannedTrackingNumber?: string | null; tracker?: ShippingTrackerObservation | null } | null;
   requestFingerprint: string | null;
   acquisitionClass: AcquisitionClass | null;
   edgeAgentId: string | null;

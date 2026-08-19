@@ -12,7 +12,7 @@ import { forceFreshCallableCredentials } from '@/lib/firebase';
 import { enqueueEvidence, syncEvidenceQueue } from '@/lib/offline-evidence-queue';
 import { formatDate, formatMoney, readableError, statusProgress } from '@/lib/format';
 import { HUMAN_REVIEW_DISCLAIMER, groupHumanReviewObservations, packageSealProtocolStatus } from '@/lib/package-seal-protocol';
-import { attestationLabel, byteIntegrityLabel, evidenceLabels, trackingLabel, trackingStatus } from '@/lib/transaction-detail-labels';
+import { attestationLabel, byteIntegrityLabel, evidenceLabels, shippingTrackerLabel, trackingLabel, trackingStatus } from '@/lib/transaction-detail-labels';
 import { formatRuntimeEnum, normalizePhysicalStatus, type PhysicalStatusView } from '@/lib/runtime-display';
 import { useAuth } from '@/providers/auth-provider';
 import type { EvidenceRecord, EvidenceType, PackProofTransaction, ReturnPassport, TimelineEvent } from '@/types/models';
@@ -274,6 +274,7 @@ export default function TransactionDetail() {
             <Text style={styles.verification}>ACQUISITION {formatRuntimeEnum(acquisitionQuality)}</Text>
             <Text style={styles.verificationWarning}>PHYSICAL {formatRuntimeEnum(physicalCorrespondence)}</Text>
             {trackingLabel(record) ? <Text style={[styles.verification, trackingStatus(record) === 'MISMATCH' && styles.verificationDanger]}>{trackingLabel(record)}</Text> : <Text style={styles.verification}>CARRIER CONTEXT NONE</Text>}
+            {shippingTrackerLabel(record) ? <Text style={[styles.verification, record.shippingTracker?.hashMatched === false && styles.verificationDanger, record.shippingTracker?.lookupStatus === 'UNRECOGNIZED' && styles.verificationWarning]}>{shippingTrackerLabel(record)}</Text> : null}
             <Text style={styles.verificationWarning}>BUSINESS/LEGAL {formatRuntimeEnum(businessRelevance)}</Text>
           </View>
           <Text style={styles.evidenceMeta}>{formatDate(record.createdAt)} · {(record.sizeBytes / 1024 / 1024).toFixed(1)} MB</Text>

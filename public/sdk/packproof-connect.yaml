@@ -96,6 +96,29 @@ components:
         currency: { type: string, pattern: '^[A-Z]{3}$', default: USD }
         callbackUrl: { type: string, format: uri, maxLength: 1000 }
         idempotencyKey: { type: string, minLength: 8, maxLength: 200 }
+    ShippingTrackerObservation:
+      type: object
+      additionalProperties: false
+      description: >
+        Open-source tracking-number identification and canonical observation hash.
+        This is checksum and courier identification from published tracking-number
+        data, not live carrier custody.
+      required: [lookupStatus, courierCode, courierName, publicTrackingUrl, stillSha256, stillCaptureStatus, observationSha256, clientObservationSha256, hashMatched, interpretation]
+      properties:
+        lookupStatus:
+          type: string
+          enum: [DATASET_VALIDATED, UNRECOGNIZED, LOOKUP_INCOMPLETE]
+        courierCode: { type: [string, 'null'] }
+        courierName: { type: [string, 'null'] }
+        publicTrackingUrl: { type: [string, 'null'], format: uri }
+        stillSha256: { type: [string, 'null'], pattern: '^[a-f0-9]{64}$' }
+        stillCaptureStatus:
+          type: [string, 'null']
+          enum: [CAPTURED, FAILED, UNAVAILABLE_WHILE_RECORDING, NOT_ATTEMPTED, null]
+        observationSha256: { type: string, pattern: '^[a-f0-9]{64}$' }
+        clientObservationSha256: { type: [string, 'null'], pattern: '^[a-f0-9]{64}$' }
+        hashMatched: { type: [boolean, 'null'] }
+        interpretation: { const: OPEN_SOURCE_TRACKING_NUMBER_VALIDATION_NOT_CARRIER_CUSTODY }
     CreateVerificationResponse:
       type: object
       required: [success, sessionId, verificationUrl, expiresAt]
@@ -154,6 +177,10 @@ components:
           nullable: true
         attestationStatus: { type: string }
         carrierTrackingMatchStatus: { type: string }
+        shippingTracker:
+          oneOf:
+            - $ref: '#/components/schemas/ShippingTrackerObservation'
+            - type: 'null'
         declaredWeightGrams: { type: [integer, 'null'] }
         dossierUrl: { type: string, format: uri }
         dossierUrlExpiresAt: { type: string, format: date-time }

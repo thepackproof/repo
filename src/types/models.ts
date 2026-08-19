@@ -153,6 +153,18 @@ export type EvidenceRecord = {
   };
   carrierTrackingMatchStatus?: 'MATCHED' | 'MISMATCH' | 'NO_EXPECTED_TRACKING' | 'NOT_SCANNED';
   scannedTrackingNumber?: string | null;
+  shippingTracker?: {
+    lookupStatus: 'DATASET_VALIDATED' | 'UNRECOGNIZED' | 'LOOKUP_INCOMPLETE';
+    courierCode?: string | null;
+    courierName?: string | null;
+    publicTrackingUrl?: string | null;
+    stillSha256?: string | null;
+    stillCaptureStatus?: 'CAPTURED' | 'FAILED' | 'UNAVAILABLE_WHILE_RECORDING' | 'NOT_ATTEMPTED' | null;
+    observationSha256: string;
+    clientObservationSha256?: string | null;
+    hashMatched?: boolean | null;
+    interpretation?: 'OPEN_SOURCE_TRACKING_NUMBER_VALIDATION_NOT_CARRIER_CUSTODY';
+  } | null;
   postSubmissionTrackingMatchStatus?: 'MATCHED' | 'MISMATCH' | 'NOT_SCANNED';
   postSubmissionExpectedTrackingNumber?: string | null;
   postSubmissionComparedAt?: DateLike;

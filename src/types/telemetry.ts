@@ -6,6 +6,31 @@ export type DeviceKeyProof = {
   hardwareBacked: boolean;
 };
 
+export type ShippingLabelTrackerTelemetry = {
+  profileId: 'PACKPROOF_OSS_TRACKING_NUMBER_V1';
+  dataset: string;
+  identified: boolean;
+  checksumValid: boolean;
+  courierCode: string | null;
+  courierName: string | null;
+  trackerName: string | null;
+  publicTrackingUrl: string | null;
+  alternateCourierCodes: string[];
+  lookupStatus: 'DATASET_VALIDATED' | 'UNRECOGNIZED' | 'LOOKUP_INCOMPLETE';
+  interpretation: 'OPEN_SOURCE_TRACKING_NUMBER_VALIDATION_NOT_CARRIER_CUSTODY';
+  hashedAt: string;
+  sha256: string;
+};
+
+export type ShippingLabelStillTelemetry = {
+  capturedAt: string;
+  sha256: string | null;
+  sizeBytes: number | null;
+  widthPixels: number | null;
+  heightPixels: number | null;
+  captureStatus: 'CAPTURED' | 'FAILED' | 'UNAVAILABLE_WHILE_RECORDING' | 'NOT_ATTEMPTED';
+};
+
 export type ShippingLabelTelemetry = {
   rawDecodedValue: string;
   trackingNumber: string;
@@ -13,6 +38,8 @@ export type ShippingLabelTelemetry = {
   symbology: string;
   detectedAt: string;
   source: 'CAMERA_BARCODE_SCANNER';
+  tracker?: ShippingLabelTrackerTelemetry | null;
+  still?: ShippingLabelStillTelemetry | null;
 };
 
 export type RuntimeIntegrityTelemetry = {

@@ -8,6 +8,7 @@ import type {
   MerchantTimelineEventDto,
 } from './merchant-evidence-types';
 import type { MerchantPrincipal } from './merchant-types';
+import type { ShippingTrackerObservation } from '../../shipping-tracker';
 
 export type AccessibleMerchantTransaction = {
   id: string;
@@ -56,6 +57,7 @@ export type StoredEvidenceRecord = {
   assurance: MerchantEvidenceArtifactDto['assurance'];
   carrierTrackingMatchStatus: string | null;
   scannedTrackingNumber: string | null;
+  shippingTracker: ShippingTrackerObservation | null;
   createdAt: Date;
   updatedAt: Date;
   finalizedAt: Date | null;

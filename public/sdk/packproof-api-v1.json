@@ -1392,6 +1392,24 @@
         },
         "description": "Layered observation metadata. physicalCorrespondence is always NOT_AVAILABLE and businessLegalRelevance is always REVIEW_REQUIRED in this release. These dimensions are not a MATCH/NON_MATCH verdict."
       },
+      "ShippingTrackerObservation": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Open-source tracking-number identification and canonical observation hash. This is checksum and courier identification from published tracking-number data, not live carrier custody.",
+        "required": ["lookupStatus", "courierCode", "courierName", "publicTrackingUrl", "stillSha256", "stillCaptureStatus", "observationSha256", "clientObservationSha256", "hashMatched", "interpretation"],
+        "properties": {
+          "lookupStatus": { "type": "string", "enum": ["DATASET_VALIDATED", "UNRECOGNIZED", "LOOKUP_INCOMPLETE"] },
+          "courierCode": { "type": ["string", "null"] },
+          "courierName": { "type": ["string", "null"] },
+          "publicTrackingUrl": { "type": ["string", "null"], "format": "uri" },
+          "stillSha256": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$" },
+          "stillCaptureStatus": { "type": ["string", "null"], "enum": ["CAPTURED", "FAILED", "UNAVAILABLE_WHILE_RECORDING", "NOT_ATTEMPTED", null] },
+          "observationSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+          "clientObservationSha256": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$" },
+          "hashMatched": { "type": ["boolean", "null"] },
+          "interpretation": { "const": "OPEN_SOURCE_TRACKING_NUMBER_VALIDATION_NOT_CARRIER_CUSTODY" }
+        }
+      },
       "EvidenceArtifact": {
         "type": "object",
         "additionalProperties": false,
@@ -1413,6 +1431,7 @@
           "workflowReady": { "type": "boolean" },
           "assurance": { "oneOf": [{ "$ref": "#/components/schemas/AssuranceAssessment" }, { "type": "null" }] },
           "carrierTrackingMatchStatus": { "type": ["string", "null"] },
+          "shippingTracker": { "oneOf": [{ "$ref": "#/components/schemas/ShippingTrackerObservation" }, { "type": "null" }], "description": "Present when a shipping barcode was observed at capture. Null for artifacts without an open-source tracker observation." },
           "finalizedAt": { "type": ["string", "null"], "format": "date-time" },
           "createdAt": { "type": "string", "format": "date-time" },
           "updatedAt": { "type": "string", "format": "date-time" }
@@ -1774,6 +1793,7 @@
           "assurance": { "oneOf": [{ "$ref": "#/components/schemas/AssuranceAssessment" }, { "type": "null" }] },
           "attestationStatus": { "type": "string" },
           "carrierTrackingMatchStatus": { "type": "string" },
+          "shippingTracker": { "oneOf": [{ "$ref": "#/components/schemas/ShippingTrackerObservation" }, { "type": "null" }] },
           "declaredWeightGrams": { "type": ["integer", "null"] },
           "dossierUrl": { "type": "string", "format": "uri" },
           "dossierUrlExpiresAt": { "type": "string", "format": "date-time" },

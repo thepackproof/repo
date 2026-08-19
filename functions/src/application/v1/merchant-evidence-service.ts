@@ -119,6 +119,7 @@ export function toMerchantEvidenceArtifactDto(record: StoredEvidenceRecord): Mer
     }),
     assurance: finalized ? publicAssurance(record) : record.assurance ? publicAssurance(record) : null,
     carrierTrackingMatchStatus: record.carrierTrackingMatchStatus,
+    shippingTracker: record.shippingTracker ?? null,
     finalizedAt: record.finalizedAt?.toISOString() ?? null,
     createdAt: record.createdAt.toISOString(),
     updatedAt: record.updatedAt.toISOString(),

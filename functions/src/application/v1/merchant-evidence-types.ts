@@ -1,4 +1,5 @@
 import type { AssuranceAssessment } from '../../domain/v1/evidence';
+import type { ShippingTrackerObservation } from '../../shipping-tracker';
 
 export const merchantEvidenceStatuses = ['RESERVED', 'UPLOADED', 'FINALIZED', 'QUARANTINED', 'FAILED'] as const;
 export type MerchantEvidenceStatus = (typeof merchantEvidenceStatuses)[number];
@@ -34,6 +35,7 @@ export type MerchantEvidenceArtifactDto = {
   workflowReady: boolean;
   assurance: AssuranceAssessment | null;
   carrierTrackingMatchStatus: string | null;
+  shippingTracker: ShippingTrackerObservation | null;
   finalizedAt: string | null;
   createdAt: string;
   updatedAt: string;

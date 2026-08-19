@@ -841,7 +841,7 @@ describe('PackProof API v1 headless Connect and claims-review routes', () => {
       status: 'FINALIZED', role: 'SELLER', contentType: 'video/mp4', sizeBytes: 12, sha256: 'b'.repeat(64),
       manifestSha256: 'c'.repeat(64), evidenceBundleSha256: 'd'.repeat(64),
       manifestAuthenticationScope: 'PACKPROOF_SERVICE_ONLY', workflowReady: true, assurance: null,
-      carrierTrackingMatchStatus: null, finalizedAt: '2026-08-11T12:00:00.000Z',
+      carrierTrackingMatchStatus: null, shippingTracker: null, finalizedAt: '2026-08-11T12:00:00.000Z',
       createdAt: '2026-08-11T12:00:00.000Z', updatedAt: '2026-08-11T12:00:00.000Z',
     });
     const denied = await jsonRequest(`/v1/transactions/${transactionId}/evidence`, { headers: { authorization: 'Bearer read-a' } });
@@ -849,6 +849,7 @@ describe('PackProof API v1 headless Connect and claims-review routes', () => {
     const listed = await jsonRequest(`/v1/transactions/${transactionId}/evidence`, { headers: { authorization: 'Bearer evidence-a' } });
     assert.equal(listed.response.status, 200);
     assert.equal(listed.body.data[0].type, 'PACKING_VIDEO');
+    assert.equal(listed.body.data[0].shippingTracker, null);
     const review = await jsonRequest(`/v1/transactions/${transactionId}/review-package`, { headers: { authorization: 'Bearer evidence-a' } });
     assert.equal(review.response.status, 200);
     assert.equal(review.body.data.object, 'review_package');

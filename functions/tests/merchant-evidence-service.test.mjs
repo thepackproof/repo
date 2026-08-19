@@ -119,7 +119,7 @@ function finalized(type, id = `${type.toLowerCase()}-1`) {
       carrierContext: { status: 'NOT_EVALUATED', reasonCodes: [] },
       businessLegalRelevance: { status: 'REVIEW_REQUIRED', reasonCodes: [] },
     },
-    carrierTrackingMatchStatus: null, scannedTrackingNumber: null,
+    carrierTrackingMatchStatus: null, scannedTrackingNumber: null, shippingTracker: null,
     createdAt: now, updatedAt: now, finalizedAt: now,
   };
 }
@@ -148,6 +148,7 @@ test('merchant evidence service isolates tenants and never emits a claims verdic
   ));
   const artifacts = await service.listEvidence(orgA, 'txn_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
   assert.equal(artifacts.length, 2);
+  assert.equal(artifacts[0].shippingTracker, null);
   assert.equal(artifacts[0].assurance.physicalCorrespondence.status, 'NOT_AVAILABLE');
   assert.equal(artifacts[0].assurance.businessLegalRelevance.status, 'REVIEW_REQUIRED');
 
@@ -167,6 +168,45 @@ test('merchant evidence service isolates tenants and never emits a claims verdic
   }, 'ship-key', 'req-2');
   assert.equal(shipment.shipment.assertionSource, 'MERCHANT');
   assert.equal(shipment.shipment.labelEvidenceMatchStatus, 'NOT_SCANNED');
+});
+
+test('merchant evidence API returns the open-source shipping tracker observation', async () => {
+  const { asShippingTrackerObservation } = require('../lib/shipping-tracker.js');
+  const tracker = {
+    lookupStatus: 'DATASET_VALIDATED',
+    courierCode: 'ups',
+    courierName: 'UPS',
+    publicTrackingUrl: 'https://wwwapps.ups.com/WebTracking/track?track=yes&trackNums=1Z999AA10123456784',
+    stillSha256: 'e'.repeat(64),
+    stillCaptureStatus: 'CAPTURED',
+    observationSha256: 'f'.repeat(64),
+    clientObservationSha256: 'f'.repeat(64),
+    hashMatched: true,
+    interpretation: 'OPEN_SOURCE_TRACKING_NUMBER_VALIDATION_NOT_CARRIER_CUSTODY',
+  };
+  assert.deepEqual(asShippingTrackerObservation(tracker), tracker);
+  assert.equal(asShippingTrackerObservation({ lookupStatus: 'DATASET_VALIDATED' }), null);
+
+  const repository = new MemoryEvidenceRepo();
+  repository.seedTransaction({
+    id: 'txn_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', organizationId: 'org-a', integrationId: null,
+    merchantReference: 'order-1', title: 'Camera', description: '', category: null, status: 'CREATED',
+    consumerStatus: 'DRAFT', amount: { currency: 'USD', minorUnits: 1000 }, terms: {
+      saleType: 'SHIPPED', shippingResponsibility: 'SELLER', returns: 'PLATFORM_POLICY', returnWindowDays: 0, customTerms: '',
+    }, shipment: null, delivery: null, sellerId: 'seller-1', buyerId: 'buyer-1',
+    participantIds: ['seller-1', 'buyer-1'], createdAt: now, updatedAt: now,
+  });
+  repository.seedEvidence({ ...finalized('PACKING_VIDEO'), shippingTracker: tracker });
+  const service = new MerchantEvidenceApplicationService(
+    repository, new MemoryIdempotency(), { append: async () => undefined }, new MerchantAuthorizationPolicy(),
+    { generate: async () => ({ reportId: 'report_1', storagePath: 'reports/x.pdf', sha256: 'd'.repeat(64), evidenceCount: 1 }) },
+    { sign: async () => 'https://files.example/x.pdf' },
+    { environment: 'sandbox' }, () => now,
+  );
+  const artifacts = await service.listEvidence(orgA, 'txn_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
+  assert.deepEqual(artifacts[0].shippingTracker, tracker);
+  const review = await service.getReviewPackage(orgA, 'txn_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
+  assert.deepEqual(review.evidence[0].shippingTracker, tracker);
 });
 
 test('merchant shipment and review accept station packing and seal types without collapsing assurance', async () => {
@@ -305,6 +345,7 @@ test('Connect v1 create requires a bound integration and hides tokens on get', a
     new MerchantAuthorizationPolicy(),
     { environment: 'sandbox' },
     () => 'https://packproof.example',
+    () => now,
   );
 
   await assert.rejects(() => service.createSession({ ...orgA, integrationId: null }, {

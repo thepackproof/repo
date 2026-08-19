@@ -46,3 +46,15 @@ export function trackingLabel(record: EvidenceRecord): string | null {
   if (!status || status === 'NOT_SCANNED') return null;
   return `${record.postSubmissionTrackingMatchStatus ? 'SUBMITTED TRACKING' : 'TRACKING'} ${formatRuntimeEnum(status)}`;
 }
+
+export function shippingTrackerLabel(record: EvidenceRecord): string | null {
+  const tracker = record.shippingTracker;
+  if (!tracker) return null;
+  const courier = tracker.courierCode ? formatRuntimeEnum(tracker.courierCode) : null;
+  if (tracker.lookupStatus === 'DATASET_VALIDATED') {
+    const hash = tracker.hashMatched === true ? ' HASHED' : tracker.hashMatched === false ? ' HASH MISMATCH' : '';
+    return `TRACKER ${courier ?? 'IDENTIFIED'}${hash}`;
+  }
+  if (tracker.lookupStatus === 'UNRECOGNIZED') return 'TRACKER UNRECOGNIZED';
+  return 'TRACKER LOOKUP INCOMPLETE';
+}

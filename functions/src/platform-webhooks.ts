@@ -14,6 +14,7 @@ import { generateEvidencePacket } from './evidence';
 import { assertAccountActive, expiresIn, hash, randomToken, requireUid } from './helpers';
 import { applySecurityHeaders } from './http-security';
 import { isOutboundPackingEvidenceType } from './package-seal-protocol';
+import { asShippingTrackerObservation } from './shipping-tracker';
 import { HmacConnectSessionTokenIssuer } from './infrastructure/crypto/connect-session-token-issuer';
 import { HmacPublicHandoffTokenIssuer } from './infrastructure/crypto/public-handoff-token-issuer';
 import { Sha256TokenVerifier } from './infrastructure/crypto/sha256-token-verifier';
@@ -246,6 +247,7 @@ export const onConnectEvidenceVerified = onDocumentCreated('transactions/{transa
     assurance: evidence.assurance && typeof evidence.assurance === 'object' ? evidence.assurance as Record<string, unknown> : null,
     attestationStatus: String(evidence.attestationStatus ?? ''),
     carrierTrackingMatchStatus: typeof evidence.carrierTrackingMatchStatus === 'string' ? evidence.carrierTrackingMatchStatus : null,
+    shippingTracker: asShippingTrackerObservation(evidence.shippingTracker),
     declaredWeightGrams: transaction.source.declaredWeightGrams ?? null,
     dossierSha256: packet.sha256,
     serverFinalized: evidence.serverFinalized === true,
