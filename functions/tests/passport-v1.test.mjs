@@ -210,7 +210,7 @@ test('aggregator projects honest 1.0 gaps and authentic integrity', () => {
   assert.equal(aggregated.integrity.banner.includes('ITEM'), false);
 });
 
-test('quarantined artifacts make integrity LIMITED without failing eligibility', () => {
+test('quarantined artifacts make finalization LIMITED without removing AUTHENTIC_PACKPROOF', () => {
   const aggregated = passport.aggregatePassport(baseInput({
     artifacts: [
       artifact(),
@@ -222,9 +222,11 @@ test('quarantined artifacts make integrity LIMITED without failing eligibility',
       }),
     ],
   }));
-  assert.equal(aggregated.integrity.banner, 'PACKPROOF_RECORD_WITH_LIMITATIONS');
+  assert.equal(aggregated.integrity.banner, 'AUTHENTIC_PACKPROOF');
+  assert.equal(aggregated.integrity.summary, 'PackProof record integrity verified');
   assert.equal(aggregated.integrity.criteria.finalization, 'LIMITED');
-  assert.notEqual(aggregated.integrity.banner, 'INAUTHENTIC');
+  assert.equal(aggregated.evidenceInventory.find((item) => item.category === 'CARRIER_ACCEPTANCE').state, 'NOT_AVAILABLE');
+  assert.notEqual(aggregated.integrity.banner, 'PACKPROOF_RECORD_WITH_LIMITATIONS');
   const eligibility = passport.evaluatePassportEligibility({
     transactionExists: true,
     merchantReference: 'order-1',
@@ -234,6 +236,99 @@ test('quarantined artifacts make integrity LIMITED without failing eligibility',
     displayedUnattributedFacts: 0,
   });
   assert.equal(eligibility.ok, true);
+});
+
+test('legacy missing manifests are LIMITED on that criterion without flattening authenticity', () => {
+  const aggregated = passport.aggregatePassport(baseInput({
+    artifacts: [artifact({ manifestSha256: null })],
+  }));
+  assert.equal(aggregated.integrity.criteria.evidenceManifests, 'LIMITED');
+  assert.equal(aggregated.integrity.banner, 'AUTHENTIC_PACKPROOF');
+});
+
+test('integrity evaluator never uses the dead hashMismatch-and-missingManifest branch', () => {
+  const aggregated = passport.aggregatePassport(baseInput({
+    artifacts: [artifact({ clientHashMatched: false, finalization: 'QUARANTINED' }), artifact()],
+  }));
+  assert.equal(aggregated.integrity.criteria.evidenceManifests, 'VERIFIED');
+  assert.equal(aggregated.integrity.banner, 'AUTHENTIC_PACKPROOF');
+});
+
+test('PAGE_DECLARED commerce is draft lineage only and cannot satisfy Passport issuance', () => {
+  const pageDeclared = {
+    ...baseInput().commerce,
+    trustLevel: 'PAGE_DECLARED',
+    assertingSource: 'PAGE_DECLARED',
+    sku: 'PAGE-SKU',
+    title: 'Browser imported camera',
+    upc: '012345678905',
+  };
+  const ineligible = passport.evaluatePassportEligibility({
+    transactionExists: true,
+    merchantReference: null,
+    commerceContextId: pageDeclared.id,
+    commerceTrustLevel: 'PAGE_DECLARED',
+    sourceTrustLevel: 'PAGE_DECLARED',
+    externalOrderId: null,
+    artifacts: [artifact()],
+    displayedUnattributedFacts: 0,
+  });
+  assert.equal(ineligible.ok, false);
+  assert.equal(ineligible.failures.some((item) => item.code === 'NO_COMMERCE_SOURCE'), true);
+
+  const aggregated = passport.aggregatePassport(baseInput({
+    commerce: pageDeclared,
+    transaction: {
+      ...baseInput().transaction,
+      sourceTrustLevel: 'PAGE_DECLARED',
+      sourceType: 'PACKPROOF_BUTTON',
+      sourcePlatform: null,
+      merchantReference: null,
+      externalOrderId: null,
+      title: 'Browser imported camera',
+    },
+  }));
+  assert.equal(aggregated.transaction.sourceTrustClass, null);
+  assert.equal(aggregated.transaction.commerceContextId, null);
+  assert.equal(aggregated.items[0].expected.sku.value, null);
+  assert.equal(aggregated.items[0].expected.upc.value, null);
+  assert.notEqual(aggregated.items[0].expected.title.value, 'Browser imported camera');
+  assert.equal(aggregated.integrity.criteria.provenance, 'LIMITED');
+  assert.equal(aggregated.integrity.banner, 'AUTHENTIC_PACKPROOF');
+});
+
+test('PAGE_DECLARED facts stay omitted after an attested Connect order is present', () => {
+  const aggregated = passport.aggregatePassport(baseInput({
+    commerce: {
+      ...baseInput().commerce,
+      trustLevel: 'PAGE_DECLARED',
+      assertingSource: 'PAGE_DECLARED',
+      title: 'Page declared title',
+      sku: 'PAGE-SKU',
+      upc: '012345678905',
+    },
+  }));
+  assert.equal(aggregated.items[0].expected.sku.value, null);
+  assert.equal(aggregated.items[0].expected.upc.value, null);
+  assert.equal(aggregated.items[0].expected.title.value, 'Collectible camera');
+  assert.equal(aggregated.transaction.sourceTrustClass, 'MERCHANT_SERVER_ATTESTED');
+  assert.equal(aggregated.transaction.commerceContextId, null);
+  assert.equal(aggregated.integrity.criteria.provenance, 'LIMITED');
+  assert.equal(aggregated.integrity.banner, 'AUTHENTIC_PACKPROOF');
+});
+
+test('snapshot fingerprints include the normalized review query', () => {
+  const visa = passport.passportSnapshotFingerprintPayload('txn_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', {
+    framework: 'visa',
+    category: 'merchandise_not_received',
+  });
+  const paypal = passport.passportSnapshotFingerprintPayload('txn_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', {
+    framework: 'PAYPAL',
+    category: 'ITEM_NOT_RECEIVED',
+  });
+  assert.deepEqual(visa.reviewQuery, { framework: 'VISA', category: 'MERCHANDISE_NOT_RECEIVED' });
+  assert.notDeepEqual(visa, paypal);
+  assert.equal(visa.transactionId, paypal.transactionId);
 });
 
 test('inventory REVIEW_REQUIRED is used for tracking mismatch and packing hash mismatch', () => {

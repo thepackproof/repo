@@ -40,7 +40,13 @@ import {
   projectPassport,
   snapshotDto,
 } from './passport-projection';
-import type { PackProofPassportExportV1, PackProofPassportSnapshotV1, PackProofPassportV1, PassportReviewQuery } from '../../domain/v1/passport';
+import {
+  passportSnapshotFingerprintPayload,
+  type PackProofPassportExportV1,
+  type PackProofPassportSnapshotV1,
+  type PackProofPassportV1,
+  type PassportReviewQuery,
+} from '../../domain/v1/passport';
 
 export type MerchantPassportOptions = {
   verificationBaseUrl?: () => string;
@@ -735,7 +741,10 @@ export class MerchantEvidenceApplicationService {
       this.repository.listTimeline(transaction.id),
       this.repository.listReturns(transaction.id),
     ]);
-    assertPassportEligible(transaction, records);
+    const commerce = transaction.commerceContextId
+      ? await this.repository.findCommerceContext(transaction.commerceContextId)
+      : null;
+    assertPassportEligible(transaction, records, commerce);
     const issuedAt = this.now();
     const identity = boundOrIssuedIdentity(transaction, issuedAt);
     if (identity.bind) {
@@ -748,9 +757,6 @@ export class MerchantEvidenceApplicationService {
       identity.displayId = bound.displayId;
       identity.issuedAt = bound.issuedAt;
     }
-    const commerce = transaction.commerceContextId
-      ? await this.repository.findCommerceContext(transaction.commerceContextId)
-      : null;
     return projectPassport({
       transaction,
       artifacts: records,
@@ -795,14 +801,11 @@ export class MerchantEvidenceApplicationService {
         principalId: `${principal.organizationId}:${principal.apiClientId}`,
         operation: 'POST /v1/transactions/{transactionId}/passport/snapshots',
         key: idempotencyKey,
-        requestFingerprint: sha256(canonicalize({ transactionId })),
+        requestFingerprint: sha256(canonicalize(passportSnapshotFingerprintPayload(transactionId, reviewQuery))),
         leaseSeconds: 900,
       },
       async () => {
-        const existing = await this.repository.listPassportSnapshots(transactionId);
-        const version = (existing.at(-1)?.snapshotVersion ?? 0) + 1;
-        const stored = nextSnapshot(passport, version, this.now());
-        await this.repository.createPassportSnapshot(transactionId, stored);
+        const stored = await this.repository.createPassportSnapshot(transactionId, (version) => nextSnapshot(passport, version, this.now()));
         await this.audit.append({
           eventId: `passport_snapshot_${stored.snapshotId}`,
           organizationId: principal.organizationId,

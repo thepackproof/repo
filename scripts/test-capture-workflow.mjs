@@ -11,7 +11,7 @@ import {
   shouldDeletePhysicalOriginalsAfterSeriesCommit,
   shouldDeletePhysicalSourceAfterEachEncrypt,
 } from '../src/lib/capture-workflow.ts';
-import { captureGuideFor, captureChecklists, captureTitles, formatCaptureBytes, formatCaptureDuration, videoTypes } from '../src/lib/capture-guides.ts';
+import { captureGuideFor, captureChecklists, capturePreflightFor, captureReviewChecklist, captureTitles, formatCaptureBytes, formatCaptureDuration, videoTypes } from '../src/lib/capture-guides.ts';
 import { canonicalShippingObservationV1, identifyTrackingNumber } from '../src/lib/shipping-tracker.ts';
 import { createHash } from 'node:crypto';
 import {
@@ -57,6 +57,14 @@ assert.match(captureGuideFor('PACKING_VIDEO', true).instruction, /PP mark/);
 assert.match(captureChecklists.PACKING_VIDEO.join(' '), /paid postage is not required/i);
 assert.match(captureChecklists.PACKING_VIDEO.join(' '), /Scanning the tracking barcode is optional/);
 assert.match(captureChecklists.RETURN_PACKING_VIDEO.join(' '), /paid postage is not required/i);
+assert.equal(capturePreflightFor('PACKING_VIDEO').startLabel, 'Start capture');
+assert.match(capturePreflightFor('PACKING_VIDEO').title, /packing process/);
+assert.deepEqual(capturePreflightFor('PACKING_VIDEO').expectations, [
+  'Show the item',
+  'Place and seal it in the package',
+  'Capture the shipping label or barcode',
+]);
+assert.equal(captureReviewChecklist('PACKING_VIDEO', { videoRecorded: true, barcodeCaptured: true }).every((item) => item.done), true);
 assert.equal(formatCaptureDuration(75), '01:15');
 assert.equal(formatCaptureBytes(2048), '2 KB');
 

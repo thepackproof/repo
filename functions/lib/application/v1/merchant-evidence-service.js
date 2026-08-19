@@ -6,6 +6,7 @@ const package_seal_protocol_1 = require("../../package-seal-protocol");
 const errors_1 = require("./errors");
 const merchant_transaction_service_1 = require("./merchant-transaction-service");
 const passport_projection_1 = require("./passport-projection");
+const passport_1 = require("../../domain/v1/passport");
 const REPORT_URL_TTL_MS = 15 * 60 * 1000;
 const ACTIVE_RETURN_STATUSES = ['REQUESTED', 'AUTHORIZED', 'PACKED', 'IN_TRANSIT', 'RECEIVED_REVIEW', 'DISPUTED'];
 const RETURN_ELIGIBLE_CONSUMER_STATUSES = ['SHIPPED', 'BUYER_REVIEW', 'COMPLETED', 'DISPUTED'];
@@ -605,7 +606,10 @@ class MerchantEvidenceApplicationService {
             this.repository.listTimeline(transaction.id),
             this.repository.listReturns(transaction.id),
         ]);
-        (0, passport_projection_1.assertPassportEligible)(transaction, records);
+        const commerce = transaction.commerceContextId
+            ? await this.repository.findCommerceContext(transaction.commerceContextId)
+            : null;
+        (0, passport_projection_1.assertPassportEligible)(transaction, records, commerce);
         const issuedAt = this.now();
         const identity = (0, passport_projection_1.boundOrIssuedIdentity)(transaction, issuedAt);
         if (identity.bind) {
@@ -618,9 +622,6 @@ class MerchantEvidenceApplicationService {
             identity.displayId = bound.displayId;
             identity.issuedAt = bound.issuedAt;
         }
-        const commerce = transaction.commerceContextId
-            ? await this.repository.findCommerceContext(transaction.commerceContextId)
-            : null;
         return (0, passport_projection_1.projectPassport)({
             transaction,
             artifacts: records,
@@ -662,13 +663,10 @@ class MerchantEvidenceApplicationService {
             principalId: `${principal.organizationId}:${principal.apiClientId}`,
             operation: 'POST /v1/transactions/{transactionId}/passport/snapshots',
             key: idempotencyKey,
-            requestFingerprint: (0, merchant_transaction_service_1.sha256)((0, merchant_transaction_service_1.canonicalize)({ transactionId })),
+            requestFingerprint: (0, merchant_transaction_service_1.sha256)((0, merchant_transaction_service_1.canonicalize)((0, passport_1.passportSnapshotFingerprintPayload)(transactionId, reviewQuery))),
             leaseSeconds: 900,
         }, async () => {
-            const existing = await this.repository.listPassportSnapshots(transactionId);
-            const version = (existing.at(-1)?.snapshotVersion ?? 0) + 1;
-            const stored = (0, passport_projection_1.nextSnapshot)(passport, version, this.now());
-            await this.repository.createPassportSnapshot(transactionId, stored);
+            const stored = await this.repository.createPassportSnapshot(transactionId, (version) => (0, passport_projection_1.nextSnapshot)(passport, version, this.now()));
             await this.audit.append({
                 eventId: `passport_snapshot_${stored.snapshotId}`,
                 organizationId: principal.organizationId,

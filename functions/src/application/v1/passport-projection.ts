@@ -1,6 +1,7 @@
 import { canonicalizeJson, sha256Hex } from '../../evidence-format';
 import {
   aggregatePassport,
+  countDisplayedUnattributedCommercialFacts,
   evaluatePassportEligibility,
   issuePassportIdentity,
   issuePassportSnapshotId,
@@ -67,6 +68,7 @@ export function passportTransactionInput(transaction: AccessibleMerchantTransact
     commerceContextId: transaction.commerceContextId ?? null,
     sourcePlatform: transaction.sourcePlatform ?? null,
     sourceType: transaction.sourceType ?? null,
+    sourceTrustLevel: transaction.sourceTrustLevel ?? (transaction.sourceType === 'PACKPROOF_BUTTON' ? 'PAGE_DECLARED' : null),
     externalOrderId: transaction.externalOrderId ?? null,
     externalSellerId: transaction.externalSellerId ?? null,
     declaredWeightGrams: transaction.declaredWeightGrams ?? null,
@@ -138,14 +140,21 @@ export function projectPassport(input: {
   });
 }
 
-export function assertPassportEligible(transaction: AccessibleMerchantTransaction, artifacts: readonly StoredEvidenceRecord[]): void {
+export function assertPassportEligible(
+  transaction: AccessibleMerchantTransaction,
+  artifacts: readonly StoredEvidenceRecord[],
+  commerce: PassportAggregatorInput['commerce'] = null,
+): void {
+  const transactionInput = passportTransactionInput(transaction);
   const result = evaluatePassportEligibility({
     transactionExists: true,
     merchantReference: transaction.merchantReference,
     commerceContextId: transaction.commerceContextId,
+    commerceTrustLevel: commerce?.trustLevel ?? null,
+    sourceTrustLevel: transactionInput.sourceTrustLevel ?? null,
     externalOrderId: transaction.externalOrderId,
     artifacts: artifacts.map(passportArtifactInput),
-    displayedUnattributedFacts: 0,
+    displayedUnattributedFacts: countDisplayedUnattributedCommercialFacts(transactionInput, commerce),
   });
   if (!result.ok) throw passportNotReady(result.failures);
 }

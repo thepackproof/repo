@@ -22,9 +22,14 @@ class MemoryIdempotency {
   async execute(context, operation) {
     const key = sha256(canonicalize({ principalId: context.principalId, operation: context.operation, key: context.key }));
     const existing = this.records.get(key);
-    if (existing) return { value: existing.value, replayed: true, operationId: existing.operationId };
+    if (existing) {
+      if (existing.requestFingerprint !== context.requestFingerprint) {
+        throw new ApplicationError('CONFLICT', 'IDEMPOTENCY_KEY_REUSED', 'This Idempotency-Key was already used with a materially different request.');
+      }
+      return { value: existing.value, replayed: true, operationId: existing.operationId };
+    }
     const value = await operation('op_1', passThroughIdempotencyFence('op_1'));
-    this.records.set(key, { value, operationId: 'op_1' });
+    this.records.set(key, { value, operationId: 'op_1', requestFingerprint: context.requestFingerprint });
     return { value, replayed: false, operationId: 'op_1' };
   }
 }
@@ -74,8 +79,13 @@ class MemoryEvidenceRepo {
   async findPassportSnapshot(transactionId, snapshotId) {
     return (this.snapshots.get(transactionId) ?? []).find((item) => item.snapshotId === snapshotId) ?? null;
   }
-  async createPassportSnapshot(transactionId, record) {
+  async createPassportSnapshot(transactionId, build) {
     const list = this.snapshots.get(transactionId) ?? [];
+    const version = Math.max(0, ...list.map((item) => item.snapshotVersion)) + 1;
+    const record = build(version);
+    if (list.some((item) => item.snapshotId === record.snapshotId || item.snapshotVersion === version)) {
+      throw new ApplicationError('CONFLICT', 'PASSPORT_SNAPSHOT_VERSION_COLLISION', 'Passport snapshot version allocation collided.');
+    }
     list.push(record);
     this.snapshots.set(transactionId, list);
     return record;
@@ -475,4 +485,99 @@ test('merchant passport service issues a stable identity and refuses ineligible 
   await assert.rejects(() => blocked.getPassport(orgA, 'txn_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'), (error) => (
     error instanceof ApplicationError && error.code === 'PASSPORT_NOT_READY'
   ));
+});
+
+function passportService(repository) {
+  return new MerchantEvidenceApplicationService(
+    repository, new MemoryIdempotency(), { append: async () => undefined }, new MerchantAuthorizationPolicy(),
+    { generate: async () => ({ reportId: 'report_1', storagePath: 'reports/x.pdf', sha256: 'd'.repeat(64), evidenceCount: 1 }) },
+    { sign: async () => 'https://files.example/x.pdf' },
+    { environment: 'sandbox' }, () => now,
+    { verificationBaseUrl: () => 'https://app.packproof.example' },
+  );
+}
+
+function readyTransaction(overrides = {}) {
+  return {
+    id: 'txn_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', organizationId: 'org-a', integrationId: null,
+    merchantReference: 'order-1', title: 'Camera', description: '', category: null, status: 'CREATED',
+    consumerStatus: 'DRAFT', amount: { currency: 'USD', minorUnits: 1000 }, terms: {
+      saleType: 'SHIPPED', shippingResponsibility: 'SELLER', returns: 'PLATFORM_POLICY', returnWindowDays: 0, customTerms: '',
+    }, shipment: null, delivery: null, sellerId: 'seller-1', buyerId: 'buyer-1',
+    participantIds: ['seller-1', 'buyer-1'], createdAt: now, updatedAt: now,
+    commerceContextId: null, sourceType: null, sourcePlatform: null, externalOrderId: null,
+    externalSellerId: null, declaredWeightGrams: null, sourceTrackingNumber: null, sourceTrustLevel: null,
+    passportId: null, passportDisplayId: null, passportIssuedAt: null,
+    ...overrides,
+  };
+}
+
+test('PAGE_DECLARED commerce cannot issue a Passport and is omitted from attested order context', async () => {
+  const pageOnly = new MemoryEvidenceRepo();
+  pageOnly.seedTransaction(readyTransaction({
+    merchantReference: null,
+    commerceContextId: 'ctx_page',
+    sourceType: 'PACKPROOF_BUTTON',
+    sourceTrustLevel: 'PAGE_DECLARED',
+  }));
+  pageOnly.commerce.set('ctx_page', {
+    id: 'ctx_page', platform: 'STRUCTURED_PAGE_DATA', trustLevel: 'PAGE_DECLARED', assertingSource: 'PAGE_DECLARED',
+    externalOrderId: null, externalSellerId: null, capturedAt: now.toISOString(), canonicalPayloadSha256: 'd'.repeat(64),
+    title: 'Page declared camera', sku: 'PAGE-SKU', gtin: null, upc: '012345678905', serialNumber: null, quantity: 1,
+    amount: { currency: 'USD', minorUnits: 1000 }, variant: null, listingReference: 'https://example.test/item',
+    merchantItemId: null, declaredCondition: null, declaredWeightGrams: null,
+  });
+  pageOnly.seedEvidence(finalized('PACKING_VIDEO'));
+  await assert.rejects(
+    () => passportService(pageOnly).getPassport(orgA, 'txn_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'),
+    (error) => error instanceof ApplicationError && error.code === 'PASSPORT_NOT_READY',
+  );
+
+  const attested = new MemoryEvidenceRepo();
+  attested.seedTransaction(readyTransaction({ commerceContextId: 'ctx_page' }));
+  attested.commerce.set('ctx_page', pageOnly.commerce.get('ctx_page'));
+  attested.seedEvidence(finalized('PACKING_VIDEO'));
+  const issued = await passportService(attested).getPassport(orgA, 'txn_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
+  assert.equal(issued.integrity.banner, 'AUTHENTIC_PACKPROOF');
+  assert.equal(issued.items[0].expected.sku.value, null);
+  assert.equal(issued.transaction.commerceContextId, null);
+  assert.equal(issued.integrity.criteria.provenance, 'LIMITED');
+});
+
+test('passport snapshots fingerprint review context and allocate versions atomically', async () => {
+  const repository = new MemoryEvidenceRepo();
+  repository.seedTransaction(readyTransaction());
+  repository.seedEvidence(finalized('PACKING_VIDEO'));
+  const service = passportService(repository);
+  const first = await service.createPassportSnapshot(
+    orgA, 'txn_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'snap-key', 'req-snap-1',
+    { framework: 'VISA', category: 'MERCHANDISE_NOT_RECEIVED' },
+  );
+  assert.equal(first.replayed, false);
+  assert.equal(first.snapshot.snapshotVersion, 1);
+  assert.equal(first.snapshot.passport.reviewContext.receivingFramework, 'VISA');
+
+  await assert.rejects(
+    () => service.createPassportSnapshot(
+      orgA, 'txn_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'snap-key', 'req-snap-2',
+      { framework: 'PAYPAL', category: 'ITEM_NOT_RECEIVED' },
+    ),
+    (error) => error instanceof ApplicationError && error.code === 'IDEMPOTENCY_KEY_REUSED',
+  );
+
+  const replayed = await service.createPassportSnapshot(
+    orgA, 'txn_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'snap-key', 'req-snap-3',
+    { framework: 'visa', category: 'merchandise_not_received' },
+  );
+  assert.equal(replayed.replayed, true);
+  assert.equal(replayed.snapshot.snapshotId, first.snapshot.snapshotId);
+
+  const second = await service.createPassportSnapshot(
+    orgA, 'txn_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'snap-key-2', 'req-snap-4',
+    { framework: 'PAYPAL', category: 'ITEM_NOT_RECEIVED' },
+  );
+  assert.equal(second.replayed, false);
+  assert.equal(second.snapshot.snapshotVersion, 2);
+  assert.equal(second.snapshot.passport.reviewContext.receivingFramework, 'PAYPAL');
+  assert.notEqual(second.snapshot.snapshotId, first.snapshot.snapshotId);
 });

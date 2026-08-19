@@ -206,7 +206,7 @@ Evaluation (1.0):
 | Provenance | Displayed commerce facts have attribution | Some facts omitted rather than unattributed | Unattributed commercial fact displayed |
 | Lineage | Artifact IDs resolve to this transaction | Legacy IDs accepted via compatibility | Artifact bound to another transaction |
 
-`AUTHENTIC_PACKPROOF` requires no `FAILED` criterion and at least one `FINALIZED` artifact. `QUARANTINED` artifacts produce `LIMITED` on finalization, not an inauthentic Passport.
+`AUTHENTIC_PACKPROOF` requires no `FAILED` criterion and at least one `FINALIZED` artifact. `QUARANTINED` artifacts produce `LIMITED` on finalization, not an inauthentic Passport. `LIMITED` criteria stay on the individual integrity/inventory dimensions; they do not change the authenticity banner.
 
 Never describe HMAC-SHA256 service authentication as a digital signature. External reviewers verify file / manifest / bundle hashes. PackProof verifies service MAC. A future asymmetric KMS/HSM signer is a new `manifestAuthentication.type`; it must not reinterpret HMAC records.
 

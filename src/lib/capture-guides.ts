@@ -123,6 +123,99 @@ export const requestedRegions: Record<EvidenceType, string[]> = {
   PHYSICAL_VERIFICATION_FRAME: ['PHYSICAL_CAPTURE_ROUTE_ONLY'],
 };
 
+export type CapturePreflight = {
+  title: string;
+  subtitle: string;
+  expectations: string[];
+  startLabel: string;
+};
+
+export function capturePreflightFor(type: EvidenceType): CapturePreflight {
+  if (type === 'PACKING_VIDEO' || type === 'RETURN_PACKING_VIDEO') {
+    return {
+      title: type === 'RETURN_PACKING_VIDEO'
+        ? "You're about to record the return packing process."
+        : "You're about to record the packing process.",
+      subtitle: 'One continuous take. Show the item, pack and seal it, then capture the label.',
+      expectations: [
+        'Show the item',
+        'Place and seal it in the package',
+        'Capture the shipping label or barcode',
+      ],
+      startLabel: 'Start capture',
+    };
+  }
+  if (type === 'UNBOXING_VIDEO' || type === 'RETURN_UNBOXING_VIDEO') {
+    return {
+      title: type === 'RETURN_UNBOXING_VIDEO'
+        ? "You're about to record the returned package being opened."
+        : "You're about to record the package being opened.",
+      subtitle: 'Start with the sealed package. Keep the opening in one continuous take.',
+      expectations: [
+        'Show the sealed package first',
+        'Open it continuously on camera',
+        'Show the contents before ending',
+      ],
+      startLabel: 'Start capture',
+    };
+  }
+  if (type === 'SHIPPING_LABEL' || type === 'RETURN_SHIPPING_LABEL') {
+    return {
+      title: "You're about to photograph the sealed label.",
+      subtitle: 'Fill the frame with the mark, tape or seal, and nearby cardboard.',
+      expectations: [
+        'Show the label on the package',
+        'Include the seal and nearby cardboard',
+        'Keep any barcode readable',
+      ],
+      startLabel: 'Start capture',
+    };
+  }
+  if (type === 'DELIVERY_PHOTO') {
+    return {
+      title: "You're about to photograph the arrived package.",
+      subtitle: 'Do this before opening anything.',
+      expectations: [
+        'Show the sealed package',
+        'Include the label and seams',
+        'Keep the package closed',
+      ],
+      startLabel: 'Start capture',
+    };
+  }
+  return {
+    title: `You're about to capture ${captureTitles[type].toLowerCase()}.`,
+    subtitle: 'Capture an original photo in PackProof so it stays connected to this transaction.',
+    expectations: (captureChecklists[type] ?? captureChecklists.CONDITION_PHOTO ?? []).slice(0, 3),
+    startLabel: 'Start capture',
+  };
+}
+
+export function captureReviewChecklist(type: EvidenceType, observations: { barcodeCaptured?: boolean; videoRecorded?: boolean; photoCaptured?: boolean }): { label: string; done: boolean }[] {
+  if (type === 'PACKING_VIDEO' || type === 'RETURN_PACKING_VIDEO') {
+    return [
+      { label: 'Item shown', done: Boolean(observations.videoRecorded) },
+      { label: 'Packed and sealed', done: Boolean(observations.videoRecorded) },
+      { label: 'Barcode captured', done: Boolean(observations.barcodeCaptured) },
+    ];
+  }
+  if (type === 'UNBOXING_VIDEO' || type === 'RETURN_UNBOXING_VIDEO') {
+    return [
+      { label: 'Sealed package shown', done: Boolean(observations.videoRecorded) },
+      { label: 'Opening recorded', done: Boolean(observations.videoRecorded) },
+    ];
+  }
+  if (type === 'SHIPPING_LABEL' || type === 'RETURN_SHIPPING_LABEL') {
+    return [
+      { label: 'Photo captured', done: Boolean(observations.photoCaptured) },
+      { label: 'Barcode captured', done: Boolean(observations.barcodeCaptured) },
+    ];
+  }
+  return [
+    { label: 'Photo captured', done: Boolean(observations.photoCaptured || observations.videoRecorded) },
+  ];
+}
+
 export function captureGuideFor(type: EvidenceType, isVideo: boolean): CaptureGuide {
   return isVideo ? (videoGuides[type] ?? defaultVideoGuide) : captureGuides[type] ?? defaultPhotoGuide;
 }

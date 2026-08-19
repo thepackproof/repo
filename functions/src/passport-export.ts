@@ -1,149 +1,44 @@
 import { createHash } from 'node:crypto';
-import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import { FieldValue } from 'firebase-admin/firestore';
 import { db, storage } from './config';
-import {
-  COMPARISON_FOOTNOTE_COPY,
-  INTEGRITY_MEANING_LIMITED,
-  INTEGRITY_MEANING_VERIFIED,
-  PASSPORT_PAGE_ONE_FOOTER,
-  PASSPORT_PDF_RENDERER_VERSION,
-  type PackProofPassportV1,
-} from './domain/v1/passport';
+import { PASSPORT_PDF_RENDERER_VERSION, type PackProofPassportV1 } from './domain/v1/passport';
+import { renderPassportPdf, stillRoleForArtifact, type PassportPdfStill } from './passport-pdf';
 
-function wrapText(text: string, maxChars = 92): string[] {
-  const words = text.replace(/\s+/g, ' ').trim().split(' ');
-  const lines: string[] = [];
-  let line = '';
-  for (const word of words) {
-    if (`${line} ${word}`.trim().length > maxChars) {
-      if (line) lines.push(line);
-      line = word;
-    } else line = `${line} ${word}`.trim();
-  }
-  if (line) lines.push(line);
-  return lines.length ? lines : [''];
-}
+const MAX_STILL_BYTES = 8 * 1024 * 1024;
+const IMAGE_TYPES = new Set(['image/jpeg', 'image/jpg', 'image/png']);
 
-export async function renderPassportPdf(passport: PackProofPassportV1): Promise<Uint8Array> {
-  const pdf = await PDFDocument.create();
-  const regular = await pdf.embedFont(StandardFonts.Helvetica);
-  const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
-  const dark = rgb(0.07, 0.09, 0.12);
-  const teal = rgb(0.27, 0.49, 0.39);
-  const muted = rgb(0.36, 0.40, 0.47);
-  let page = pdf.addPage([612, 792]);
-  let y = 744;
-
-  const addLine = (text: string, options: { bold?: boolean; size?: number; color?: ReturnType<typeof rgb>; gap?: number } = {}) => {
-    const size = options.size ?? 9;
-    for (const line of wrapText(text, Math.floor(92 * (9 / size)))) {
-      if (y < 54) {
-        page = pdf.addPage([612, 792]);
-        y = 744;
-      }
-      page.drawText(line, { x: 48, y, size, font: options.bold ? bold : regular, color: options.color ?? dark });
-      y -= size + 4;
-    }
-    y -= options.gap ?? 2;
-  };
-
-  addLine('PackProof Passport™', { bold: true, size: 18, color: teal, gap: 2 });
-  addLine(passport.identity.displayId, { bold: true, size: 14, gap: 4 });
-  addLine(passport.identity.verificationUrl, { size: 8, color: muted, gap: 10 });
-
-  addLine(passport.integrity.banner.replaceAll('_', ' '), { bold: true, size: 12, color: teal, gap: 2 });
-  addLine(passport.integrity.summary, { bold: true, size: 10, gap: 2 });
-  addLine(passport.integrity.banner === 'AUTHENTIC_PACKPROOF' ? INTEGRITY_MEANING_VERIFIED : INTEGRITY_MEANING_LIMITED, { gap: 10 });
-
-  addLine('TRANSACTION', { bold: true, size: 11, gap: 4 });
-  addLine(`Platform: ${passport.transaction.platform.value ?? 'NOT AVAILABLE'} (${passport.transaction.sourceTrustClass ?? 'unspecified trust'})`);
-  addLine(`Order: ${passport.transaction.externalOrderId.value ?? 'NOT AVAILABLE'}`);
-  addLine(`Date: ${passport.transaction.transactionDate.value ?? 'NOT AVAILABLE'}`);
-  const amount = passport.transaction.amount.value;
-  addLine(`Amount: ${amount ? `${amount.currency} ${(amount.minorUnits / 100).toFixed(2)}` : 'NOT AVAILABLE'}`);
-  const expectedTitle = passport.items[0]?.expected.title.value ?? 'NOT AVAILABLE';
-  addLine(`Expected item: ${expectedTitle}`, { gap: 10 });
-
-  addLine('EXPECTED ↔ OBSERVED', { bold: true, size: 11, gap: 2 });
-  addLine(COMPARISON_FOOTNOTE_COPY, { size: 8, color: muted, gap: 4 });
-  for (const comparison of passport.items[0]?.comparisons ?? []) {
-    addLine(`${comparison.attribute}: ${comparison.result}  expected ${comparison.expected ?? 'null'}  observed ${comparison.observed ?? 'null'}`);
-  }
-  y -= 6;
-
-  addLine('EVIDENCE AVAILABLE', { bold: true, size: 11, gap: 4 });
-  for (const entry of passport.evidenceInventory) {
-    addLine(`${entry.category.replaceAll('_', ' ')}: ${entry.state.replaceAll('_', ' ')}`);
-  }
-  y -= 6;
-
-  addLine('FULFILLMENT', { bold: true, size: 11, gap: 4 });
-  addLine(`Packing: ${passport.fulfillment.packingArtifactId ?? 'NOT AVAILABLE'}`);
-  addLine(`Seal: ${passport.fulfillment.sealArtifactId ?? 'NOT AVAILABLE'}`);
-  addLine(`Label: ${passport.fulfillment.labelArtifactId ?? 'NOT AVAILABLE'}`);
-  addLine(`Tracking observed: ${passport.fulfillment.trackingObserved.value ?? 'NOT AVAILABLE'}`);
-  const tracker = passport.fulfillment.shippingTracker.value;
-  addLine(`Tracker: ${tracker ? `${tracker.lookupStatus} ${tracker.courierCode ?? ''}`.trim() : 'NOT AVAILABLE'} (${passport.limitations.shippingTrackerInterpretation})`, { gap: 8 });
-
-  addLine(PASSPORT_PAGE_ONE_FOOTER, { size: 8, color: muted, gap: 4 });
-  addLine(passport.limitations.humanReviewDisclaimer, { size: 8, color: muted, gap: 12 });
-
-  const showShipment = Boolean(passport.shipment || passport.delivery || passport.fulfillment.trackingObserved.value);
-  if (showShipment) {
-    addLine('SHIPMENT AND DELIVERY', { bold: true, size: 12, gap: 4 });
-    if (passport.shipment) {
-      addLine(`Merchant-asserted carrier: ${passport.shipment.carrier.value ?? 'NOT AVAILABLE'} (SOURCE ASSERTION, not a carrier API)`);
-      addLine(`Tracking supplied: ${passport.shipment.trackingSupplied.value ?? 'NOT AVAILABLE'}`);
-      addLine(`Tracking observed: ${passport.shipment.trackingObserved.value ?? 'NOT AVAILABLE'}`);
-    }
-    if (passport.delivery) {
-      addLine(`Delivery associated at: ${passport.delivery.receivedAt.value ?? 'NOT AVAILABLE'}`);
-      addLine(`Arrival artifact: ${passport.delivery.arrivalArtifactId ?? 'NOT AVAILABLE'}`);
-      addLine('Carrier signature: NOT AVAILABLE');
-    }
-    y -= 8;
-  }
-
-  if (passport.returns.length || passport.receiver) {
-    addLine('RECEIVER AND RETURNS', { bold: true, size: 12, gap: 4 });
-    if (passport.receiver) addLine(`Receiver capture: arrival ${passport.receiver.arrivalArtifactId ?? 'none'}; unboxing ${passport.receiver.unboxingArtifactId ?? 'none'}`);
-    for (const item of passport.returns) {
-      addLine(`${item.returnPassportId} — ${item.status}; tracking ${item.trackingSupplied.value ?? 'NOT AVAILABLE'}`);
-    }
-    y -= 8;
-  }
-
-  addLine('CRYPTOGRAPHIC APPENDIX', { bold: true, size: 12, gap: 4 });
-  addLine(`Passport ID: ${passport.identity.passportId}`);
-  addLine(`Transaction: ${passport.identity.transactionId}`);
-  addLine(`Canonicalization: ${passport.integrity.canonicalizationProfile}; bundle: ${passport.integrity.bundleBindingProfile}`);
-  addLine(`Manifest authentication: ${passport.integrity.manifestAuthentication.type} ${passport.integrity.manifestAuthentication.algorithm ?? ''} key ${passport.integrity.manifestAuthentication.keyId ?? 'not recorded'}`);
-  addLine('HMAC-SHA256 is PackProof service verification only. It is not a digital signature and is not publicly verifiable.', { gap: 6 });
-  addLine(`Renderer: ${PASSPORT_PDF_RENDERER_VERSION}`);
-  addLine(`Verification URL: ${passport.identity.verificationUrl}`, { gap: 6 });
-  if (!passport.artifacts.length) addLine('No artifacts were present.');
+async function loadPassportStills(transactionId: string, passport: PackProofPassportV1): Promise<PassportPdfStill[]> {
+  const snap = await db.collection('transactions').doc(transactionId).collection('evidence').get();
+  const byId = new Map(snap.docs.map((doc) => [doc.id, doc.data()]));
+  const chosen = new Map<PassportPdfStill['role'], PassportPdfStill>();
   for (const artifact of passport.artifacts) {
-    addLine(`${artifact.artifactId} — ${artifact.type} — ${artifact.finalization}`, { bold: true });
-    addLine(`SHA-256: ${artifact.sha256 ?? 'not recorded'}`);
-    addLine(`Manifest SHA-256: ${artifact.manifestSha256 ?? 'not recorded'}`);
-    addLine(`Bundle SHA-256: ${artifact.evidenceBundleSha256 ?? 'not recorded'}`);
-    addLine('Do not treat this appendix as a substitute for native evidence bytes.');
-    y -= 4;
+    if (artifact.finalization !== 'FINALIZED') continue;
+    const role = stillRoleForArtifact(artifact.type, artifact.contentType);
+    if (!role || chosen.has(role)) continue;
+    const data = byId.get(artifact.artifactId);
+    const storagePath = typeof data?.storagePath === 'string' ? data.storagePath : null;
+    const contentType = artifact.contentType ?? (typeof data?.contentType === 'string' ? data.contentType : null);
+    if (!storagePath || !contentType || !IMAGE_TYPES.has(contentType.toLowerCase())) continue;
+    const file = storage.bucket().file(storagePath);
+    const [metadata] = await file.getMetadata().catch(() => [null]);
+    const size = Number(metadata?.size ?? 0);
+    if (!Number.isFinite(size) || size <= 0 || size > MAX_STILL_BYTES) continue;
+    const [bytes] = await file.download().catch(() => [null]);
+    if (!bytes?.length) continue;
+    chosen.set(role, { role, artifactId: artifact.artifactId, bytes, contentType });
   }
-
-  pdf.setTitle(`PackProof Passport ${passport.identity.displayId}`);
-  pdf.setSubject('PackProof Passport presentation export. Native evidence records remain the source.');
-  pdf.setCreator('PackProof');
-  return pdf.save();
+  return [...chosen.values()];
 }
+
+export { renderPassportPdf } from './passport-pdf';
 
 export async function generatePassportPdfExport(input: {
   transactionId: string;
   snapshotId: string;
   passport: PackProofPassportV1;
 }): Promise<{ storagePath: string; sha256: string }> {
-  const bytes = await renderPassportPdf(input.passport);
+  const stills = await loadPassportStills(input.transactionId, input.passport).catch(() => []);
+  const bytes = await renderPassportPdf(input.passport, stills);
   const digest = createHash('sha256').update(bytes).digest('hex');
   const storagePath = `passports/${input.transactionId}/${input.snapshotId}.pdf`;
   await storage.bucket().file(storagePath).save(Buffer.from(bytes), {

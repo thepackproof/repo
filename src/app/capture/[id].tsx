@@ -24,6 +24,8 @@ import {
 import {
   captureChecklists,
   captureGuideFor,
+  capturePreflightFor,
+  captureReviewChecklist,
   captureTitles,
   formatCaptureBytes,
   formatCaptureDuration,
@@ -36,6 +38,7 @@ import { captureShippingLabelStill, hashShippingLabelObservation } from '@/lib/s
 import { identifyTrackingNumber } from '@/lib/shipping-tracker';
 import { readableError } from '@/lib/format';
 import { useAuth } from '@/providers/auth-provider';
+import { evidenceProcessingFromProgress } from '@/lib/ux-flow';
 import type { EvidenceType } from '@/types/models';
 import type { CaptureAttestation, CaptureManifestInput, ShippingLabelTelemetry } from '@/types/telemetry';
 
@@ -87,6 +90,7 @@ export default function CaptureScreen() {
   const type = rawType && captureTitles[rawType] ? rawType : 'CONDITION_PHOTO';
   const isVideo = videoTypes.has(type);
   const guide = captureGuideFor(type, isVideo);
+  const preflight = capturePreflightFor(type);
   const router = useRouter();
   const { user } = useAuth();
   const camera = useRef<CameraView>(null);
@@ -517,12 +521,12 @@ export default function CaptureScreen() {
       const terminal = result.terminalIds.includes(item.id);
       if (mountedRef.current) {
         Alert.alert(
-          uploaded ? 'Evidence finalized' : terminal ? 'Evidence retained — attention required' : 'Evidence secured in queue',
+          uploaded ? 'Evidence ready' : terminal ? 'Retry the upload' : 'Securing evidence record',
           uploaded
-            ? 'The encrypted queue transferred the original file, and the server completed independent hashing plus a service-authenticated manifest.'
+            ? 'PackProof finished processing the evidence. You can leave this screen.'
             : terminal
-              ? 'The encrypted original was retained, but automatic retry stopped because the queue encountered a non-retryable condition. Do not clear app data or uninstall; review the Capture queue before relying on this evidence.'
-              : 'The original capture is encrypted in PackProof’s private queue and will retry automatically when server access and connectivity are available.',
+              ? 'The capture is still saved on this device. Retry the upload — you do not need to recapture. Do not clear app data or uninstall.'
+              : 'You can leave this screen. PackProof will update when it finishes.',
           [{ text: 'Done', onPress: () => router.replace(`/transaction/${id}`) }],
         );
       }
@@ -532,8 +536,8 @@ export default function CaptureScreen() {
         if (mountedRef.current) {
           setProgress(1);
           Alert.alert(
-            'Evidence secured in queue',
-            `The original was encrypted locally before synchronization encountered a problem. Automatic retry remains enabled; do not clear app data or uninstall. ${readableError(error)}`,
+            'Securing evidence record',
+            `The original is already saved on this device. You can leave this screen; PackProof will retry. ${readableError(error)}`,
             [{ text: 'Done', onPress: () => router.replace(`/transaction/${id}`) }],
           );
         }
@@ -558,31 +562,30 @@ export default function CaptureScreen() {
         ? 'Button pressed. Refreshing online app-integrity context, then recording will start.'
         : recording
           ? (type === 'PACKING_VIDEO' || type === 'RETURN_PACKING_VIDEO'
-            ? 'Recording. Keep the item-to-seal sequence in frame. Hold steady on the marked boundary for the final seconds.'
-            : 'Recording. Keep every relevant item and the package in frame. Hold steady for the final three seconds.')
+            ? 'Show the item, pack and seal it, then capture the label.'
+            : 'Keep the package in frame. Hold steady for the last seconds.')
           : isVideo
             ? (labelAwareTypes.has(type)
-              ? 'Aim the viewfinder at the tracking barcode. A still and tracker check run when it is identified; scanning remains optional.'
-              : 'Tap the shutter to begin a continuous recording.')
+              ? 'Aim at the tracking barcode if you have one. Scanning is optional.'
+              : 'Tap the shutter to start recording.')
             : type === 'SHIPPING_LABEL' || type === 'RETURN_SHIPPING_LABEL' || type === 'DELIVERY_PHOTO'
-              ? 'Hold steady on the marked boundary, tape or seal, and nearby cardboard.'
-              : 'Frame the evidence clearly, then capture.';
+              ? 'Hold steady on the label, seal, and nearby cardboard.'
+              : 'Frame the evidence, then capture.';
   const tracker = shippingLabel?.tracker;
   const liveIdentity = useMemo(
     () => (shippingLabel ? identifyTrackingNumber(shippingLabel.rawDecodedValue, shippingLabel.trackingNumber) : null),
     [shippingLabel],
   );
   const barcodeIdentified = tracker?.identified ?? liveIdentity?.identified ?? false;
-  const courierCode = (tracker?.courierCode ?? liveIdentity?.courierCode ?? 'CARRIER').toUpperCase();
   const barcodeBadgeLabel = !shippingLabel
-    ? 'OPTIONAL · AIM AT THE TRACKING BARCODE'
+    ? 'Optional · aim at the barcode'
     : barcodeFlash && barcodeIdentified
-      ? `${courierCode} · IDENTIFIED`
+      ? 'Barcode captured'
       : barcodeFlash
-        ? 'BARCODE READ · CARRIER UNKNOWN'
+        ? 'Barcode read'
         : tracker?.sha256
-          ? `${courierCode} · HASHED · ${shippingLabel.trackingNumber}`
-          : `VALIDATING · ${shippingLabel.trackingNumber}`;
+          ? 'Barcode captured'
+          : `Checking ${shippingLabel.trackingNumber}`;
 
   if (stage === 'CAMERA') return <View style={styles.cameraPage}>
     <CameraView ref={camera} style={StyleSheet.absoluteFill} facing="back" mode={isVideo ? 'video' : 'picture'} flash={isVideo ? 'off' : flashMode} enableTorch={isVideo && torchEnabled} zoom={zoom} videoQuality="720p" mute={false} onCameraReady={() => { setCameraReady(true); setCameraError(null); }} onMountError={({ message }) => { setCameraReady(false); setCameraError(message); }} onBarcodeScanned={labelAwareTypes.has(type) ? handleBarcodeScanned : undefined} barcodeScannerSettings={{ barcodeTypes: ['code128', 'code39', 'code93', 'qr', 'pdf417', 'aztec', 'ean13', 'ean8', 'upc_a', 'upc_e', 'itf14', 'datamatrix'] }} />
@@ -591,7 +594,7 @@ export default function CaptureScreen() {
         <Pressable disabled={recording || preparing} onPress={() => { void close(); }} style={styles.circleButton}><AppIcon name="xmark" size={18} tintColor={colors.white} /></Pressable>
         <View style={[styles.captureLabel, preparing && styles.captureLabelPreparing, recording && styles.captureLabelRecording, cameraError && styles.captureLabelError]}>
           <View style={[styles.liveDot, (preparing || recording || cameraError) && styles.liveDotOnColor]} />
-          <Text style={styles.captureLabelText}>{cameraError ? 'CAMERA UNAVAILABLE' : preparing ? 'STARTING…' : recording ? `REC ${formatCaptureDuration(recordingSeconds)} · CONTINUOUS` : cameraReady ? captureTitles[type].toUpperCase() : 'STARTING CAMERA…'}</Text>
+          <Text style={styles.captureLabelText}>{cameraError ? 'CAMERA UNAVAILABLE' : preparing ? 'STARTING…' : recording ? `REC ${formatCaptureDuration(recordingSeconds)}` : cameraReady ? 'Ready' : 'STARTING CAMERA…'}</Text>
         </View>
       </View>
       {isVideo ? <View pointerEvents="none" style={styles.guideArea} /> : (
@@ -603,10 +606,12 @@ export default function CaptureScreen() {
         </View>
       )}
       <View style={styles.cameraFooter}>
-        <View style={styles.cameraControls}>
-          <Pressable accessibilityLabel={isVideo ? `${torchEnabled ? 'Disable' : 'Enable'} camera light` : `Change flash mode, currently ${flashMode}`} disabled={recording || preparing || !cameraReady} onPress={cycleFlash} style={[styles.controlPill, (recording || preparing || !cameraReady) && styles.controlDisabled]}><Text style={styles.controlText}>{isVideo ? `LIGHT ${torchEnabled ? 'ON' : 'OFF'}` : `FLASH ${flashMode.toUpperCase()}`}</Text></Pressable>
-          <Pressable accessibilityLabel={`Change camera zoom, currently ${Math.round(zoom * 100)} percent of device maximum`} disabled={recording || preparing || !cameraReady} onPress={cycleZoom} style={[styles.controlPill, (recording || preparing || !cameraReady) && styles.controlDisabled]}><Text style={styles.controlText}>ZOOM {Math.round(zoom * 100)}%</Text></Pressable>
-        </View>
+        {!recording && !preparing ? (
+          <View style={styles.cameraControls}>
+            <Pressable accessibilityLabel={isVideo ? `${torchEnabled ? 'Disable' : 'Enable'} camera light` : `Change flash mode, currently ${flashMode}`} disabled={!cameraReady} onPress={cycleFlash} style={[styles.controlPill, !cameraReady && styles.controlDisabled]}><Text style={styles.controlText}>{isVideo ? `LIGHT ${torchEnabled ? 'ON' : 'OFF'}` : `FLASH ${flashMode.toUpperCase()}`}</Text></Pressable>
+            <Pressable accessibilityLabel={`Change camera zoom, currently ${Math.round(zoom * 100)} percent of device maximum`} disabled={!cameraReady} onPress={cycleZoom} style={[styles.controlPill, !cameraReady && styles.controlDisabled]}><Text style={styles.controlText}>ZOOM {Math.round(zoom * 100)}%</Text></Pressable>
+          </View>
+        ) : null}
         {labelAwareTypes.has(type) ? (
           <View style={styles.barcodeRow}>
             {labelStillUri ? <Image source={{ uri: labelStillUri }} contentFit="cover" style={styles.labelStillThumb} accessibilityLabel="Captured shipping-label still" /> : null}
@@ -641,21 +646,26 @@ export default function CaptureScreen() {
   return <SafeAreaView style={styles.safe}><ScrollView contentContainerStyle={styles.container}>
     <Button label="Close" variant="ghost" onPress={() => { void close(); }} style={styles.close} disabled={stage === 'UPLOADING'} />
     {stage === 'CHECKLIST' ? <>
-      <ScreenTitle eyebrow="Before you begin" title={captureTitles[type]} subtitle={isVideo ? 'This must be one continuous, unedited recording. Prepare the package and supplies before you start.' : 'Capture an original image directly in PackProof so it stays connected to this transaction.'} />
-      <Card style={styles.checklist}>{(captureChecklists[type] ?? captureChecklists.CONDITION_PHOTO!).map((item, index) => <View key={item} style={styles.check}><View style={styles.number}><Text style={styles.numberText}>{index + 1}</Text></View><Text style={styles.checkText}>{item}</Text></View>)}</Card>
-      {['PACKING_VIDEO', 'SHIPPING_LABEL', 'UNBOXING_VIDEO', 'DELIVERY_PHOTO', 'RETURN_PACKING_VIDEO', 'RETURN_SHIPPING_LABEL', 'RETURN_UNBOXING_VIDEO'].includes(type) ? <Card style={styles.caution}><AppIcon name="info.circle.fill" size={20} tintColor={colors.amber} /><Text style={styles.cautionText}>Human visual review may note visible continuity or difference. PackProof does not conclude that the package is the same or altered, or identify a cause, actor, authenticity, custody, fraud, or fault.</Text></Card> : null}
-      <Card style={styles.locationCard}><View style={{ flex: 1, gap: 4 }}><Text style={styles.locationTitle}>Include precise capture location</Text><Text style={styles.locationText}>Optional. When enabled, coordinates and accuracy are included in the private service-authenticated evidence manifest, but omitted from the presentation dossier. Leave off when location is unnecessary.</Text></View><Switch value={includeLocation} onValueChange={(value) => { changeLocationPreference(value).catch((error) => Alert.alert('Could not update location setting', readableError(error))); }} /></Card>
-      <Card style={styles.caution}><AppIcon name="exclamationmark.triangle.fill" size={20} tintColor={colors.amber} /><Text style={styles.cautionText}>Do not capture payment cards, government IDs, private messages, unrelated faces or addresses not required for the shipping record.</Text></Card>
-      <Button label="I’m ready to capture" icon="camera.fill" onPress={requestPermissions} />
+      <ScreenTitle eyebrow="Before you begin" title={preflight.title} subtitle={preflight.subtitle} />
+      <Card style={styles.checklist}>{preflight.expectations.map((item, index) => <View key={item} style={styles.check}><View style={styles.number}><Text style={styles.numberText}>{index + 1}</Text></View><Text style={styles.checkText}>{item}</Text></View>)}</Card>
+      {['PACKING_VIDEO', 'SHIPPING_LABEL', 'UNBOXING_VIDEO', 'DELIVERY_PHOTO', 'RETURN_PACKING_VIDEO', 'RETURN_SHIPPING_LABEL', 'RETURN_UNBOXING_VIDEO'].includes(type) && (captureChecklists[type]?.length ?? 0) > 3 ? <Card style={styles.checklist}>{(captureChecklists[type] ?? []).map((item) => <Text key={item} style={styles.checkText}>{item}</Text>)}</Card> : null}
+      {['PACKING_VIDEO', 'SHIPPING_LABEL', 'UNBOXING_VIDEO', 'DELIVERY_PHOTO', 'RETURN_PACKING_VIDEO', 'RETURN_SHIPPING_LABEL', 'RETURN_UNBOXING_VIDEO'].includes(type) ? <Card style={styles.caution}><AppIcon name="info.circle.fill" size={20} tintColor={colors.amber} /><Text style={styles.cautionText}>PackProof preserves what you record. It does not decide whether the package later matches.</Text></Card> : null}
+      <Card style={styles.locationCard}><View style={{ flex: 1, gap: 4 }}><Text style={styles.locationTitle}>Include precise capture location</Text><Text style={styles.locationText}>Optional. Leave off when location is unnecessary.</Text></View><Switch value={includeLocation} onValueChange={(value) => { changeLocationPreference(value).catch((error) => Alert.alert('Could not update location setting', readableError(error))); }} /></Card>
+      <Button label={preflight.startLabel} icon="camera.fill" onPress={requestPermissions} />
     </> : null}
     {stage === 'REVIEW' ? <>
-      <ScreenTitle eyebrow="Encrypted queue ready" title="Secure this evidence?" subtitle="PackProof will hash and encrypt the original capture before attempting any network transfer. It remains queued if connectivity drops." />
+      <ScreenTitle eyebrow="Review" title="Looks complete?" subtitle="Check what was captured, then submit. PackProof will upload, secure, and mark the evidence ready." />
       {!isVideo && localUri ? <Image source={{ uri: localUri }} contentFit="contain" style={styles.reviewImage} accessibilityLabel="Captured evidence preview" /> : null}
-      <Card style={styles.review}><AppIcon name={isVideo ? 'video.fill' : 'photo.fill'} size={42} tintColor={colors.teal} /><Text style={styles.reviewTitle}>{captureTitles[type]}</Text>{reviewSummary ? <View style={styles.reviewFacts}><Text style={styles.reviewFact}>{isVideo ? `Duration ${formatCaptureDuration(Math.round(reviewSummary.durationMs / 1000))}` : reviewSummary.widthPixels && reviewSummary.heightPixels ? `${reviewSummary.widthPixels} × ${reviewSummary.heightPixels} px` : 'Dimensions unavailable'}</Text><Text style={styles.reviewFact}>{formatCaptureBytes(reviewSummary.sizeBytes)}</Text><Text style={styles.reviewFact}>{manifest?.cameraObservation.flashMode ?? 'OFF'} · zoom {Math.round((manifest?.cameraObservation.zoom ?? 0) * 100)}%</Text></View> : null}{labelStillUri ? <Image source={{ uri: labelStillUri }} contentFit="contain" style={styles.reviewStill} accessibilityLabel="Shipping-label scan still" /> : null}<Text style={styles.reviewText}>{manifest?.attestation.mode === 'JIT_APP_CHECK' ? 'Fresh online App Check context and any available device-key proof are bound to this capture; neither proves the physical scene.' : 'Captured offline; the manifest records that fresh online attestation and trusted absolute capture time were unavailable.'} Acquisition quality is not machine-evaluated, and physical correspondence is not available in this build.{manifest?.shippingLabel ? ` Tracking barcode: ${manifest.shippingLabel.trackingNumber}.` : ''}{manifest?.shippingLabel?.tracker ? ` Open-source tracker: ${manifest.shippingLabel.tracker.lookupStatus}${manifest.shippingLabel.tracker.courierCode ? ` · ${manifest.shippingLabel.tracker.courierCode}` : ''}; observation hash ${manifest.shippingLabel.tracker.sha256.slice(0, 12)}…. This is checksum and courier identification, not carrier custody.` : ''}{manifest?.shippingLabel?.still?.captureStatus === 'CAPTURED' ? ' A label still was hashed into that observation.' : ''}</Text></Card>
-      <Button label="Encrypt, hash and sync" icon="lock.shield.fill" onPress={upload} />
+      <Card style={styles.checklist}>
+        {captureReviewChecklist(type, { barcodeCaptured: Boolean(manifest?.shippingLabel || shippingLabel), videoRecorded: isVideo && Boolean(localUri), photoCaptured: !isVideo && Boolean(localUri) }).map((item) => (
+          <Text key={item.label} style={[styles.checkText, !item.done && { color: colors.amber }]}>{item.done ? '✓' : '○'} {item.label}</Text>
+        ))}
+      </Card>
+      <Card style={styles.review}><AppIcon name={isVideo ? 'video.fill' : 'photo.fill'} size={42} tintColor={colors.teal} /><Text style={styles.reviewTitle}>{captureTitles[type]}</Text>{reviewSummary ? <View style={styles.reviewFacts}><Text style={styles.reviewFact}>{isVideo ? `Duration ${formatCaptureDuration(Math.round(reviewSummary.durationMs / 1000))}` : reviewSummary.widthPixels && reviewSummary.heightPixels ? `${reviewSummary.widthPixels} × ${reviewSummary.heightPixels} px` : 'Dimensions unavailable'}</Text><Text style={styles.reviewFact}>{formatCaptureBytes(reviewSummary.sizeBytes)}</Text></View> : null}{labelStillUri ? <Image source={{ uri: labelStillUri }} contentFit="contain" style={styles.reviewStill} accessibilityLabel="Shipping-label scan still" /> : null}<Text style={styles.reviewText}>{manifest?.shippingLabel ? `Barcode captured: ${manifest.shippingLabel.trackingNumber}.` : labelAwareTypes.has(type) ? 'No barcode captured — that is optional.' : 'Ready to secure this capture.'}</Text></Card>
+      <Button label="Submit evidence" icon="lock.shield.fill" onPress={upload} />
       <Button label="Discard and retake" variant="danger" onPress={discard} />
     </> : null}
-    {stage === 'UPLOADING' ? <View style={styles.uploading}><AppIcon name="icloud.and.arrow.up.fill" size={48} tintColor={colors.teal} /><Text style={styles.uploadTitle}>Securing your evidence</Text><Text style={styles.uploadPercent}>{Math.round(progress * 100)}%</Text><ProgressBar value={progress} /><Text style={styles.uploadText}>The original is already being protected locally. You can lose connectivity without losing the capture; synchronization resumes automatically.</Text></View> : null}
+    {stage === 'UPLOADING' ? <View style={styles.uploading}><AppIcon name="icloud.and.arrow.up.fill" size={48} tintColor={colors.teal} /><Text style={styles.uploadTitle}>{evidenceProcessingFromProgress(progress, 'working') === 'SECURING' ? 'Securing evidence record' : 'Uploading evidence'}</Text><Text style={styles.uploadPercent}>{Math.round(progress * 100)}%</Text><ProgressBar value={progress} /><Text style={styles.uploadText}>Uploading evidence → Securing evidence record → Evidence ready.{'\n'}You can leave this screen. PackProof will update when it finishes.</Text></View> : null}
   </ScrollView></SafeAreaView>;
 }
 
