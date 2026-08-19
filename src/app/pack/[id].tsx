@@ -34,9 +34,14 @@ export default function PackSession() {
   const [busy, setBusy] = useState(false);
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const [microphonePermission, requestMicrophonePermission] = useMicrophonePermissions();
-  const [tracking, setTracking] = useState(typeof trackingParam === 'string' ? trackingParam : '');
-  const [carrier, setCarrier] = useState(() => displayCarrierName(typeof carrierParam === 'string' ? carrierParam : '') || 'USPS');
-  const [showCarrier, setShowCarrier] = useState(!carrierParam);
+  const trackingFromRoute = typeof trackingParam === 'string' ? trackingParam : '';
+  const carrierFromRoute = typeof carrierParam === 'string' ? carrierParam : '';
+  const [trackingEdit, setTracking] = useState(trackingFromRoute);
+  const [carrierEdit, setCarrier] = useState(() => displayCarrierName(carrierFromRoute) || 'USPS');
+  const [showCarrierEdit, setShowCarrier] = useState(!carrierFromRoute);
+  const tracking = trackingFromRoute || trackingEdit;
+  const carrier = carrierFromRoute ? (displayCarrierName(carrierFromRoute) || carrierFromRoute.toUpperCase()) : carrierEdit;
+  const showCarrier = carrierFromRoute ? false : showCarrierEdit;
 
   useEffect(() => {
     if (!id) return;
@@ -45,14 +50,6 @@ export default function PackSession() {
     const unsubReturns = subscribeReturnPassports(id, setReturnPassports);
     return () => { unsubTransaction(); unsubEvidence(); unsubReturns(); };
   }, [id]);
-
-  useEffect(() => {
-    if (typeof trackingParam === 'string' && trackingParam) setTracking(trackingParam);
-    if (typeof carrierParam === 'string' && carrierParam) {
-      setCarrier(displayCarrierName(carrierParam) || carrierParam.toUpperCase());
-      setShowCarrier(false);
-    }
-  }, [carrierParam, trackingParam]);
 
   const protocol = useMemo(() => packageSealProtocolStatus(evidence), [evidence]);
   const activeReturn = returnPassports.find((passport) => !['COMPLETED', 'CANCELLED'].includes(passport.status)) ?? null;

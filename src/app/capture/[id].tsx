@@ -180,13 +180,6 @@ export default function CaptureScreen() {
   }, [recording, stage]);
 
   useEffect(() => {
-    if (!skipPrep || stage !== 'CHECKLIST') return;
-    if (cameraPermission?.granted && (!isVideo || microphonePermission?.granted)) {
-      goTo('CAMERA');
-    }
-  }, [cameraPermission?.granted, isVideo, microphonePermission?.granted, skipPrep, stage]);
-
-  useEffect(() => {
     if (!barcodeFlash) return;
     const timer = setTimeout(() => setBarcodeFlash(false), BARCODE_FLASH_MS);
     return () => clearTimeout(timer);
