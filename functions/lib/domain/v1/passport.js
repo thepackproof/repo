@@ -13,16 +13,26 @@ exports.normalizeIdentifier = normalizeIdentifier;
 exports.fact = fact;
 exports.compareExactIdentifier = compareExactIdentifier;
 exports.compareIdentifierAttribute = compareIdentifierAttribute;
+exports.isAuthoritativeCommerceTrust = isAuthoritativeCommerceTrust;
+exports.selectPassportOrderCommerce = selectPassportOrderCommerce;
+exports.selectPassportDisplayCommerce = selectPassportDisplayCommerce;
+exports.canAttributePassportOrderToTransaction = canAttributePassportOrderToTransaction;
+exports.passportHasAuthoritativeOrderSource = passportHasAuthoritativeOrderSource;
+exports.passportHasIdentifiedCommerceSource = passportHasIdentifiedCommerceSource;
+exports.normalizePassportReviewQuery = normalizePassportReviewQuery;
+exports.passportSnapshotFingerprintPayload = passportSnapshotFingerprintPayload;
 exports.evaluatePassportEligibility = evaluatePassportEligibility;
+exports.countDisplayedUnattributedCommercialFacts = countDisplayedUnattributedCommercialFacts;
 exports.inventoryStateFor = inventoryStateFor;
 exports.aggregatePassport = aggregatePassport;
 exports.verificationUrlFor = verificationUrlFor;
 const node_crypto_1 = require("node:crypto");
+const commerce_1 = require("./commerce");
 exports.PASSPORT_OBJECT = 'packproof_passport';
 exports.PASSPORT_SNAPSHOT_OBJECT = 'packproof_passport_snapshot';
 exports.PASSPORT_EXPORT_OBJECT = 'packproof_passport_export';
 exports.PASSPORT_SCHEMA_VERSION = 1;
-exports.PASSPORT_PDF_RENDERER_VERSION = 'packproof-passport-pdf@1.0.0';
+exports.PASSPORT_PDF_RENDERER_VERSION = 'packproof-passport-pdf@1.1.0';
 exports.PASSPORT_ID_HASH_PREFIX = 'packproof-passport-id-v1\n';
 exports.PASSPORT_DISPLAY_HASH_PREFIX = 'packproof-passport-display-v1\n';
 exports.PASSPORT_COMPARISON_FOOTNOTE = 'RELATIONSHIP_ONLY';
@@ -48,6 +58,7 @@ exports.provenanceClasses = [
 exports.trustClasses = [
     'MERCHANT_SERVER_ATTESTED',
     'PLATFORM_API_ATTESTED',
+    'USER_PROVIDED_COMMERCE_ARTIFACT',
     'PAGE_DECLARED',
     'PACKPROOF_CAPTURE',
     'PACKPROOF_SERVICE',
@@ -177,15 +188,68 @@ function isQuarantined(artifact) {
 function finalizedWithManifest(artifact) {
     return isFinalized(artifact) && Boolean(artifact.sha256) && Boolean(artifact.manifestSha256);
 }
+function isAuthoritativeCommerceTrust(trust) {
+    return (0, commerce_1.isAuthoritativeCommerceTrustLevel)(trust);
+}
+function selectPassportOrderCommerce(commerce) {
+    if (!commerce || !isAuthoritativeCommerceTrust(commerce.trustLevel))
+        return null;
+    return commerce;
+}
+function selectPassportDisplayCommerce(commerce) {
+    if (!commerce || !(0, commerce_1.commerceContextMayAppearAsPassportOrderContext)(commerce.trustLevel))
+        return null;
+    return commerce;
+}
+function canAttributePassportOrderToTransaction(transaction) {
+    if (transaction.sourceTrustLevel === 'PAGE_DECLARED' && !transaction.externalOrderId)
+        return false;
+    return Boolean(transaction.externalOrderId || transaction.merchantReference || transaction.sourcePlatform);
+}
+function passportHasAuthoritativeOrderSource(input) {
+    if (input.commerceContextId && isAuthoritativeCommerceTrust(input.commerceTrustLevel ?? null))
+        return true;
+    if (input.externalOrderId)
+        return true;
+    if (input.sourceTrustLevel === 'PAGE_DECLARED' || (0, commerce_1.isUserProvidedCommerceArtifact)(input.sourceTrustLevel ?? input.commerceTrustLevel ?? null))
+        return false;
+    return Boolean(input.merchantReference);
+}
+function passportHasIdentifiedCommerceSource(input) {
+    if (input.commerceContextId && isAuthoritativeCommerceTrust(input.commerceTrustLevel ?? null))
+        return true;
+    if (input.commerceContextId && (0, commerce_1.isUserProvidedCommerceArtifact)(input.commerceTrustLevel ?? null))
+        return true;
+    if (input.externalOrderId)
+        return true;
+    if (input.sourceTrustLevel === 'PAGE_DECLARED')
+        return false;
+    return Boolean(input.merchantReference);
+}
+function normalizePassportReviewQuery(query) {
+    if (!query)
+        return null;
+    const framework = query.framework.trim().toUpperCase();
+    const category = query.category.trim().toUpperCase();
+    if (!framework && !category)
+        return null;
+    return {
+        framework: framework || 'GENERIC',
+        category: category || 'DEFAULT',
+    };
+}
+function passportSnapshotFingerprintPayload(transactionId, reviewQuery) {
+    return { transactionId, reviewQuery: normalizePassportReviewQuery(reviewQuery ?? null) };
+}
 function evaluatePassportEligibility(input) {
     const failures = [];
     if (!input.transactionExists) {
         failures.push({ code: 'TRANSACTION_MISSING', message: 'A tenant-authorized PackProof transaction is required.' });
     }
-    if (!input.commerceContextId && !input.externalOrderId && !input.merchantReference) {
+    if (!passportHasIdentifiedCommerceSource(input)) {
         failures.push({
             code: 'NO_COMMERCE_SOURCE',
-            message: 'A commerce context, Connect external order identifier, or merchant reference is required.',
+            message: 'An attested commerce context, user-provided commerce artifact, Connect external order identifier, or merchant reference is required. PAGE_DECLARED listing data remains draft lineage only.',
         });
     }
     if (input.displayedUnattributedFacts > 0) {
@@ -238,10 +302,40 @@ function observation(kind, value, artifact, extras = {}) {
         capturedAt: artifact?.clientCreatedAt ?? artifact?.finalizedAt ?? artifact?.createdAt ?? null,
     };
 }
-function sourceFact(value, commerce, transaction, field) {
+function orderContextSelection(transaction, commerce) {
+    const orderCommerce = selectPassportDisplayCommerce(commerce);
+    const useTransactionOrder = canAttributePassportOrderToTransaction({
+        sourceTrustLevel: transaction.sourceTrustLevel ?? null,
+        externalOrderId: transaction.externalOrderId,
+        merchantReference: transaction.merchantReference,
+        sourcePlatform: transaction.sourcePlatform,
+    });
+    const omittedPageDeclared = Boolean(commerce && commerce.trustLevel === 'PAGE_DECLARED' && !selectPassportOrderCommerce(commerce));
+    return {
+        orderCommerce,
+        omittedPageDeclared,
+        useTransactionOrder,
+        platformValue: orderCommerce?.platform ?? (useTransactionOrder ? transaction.sourcePlatform : null),
+        orderValue: orderCommerce?.externalOrderId ?? (useTransactionOrder ? transaction.externalOrderId : null),
+        amountValue: orderCommerce?.amount ?? (useTransactionOrder ? transaction.amount : null),
+        sellerValue: orderCommerce?.externalSellerId ?? (useTransactionOrder ? transaction.externalSellerId : null),
+        titleValue: orderCommerce?.title ?? (useTransactionOrder ? transaction.title : null),
+        sku: orderCommerce?.sku ?? null,
+        gtin: orderCommerce?.gtin ?? null,
+        upc: orderCommerce?.upc ?? null,
+        variant: orderCommerce?.variant ?? null,
+        quantity: orderCommerce?.quantity ?? null,
+        declaredCondition: orderCommerce?.declaredCondition ?? null,
+        serialNumber: orderCommerce?.serialNumber ?? null,
+        merchantItemId: orderCommerce?.merchantItemId ?? null,
+        listingReference: orderCommerce?.listingReference ?? null,
+        declaredWeightGrams: orderCommerce?.declaredWeightGrams ?? (useTransactionOrder ? transaction.declaredWeightGrams : null),
+    };
+}
+function sourceFact(value, commerce, transaction) {
     if (commerce) {
         return fact(value, 'SOURCE_ASSERTION', {
-            assertingSource: commerce.assertingSource ?? 'MERCHANT_API',
+            assertingSource: commerce.assertingSource ?? (commerce.trustLevel === 'PLATFORM_API_ATTESTED' ? 'PLATFORM_API' : commerce.trustLevel === 'USER_PROVIDED_COMMERCE_ARTIFACT' ? 'EMAIL_RECEIPT' : commerce.trustLevel === 'PAGE_DECLARED' ? 'MERCHANT_PAGE_STRUCTURED_DATA' : 'MERCHANT_API'),
             trustClass: commerce.trustLevel,
             recordedAt: commerce.capturedAt,
             sourceRecordId: commerce.id,
@@ -249,7 +343,7 @@ function sourceFact(value, commerce, transaction, field) {
             digestSha256: commerce.canonicalPayloadSha256,
         });
     }
-    if (transaction.externalOrderId || transaction.sourcePlatform) {
+    if (canAttributePassportOrderToTransaction(transaction) && (transaction.externalOrderId || transaction.sourcePlatform)) {
         return fact(value, 'SOURCE_ASSERTION', {
             assertingSource: 'MERCHANT_API',
             trustClass: 'MERCHANT_SERVER_ATTESTED',
@@ -258,7 +352,7 @@ function sourceFact(value, commerce, transaction, field) {
             sourceReference: transaction.externalOrderId,
         });
     }
-    if (value !== null && transaction.merchantReference) {
+    if (canAttributePassportOrderToTransaction(transaction) && transaction.merchantReference) {
         return fact(value, 'SOURCE_ASSERTION', {
             assertingSource: 'MERCHANT_API',
             trustClass: 'MERCHANT_SERVER_ATTESTED',
@@ -268,12 +362,26 @@ function sourceFact(value, commerce, transaction, field) {
         });
     }
     return fact(value, 'SOURCE_ASSERTION', {
-        assertingSource: value === null ? null : 'MERCHANT_API',
-        trustClass: value === null ? null : 'MERCHANT_SERVER_ATTESTED',
-        recordedAt: value === null ? null : transaction.createdAt,
-        sourceRecordId: value === null ? null : transaction.id,
-        sourceReference: transaction.merchantReference,
+        assertingSource: null,
+        trustClass: null,
+        recordedAt: null,
+        sourceRecordId: null,
+        sourceReference: null,
     });
+}
+function countDisplayedUnattributedCommercialFacts(transaction, commerce) {
+    const selected = orderContextSelection(transaction, commerce);
+    return [
+        sourceFact(selected.platformValue ?? null, selected.orderCommerce, transaction),
+        sourceFact(selected.orderValue ?? null, selected.orderCommerce, transaction),
+        sourceFact(selected.amountValue, selected.orderCommerce, transaction),
+        sourceFact(selected.sellerValue ?? null, selected.orderCommerce, transaction),
+        sourceFact(selected.titleValue ?? null, selected.orderCommerce, transaction),
+        sourceFact(selected.sku, selected.orderCommerce, transaction),
+        sourceFact(selected.gtin, selected.orderCommerce, transaction),
+        sourceFact(selected.upc, selected.orderCommerce, transaction),
+        sourceFact(selected.serialNumber, selected.orderCommerce, transaction),
+    ].filter((item) => item.value !== null && item.value !== undefined && !item.assertingSource).length;
 }
 function trackerValue(artifact) {
     if (!artifact?.shippingTracker)
@@ -388,10 +496,11 @@ const REVIEW_RELEVANCE = {
     },
 };
 function reviewContext(query, inventory) {
-    if (!query)
+    const normalized = normalizePassportReviewQuery(query);
+    if (!normalized)
         return null;
-    const framework = query.framework.trim().toUpperCase() || 'GENERIC';
-    const category = query.category.trim().toUpperCase() || 'DEFAULT';
+    const framework = normalized.framework;
+    const category = normalized.category;
     const mapped = REVIEW_RELEVANCE[framework]?.[category]
         ?? REVIEW_RELEVANCE.GENERIC.DEFAULT;
     const byCategory = new Map(inventory.map((entry) => [entry.category, entry.state]));
@@ -405,29 +514,28 @@ function reviewContext(query, inventory) {
         footnote: exports.PASSPORT_REVIEW_FOOTNOTE,
     };
 }
-function evaluateIntegrity(input, displayedUnattributed) {
+function evaluateIntegrity(input, displayedUnattributed, omittedPageDeclared) {
     const finalized = input.artifacts.filter(isFinalized);
     const quarantined = input.artifacts.some(isQuarantined);
     const missingManifest = finalized.some((item) => !item.manifestSha256);
     const missingFile = finalized.some((item) => !item.sha256);
     const missingBundle = finalized.some((item) => !item.evidenceBundleSha256);
-    const hashMismatch = input.artifacts.some((item) => item.clientHashMatched === false);
+    const finalizedHashMismatch = finalized.some((item) => item.clientHashMatched === false);
     const foreign = input.artifacts.some((item) => item.transactionId !== input.transaction.id);
     const auth = finalized.map((item) => item.manifestAuthentication).find((item) => item?.keyId || item?.algorithm) ?? null;
     const legacyBundle = finalized.some((item) => item.bundleBindingProfile === 'LEGACY_V1' || !item.evidenceBundleSha256);
     const legacyMac = auth?.type === 'LEGACY_SERVICE_MAC' || (auth?.algorithm && auth.algorithm !== 'HMAC-SHA256');
     const criteria = {
         passportRecord: 'VERIFIED',
-        evidenceManifests: !finalized.length ? 'FAILED' : missingManifest ? 'LIMITED' : hashMismatch && missingManifest ? 'FAILED' : 'VERIFIED',
-        evidenceFileDigests: !finalized.length ? 'FAILED' : missingFile ? 'LIMITED' : 'VERIFIED',
+        evidenceManifests: !finalized.length ? 'FAILED' : missingManifest ? 'LIMITED' : 'VERIFIED',
+        evidenceFileDigests: !finalized.length ? 'FAILED' : finalizedHashMismatch ? 'FAILED' : missingFile ? 'LIMITED' : 'VERIFIED',
         bundleBindings: !finalized.length ? 'FAILED' : missingBundle ? 'LIMITED' : 'VERIFIED',
         finalization: !finalized.length ? 'FAILED' : quarantined ? 'LIMITED' : 'VERIFIED',
-        provenance: displayedUnattributed > 0 ? 'FAILED' : 'VERIFIED',
+        provenance: displayedUnattributed > 0 ? 'FAILED' : omittedPageDeclared ? 'LIMITED' : 'VERIFIED',
         evidenceLineage: foreign ? 'FAILED' : 'VERIFIED',
     };
     const failed = Object.values(criteria).some((status) => status === 'FAILED');
-    const limited = Object.values(criteria).some((status) => status === 'LIMITED');
-    const authentic = !failed && finalized.length > 0 && !limited;
+    const authentic = finalized.length > 0 && !failed;
     return {
         banner: authentic ? 'AUTHENTIC_PACKPROOF' : 'PACKPROOF_RECORD_WITH_LIMITATIONS',
         summary: authentic ? 'PackProof record integrity verified' : 'PackProof record integrity verified with recorded limitations',
@@ -451,7 +559,8 @@ function fulfillmentEvents(input, packing, seal, label) {
             return;
         events.push({ eventId, occurredAt, source, provenanceClass, title, evidenceReference });
     };
-    push('ORDER_CONTEXT', input.commerce?.capturedAt ?? input.transaction.createdAt, input.commerce?.assertingSource ?? 'PACKPROOF_SERVICE', 'SOURCE_ASSERTION', 'Order context recorded', input.commerce?.id ?? input.transaction.id);
+    const orderCommerce = selectPassportDisplayCommerce(input.commerce);
+    push('ORDER_CONTEXT', orderCommerce?.capturedAt ?? (canAttributePassportOrderToTransaction(input.transaction) ? input.transaction.createdAt : null), orderCommerce?.assertingSource ?? 'PACKPROOF_SERVICE', 'SOURCE_ASSERTION', 'Order context recorded', orderCommerce?.id ?? input.transaction.id);
     const sessionId = packing?.captureSessionId ?? packing?.evidenceSessionId;
     push('CAPTURE_SESSION_STARTED', packing?.createdAt ?? packing?.clientCreatedAt ?? null, 'PACKPROOF_CAPTURE', 'PACKPROOF_OBSERVATION', 'Capture session started', sessionId ?? null);
     const identifier = firstOf(input.artifacts, (item) => IDENTIFIER.has(item.type) && isFinalized(item));
@@ -479,12 +588,13 @@ function aggregatePassport(input) {
         ?? firstOf(outbound, (item) => ARRIVAL.has(item.type));
     const unboxing = firstOf(outbound, (item) => UNBOXING.has(item.type) && isFinalized(item))
         ?? firstOf(outbound, (item) => UNBOXING.has(item.type));
-    const commerce = input.commerce;
-    const platformValue = commerce?.platform ?? input.transaction.sourcePlatform;
-    const orderValue = commerce?.externalOrderId ?? input.transaction.externalOrderId;
-    const amountValue = commerce?.amount ?? input.transaction.amount;
-    const sellerValue = commerce?.externalSellerId ?? input.transaction.externalSellerId;
-    const titleValue = commerce?.title ?? input.transaction.title;
+    const selected = orderContextSelection(input.transaction, input.commerce);
+    const commerce = selected.orderCommerce;
+    const platformValue = selected.platformValue;
+    const orderValue = selected.orderValue;
+    const amountValue = selected.amountValue;
+    const sellerValue = selected.sellerValue;
+    const titleValue = selected.titleValue;
     const expectedTracking = input.shipment?.trackingNumber ?? input.transaction.sourceTrackingNumber ?? null;
     const observedTracking = trackingArtifact?.scannedTrackingNumber ?? null;
     const observations = [];
@@ -513,16 +623,16 @@ function aggregatePassport(input) {
         observations.push(observation('APP_DEVICE_CONTEXT', artifact.appDeviceContextStatus, artifact));
     }
     const expected = {
-        title: sourceFact(titleValue ?? null, commerce, input.transaction, 'title'),
-        sku: sourceFact(commerce?.sku ?? null, commerce, input.transaction, 'sku'),
-        gtin: sourceFact(commerce?.gtin ?? null, commerce, input.transaction, 'gtin'),
-        upc: sourceFact(commerce?.upc ?? null, commerce, input.transaction, 'upc'),
-        variant: sourceFact(commerce?.variant ?? null, commerce, input.transaction, 'variant'),
-        quantity: sourceFact(commerce?.quantity ?? null, commerce, input.transaction, 'quantity'),
-        declaredCondition: sourceFact(commerce?.declaredCondition ?? null, commerce, input.transaction, 'declaredCondition'),
-        serialExpected: sourceFact(commerce?.serialNumber ?? null, commerce, input.transaction, 'serialNumber'),
-        merchantItemId: sourceFact(commerce?.merchantItemId ?? null, commerce, input.transaction, 'merchantItemId'),
-        listingReference: sourceFact(commerce?.listingReference ?? null, commerce, input.transaction, 'listingReference'),
+        title: sourceFact(titleValue ?? null, commerce, input.transaction),
+        sku: sourceFact(selected.sku, commerce, input.transaction),
+        gtin: sourceFact(selected.gtin, commerce, input.transaction),
+        upc: sourceFact(selected.upc, commerce, input.transaction),
+        variant: sourceFact(selected.variant, commerce, input.transaction),
+        quantity: sourceFact(selected.quantity, commerce, input.transaction),
+        declaredCondition: sourceFact(selected.declaredCondition, commerce, input.transaction),
+        serialExpected: sourceFact(selected.serialNumber, commerce, input.transaction),
+        merchantItemId: sourceFact(selected.merchantItemId, commerce, input.transaction),
+        listingReference: sourceFact(selected.listingReference, commerce, input.transaction),
     };
     const comparisons = [
         compareIdentifierAttribute('UPC', expected.upc.value, null),
@@ -541,7 +651,7 @@ function aggregatePassport(input) {
     const trackingMismatch = input.artifacts.some((item) => item.carrierTrackingMatchStatus === 'MISMATCH');
     const inventory = exports.inventoryCategories.map((category) => {
         const row = inventoryStateFor(category, {
-            hasCommerceSource: Boolean(commerce?.id || input.transaction.externalOrderId || input.transaction.merchantReference),
+            hasCommerceSource: Boolean((commerce?.id && (0, commerce_1.commerceContextMayAppearAsPassportOrderContext)(commerce.trustLevel)) || input.transaction.externalOrderId || (input.transaction.merchantReference && input.transaction.sourceTrustLevel !== 'PAGE_DECLARED')),
             unattributed: false,
             identifierArtifacts,
             conditionArtifacts: input.artifacts.filter((item) => CONDITION.has(item.type)),
@@ -594,15 +704,15 @@ function aggregatePassport(input) {
         digestSha256: null,
     });
     const transactionBlock = {
-        commerceContextId: commerce?.id ?? input.transaction.commerceContextId,
-        platform: sourceFact(platformValue ?? null, commerce, input.transaction, 'platform'),
-        externalOrderId: sourceFact(orderValue ?? null, commerce, input.transaction, 'externalOrderId'),
-        transactionDate: sourceFact(input.transaction.createdAt, commerce, input.transaction, 'transactionDate'),
-        amount: sourceFact(amountValue, commerce, input.transaction, 'amount'),
-        sellerReference: sourceFact(sellerValue ?? null, commerce, input.transaction, 'sellerReference'),
+        commerceContextId: commerce?.id ?? null,
+        platform: sourceFact(platformValue ?? null, commerce, input.transaction),
+        externalOrderId: sourceFact(orderValue ?? null, commerce, input.transaction),
+        transactionDate: sourceFact(input.transaction.createdAt, commerce, input.transaction),
+        amount: sourceFact(amountValue, commerce, input.transaction),
+        sellerReference: sourceFact(sellerValue ?? null, commerce, input.transaction),
         destination,
-        itemCount: sourceFact(commerce?.quantity ?? null, commerce, input.transaction, 'itemCount'),
-        sourceTrustClass: commerce?.trustLevel ?? (input.transaction.externalOrderId ? 'MERCHANT_SERVER_ATTESTED' : input.transaction.merchantReference ? 'MERCHANT_SERVER_ATTESTED' : null),
+        itemCount: sourceFact(selected.quantity, commerce, input.transaction),
+        sourceTrustClass: commerce?.trustLevel ?? (selected.useTransactionOrder ? 'MERCHANT_SERVER_ATTESTED' : null),
         importedAt: commerce?.capturedAt ?? null,
         canonicalPayloadSha256: commerce?.canonicalPayloadSha256 ?? null,
     };
@@ -617,7 +727,7 @@ function aggregatePassport(input) {
         expected.upc,
         expected.serialExpected,
     ].filter((item) => item.value !== null && item.value !== undefined && !item.assertingSource).length;
-    const integrity = evaluateIntegrity(input, displayedUnattributed);
+    const integrity = evaluateIntegrity(input, displayedUnattributed, selected.omittedPageDeclared);
     const sourceUpdatedAt = latestIso([
         input.transaction.updatedAt,
         ...input.artifacts.map((item) => item.finalizedAt ?? item.createdAt),
@@ -640,7 +750,7 @@ function aggregatePassport(input) {
         pushProv('trackingObserved', fact(observedTracking, 'PACKPROOF_OBSERVATION', { assertingSource: 'PACKPROOF_CAPTURE', trustClass: 'PACKPROOF_CAPTURE', sourceRecordId: trackingArtifact?.id ?? null }));
     if (expectedTracking)
         pushProv('trackingSupplied', fact(expectedTracking, 'SOURCE_ASSERTION', { assertingSource: 'MERCHANT_API', trustClass: 'MERCHANT_SERVER_ATTESTED', sourceRecordId: input.transaction.id }));
-    const weight = commerce?.declaredWeightGrams ?? input.transaction.declaredWeightGrams;
+    const weight = selected.declaredWeightGrams;
     if (weight !== null && weight !== undefined) {
         pushProv('declaredWeightGrams', fact(weight, 'SOURCE_ASSERTION', {
             assertingSource: commerce?.assertingSource ?? 'MERCHANT_API',

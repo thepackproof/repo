@@ -29,6 +29,8 @@ try {
     await setDoc(doc(db, 'mail', 'mail-security-001'), { to: 'alice@example.test' });
     await setDoc(doc(db, 'webDeletionTokens', 'token-security-001'), { uid: 'alice' });
     await setDoc(doc(db, 'apiIdempotencyRecords', 'idem-security-001'), { state: 'COMPLETE', createdAt: Timestamp.fromMillis(Date.now() - 60000) });
+    await setDoc(doc(db, 'consumerIntakeRecords', 'ctx-intake-001'), { actorId: 'alice', status: 'PENDING' });
+    await setDoc(doc(db, 'users', 'alice', 'pendingIntakes', 'ctx-intake-001'), { title: 'Imported camera', commerceContextId: 'ctx-intake-001' });
   });
 
   const alice = testEnv.authenticatedContext('alice');
@@ -77,6 +79,11 @@ try {
   await assertFails(setDoc(doc(alice.firestore(), 'evidenceSessions', 'es-security-001'), { status: 'CAPTURING' }, { merge: true }));
   await assertFails(getDoc(doc(alice.firestore(), 'domainOutbox', 'evt-security-001')));
   await assertFails(setDoc(doc(alice.firestore(), 'domainOutbox', 'evt-security-001'), { deliveryState: 'DELIVERED' }, { merge: true }));
+  await assertFails(getDoc(doc(alice.firestore(), 'consumerIntakeRecords', 'ctx-intake-001')));
+  await assertFails(setDoc(doc(alice.firestore(), 'consumerIntakeRecords', 'ctx-intake-001'), { status: 'CLAIMED' }, { merge: true }));
+  await assertSucceeds(getDoc(doc(alice.firestore(), 'users', 'alice', 'pendingIntakes', 'ctx-intake-001')));
+  await assertFails(getDoc(doc(bob.firestore(), 'users', 'alice', 'pendingIntakes', 'ctx-intake-001')));
+  await assertFails(setDoc(doc(alice.firestore(), 'users', 'alice', 'pendingIntakes', 'ctx-intake-001'), { title: 'tampered' }, { merge: true }));
 
   const payload = new Uint8Array([1, 2, 3, 4]);
   const uploadRef = ref(alice.storage(), 'evidence/tx-security-001/alice/upload001');

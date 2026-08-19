@@ -211,7 +211,7 @@ export const acceptInvite = onCall(callOptions, async (request) => {
   });
 
   await appendEvent(result.transactionId, uid, 'BUYER_JOINED', 'Buyer joined the PackProof and can review the proposed terms.');
-  await notifyOtherParticipants(result.transactionId, uid, 'Buyer joined your PackProof', 'Review the transaction before confirming the terms.');
+  await notifyOtherParticipants(result.transactionId, uid, 'The buyer joined', 'Review the details and confirm them.');
   return result;
 });
 
@@ -240,7 +240,23 @@ export const confirmTerms = onCall(callOptions, async (request) => {
   });
 
   await appendEvent(transactionId, uid, 'TERMS_CONFIRMED', locked ? 'Both parties confirmed and locked the transaction terms.' : 'A participant confirmed the proposed terms.');
-  await notifyOtherParticipants(transactionId, uid, locked ? 'PackProof terms locked' : 'Terms confirmed', locked ? 'The transaction is ready for evidence capture.' : 'The other participant confirmed the proposed terms.');
+  const { data: notified } = await getTransaction(transactionId);
+  const actorIsSeller = uid === notified.sellerId;
+  const shippedSale = notified.terms.saleType === 'SHIPPED';
+  await notifyOtherParticipants(
+    transactionId,
+    uid,
+    locked
+      ? (actorIsSeller
+        ? 'Confirmed'
+        : shippedSale ? 'The buyer confirmed. Ready to pack.' : 'Confirmed')
+      : 'Confirm the transaction',
+    locked
+      ? (actorIsSeller
+        ? (shippedSale ? 'The seller is preparing your shipment. You are done for now.' : 'Confirm when the item changes hands.')
+        : (shippedSale ? 'Start packing whenever you are ready.' : 'Confirm when the item changes hands.'))
+      : 'Review the details and confirm them.',
+  );
   return { locked };
 });
 
@@ -776,7 +792,7 @@ export const submitShipping = onCall(callOptions, async (request) => {
     labelEvidenceMatchStatus,
     scannedTrackingNumber,
   });
-  await notifyOtherParticipants(input.transactionId, uid, 'Package marked shipped', `${input.carrier} tracking has been added to the PackProof.`);
+  await notifyOtherParticipants(input.transactionId, uid, 'On the way', "We'll notify you when anything else needs your attention.");
   return { success: true, labelEvidenceMatchStatus };
 });
 
@@ -789,7 +805,7 @@ export const markReceived = onCall(callOptions, async (request) => {
   if (data.status !== 'SHIPPED') throw new HttpsError('failed-precondition', 'This item is not currently marked as shipped.');
   await ref.update({ status: 'BUYER_REVIEW', receivedAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() });
   await appendEvent(transactionId, uid, 'RECEIVED', 'Buyer confirmed receipt of the shipment.');
-  await notifyOtherParticipants(transactionId, uid, 'Buyer confirmed receipt', 'The shipment is now in buyer review.');
+  await notifyOtherParticipants(transactionId, uid, 'Delivery recorded', 'Finish this PackProof when you are ready.');
   return { success: true };
 });
 
@@ -839,7 +855,7 @@ export const completeTransaction = onCall(callOptions, async (request) => {
     return both;
   });
   await appendEvent(transactionId, uid, 'COMPLETION_CONFIRMED', completed ? 'Both parties marked the PackProof complete.' : 'A participant marked the transaction complete.');
-  await notifyOtherParticipants(transactionId, uid, completed ? 'PackProof complete' : 'Completion confirmed', completed ? 'Both parties completed the transaction.' : 'The other participant marked the transaction complete.');
+  await notifyOtherParticipants(transactionId, uid, completed ? 'PackProof complete' : 'Finish this PackProof', completed ? 'The finished record is ready when you need it.' : 'Confirm that everything looks complete.');
   return { completed };
 });
 

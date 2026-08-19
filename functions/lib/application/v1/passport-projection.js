@@ -57,6 +57,7 @@ function passportTransactionInput(transaction) {
         commerceContextId: transaction.commerceContextId ?? null,
         sourcePlatform: transaction.sourcePlatform ?? null,
         sourceType: transaction.sourceType ?? null,
+        sourceTrustLevel: transaction.sourceTrustLevel ?? (transaction.sourceType === 'PACKPROOF_BUTTON' ? 'PAGE_DECLARED' : null),
         externalOrderId: transaction.externalOrderId ?? null,
         externalSellerId: transaction.externalSellerId ?? null,
         declaredWeightGrams: transaction.declaredWeightGrams ?? null,
@@ -108,14 +109,17 @@ function projectPassport(input) {
         now: input.now,
     });
 }
-function assertPassportEligible(transaction, artifacts) {
+function assertPassportEligible(transaction, artifacts, commerce = null) {
+    const transactionInput = passportTransactionInput(transaction);
     const result = (0, passport_1.evaluatePassportEligibility)({
         transactionExists: true,
         merchantReference: transaction.merchantReference,
         commerceContextId: transaction.commerceContextId,
+        commerceTrustLevel: commerce?.trustLevel ?? null,
+        sourceTrustLevel: transactionInput.sourceTrustLevel ?? null,
         externalOrderId: transaction.externalOrderId,
         artifacts: artifacts.map(passportArtifactInput),
-        displayedUnattributedFacts: 0,
+        displayedUnattributedFacts: (0, passport_1.countDisplayedUnattributedCommercialFacts)(transactionInput, commerce),
     });
     if (!result.ok)
         throw passportNotReady(result.failures);

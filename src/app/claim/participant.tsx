@@ -7,6 +7,7 @@ import { Button, Card, LoadingScreen, ScreenTitle } from '@/components/ui';
 import { colors } from '@/constants/brand';
 import { claimParticipantInvitation } from '@/lib/api';
 import { readableError } from '@/lib/format';
+import { toHref } from '@/lib/ux-flow';
 import { useAuth } from '@/providers/auth-provider';
 
 export default function ParticipantClaimScreen() {
@@ -27,7 +28,7 @@ export default function ParticipantClaimScreen() {
     setClaiming(true);
     try {
       const result = await claimParticipantInvitation(claim, token);
-      router.replace({ pathname: '/transaction/[id]', params: { id: result.transactionId } });
+      router.replace(toHref({ pathname: '/task/[id]', params: { id: result.transactionId } }));
     } catch (error) {
       Alert.alert('Could not claim this role', readableError(error));
     } finally {

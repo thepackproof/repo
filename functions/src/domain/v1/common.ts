@@ -92,14 +92,22 @@ export function assertTransition<S extends string>(table: TransitionTable<S>, fr
   }
 }
 
-export type AssertionSource =
-  | 'MERCHANT_API'
-  | 'PLATFORM_API'
-  | 'MERCHANT_PAGE_STRUCTURED_DATA'
-  | 'SELLER_ENTERED'
-  | 'BUYER_ENTERED'
-  | 'PACKPROOF_OBSERVED'
-  | 'EXTERNAL_ADAPTER';
+export const assertionSources = [
+  'MERCHANT_API',
+  'PLATFORM_API',
+  'MERCHANT_PAGE_STRUCTURED_DATA',
+  'SELLER_ENTERED',
+  'BUYER_ENTERED',
+  'PACKPROOF_OBSERVED',
+  'EXTERNAL_ADAPTER',
+  'EMAIL_RECEIPT',
+  'SHARE_SHEET',
+  'BROWSER_EXTENSION',
+  'SCREENSHOT_IMPORT',
+  'PDF_IMPORT',
+] as const;
+
+export type AssertionSource = (typeof assertionSources)[number];
 
 export type AssertionConfidence = 'ASSERTED' | 'OBSERVED' | 'DERIVED';
 
@@ -108,6 +116,8 @@ export type FieldProvenance = {
   confidence: AssertionConfidence;
   importedAt: Date;
   sourceReference: string | null;
+  extractionMethod: string | null;
+  sourceArtifactSha256: string | null;
 };
 
 export type FieldProvenanceDto = Omit<FieldProvenance, 'importedAt'> & { importedAt: string };

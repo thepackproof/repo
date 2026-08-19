@@ -203,3 +203,82 @@ export async function downloadUrl(path: string): Promise<string> {
   const result = await callFunction<{ storagePath: string }, { url: string; expiresAt: string }>('createPrivateDownloadUrl', { storagePath: path });
   return result.url;
 }
+
+export type PendingIntakeRecord = {
+  commerceContextId: string;
+  passportDraftId: string;
+  title: string;
+  variant: string | null;
+  quantity: number;
+  amount: { currency: string; minorUnits: number } | null;
+  orderNumber: string | null;
+  intakeSourceType: string | null;
+  platformIdentifier: string | null;
+  importedAt: string;
+  missingFields: string[];
+};
+
+export type IntakePreview = {
+  parserVersion: string;
+  platformIdentifier: string | null;
+  title: string | null;
+  variant: string | null;
+  quantity: number;
+  amount: { currency: string; minorUnits: number } | null;
+  orderNumber: string | null;
+  sku: string | null;
+  missingFields: string[];
+};
+
+export type IntakeConfirmedFields = {
+  title?: string;
+  description?: string;
+  variant?: string;
+  sku?: string;
+  priceMinor?: number;
+  currency?: string;
+  orderNumber?: string;
+  quantity?: number;
+};
+
+export type ConsumerIntakeSourceType = 'EMAIL_RECEIPT' | 'SHARE_SHEET' | 'BROWSER_EXTENSION' | 'SCREENSHOT_IMPORT' | 'PDF_IMPORT';
+
+export function subscribePendingIntakes(uid: string, callback: (items: PendingIntakeRecord[]) => void, onError: (error: Error) => void): () => void {
+  const q = query(collection(db, 'users', uid, 'pendingIntakes'), orderBy('createdAt', 'desc'));
+  return onSnapshot(q, (snapshot) => {
+    callback(snapshot.docs.map((item) => {
+      const data = item.data();
+      return {
+        commerceContextId: String(data.commerceContextId ?? item.id),
+        passportDraftId: String(data.passportDraftId ?? ''),
+        title: String(data.title ?? 'Imported purchase'),
+        variant: typeof data.variant === 'string' ? data.variant : null,
+        quantity: typeof data.quantity === 'number' ? data.quantity : 1,
+        amount: data.amount && typeof data.amount === 'object' ? data.amount as PendingIntakeRecord['amount'] : null,
+        orderNumber: typeof data.orderNumber === 'string' ? data.orderNumber : null,
+        intakeSourceType: typeof data.intakeSourceType === 'string' ? data.intakeSourceType : null,
+        platformIdentifier: typeof data.platformIdentifier === 'string' ? data.platformIdentifier : null,
+        importedAt: typeof data.importedAt === 'string' ? data.importedAt : '',
+        missingFields: Array.isArray(data.missingFields) ? data.missingFields.filter((value): value is string => typeof value === 'string') : [],
+      };
+    }));
+  }, onError);
+}
+
+export function previewTransactionIntake(input: { artifactText: string | null; intakeSourceType: ConsumerIntakeSourceType }) {
+  return callFunction<typeof input, IntakePreview>('previewTransactionIntake', input);
+}
+
+export function ingestTransactionIntake(input: {
+  operationKey: string;
+  intakeSourceType: ConsumerIntakeSourceType;
+  originalArtifactSha256: string;
+  artifactText: string | null;
+  confirmed?: IntakeConfirmedFields | null;
+}) {
+  return callFunction<typeof input, { commerceContextId: string; passportDraftId: string; pending: PendingIntakeRecord; parserVersion: string; replayed: boolean }>('ingestTransactionIntake', input);
+}
+
+export function startPackProofFromIntake(input: { commerceContextId: string; confirmed?: IntakeConfirmedFields | null }) {
+  return callFunction<typeof input, { transactionId: string; commerceContextId: string; passportDraftId: string; replayed: boolean }>('startPackProofFromIntake', input);
+}

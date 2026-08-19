@@ -49,6 +49,7 @@ function storedEvidenceSession(session) {
         expiresAt: firestore_1.Timestamp.fromDate(new Date(session.expiresAt)),
         startedAt: session.startedAt ? firestore_1.Timestamp.fromDate(new Date(session.startedAt)) : null,
         completedAt: session.completedAt ? firestore_1.Timestamp.fromDate(new Date(session.completedAt)) : null,
+        intakeFrozenAt: session.intakeFrozenAt ? firestore_1.Timestamp.fromDate(new Date(session.intakeFrozenAt)) : null,
         createdAt: firestore_1.Timestamp.fromDate(new Date(session.createdAt)),
         updatedAt: firestore_1.Timestamp.fromDate(new Date(session.updatedAt)),
     };
@@ -77,6 +78,11 @@ function evidenceSessionDto(id, data) {
         expiresAt: date(data.expiresAt, 'evidenceSession.expiresAt').toISOString(),
         startedAt: data.startedAt instanceof firestore_1.Timestamp ? data.startedAt.toDate().toISOString() : null,
         completedAt: data.completedAt instanceof firestore_1.Timestamp ? data.completedAt.toDate().toISOString() : null,
+        originalArtifactSha256: typeof data.originalArtifactSha256 === 'string' ? data.originalArtifactSha256 : null,
+        normalizedSnapshotSha256: typeof data.normalizedSnapshotSha256 === 'string' ? data.normalizedSnapshotSha256 : null,
+        intakeFrozenAt: data.intakeFrozenAt instanceof firestore_1.Timestamp
+            ? data.intakeFrozenAt.toDate().toISOString()
+            : typeof data.intakeFrozenAt === 'string' ? data.intakeFrozenAt : null,
         createdAt: date(data.createdAt, 'evidenceSession.createdAt').toISOString(),
         updatedAt: date(data.updatedAt, 'evidenceSession.updatedAt').toISOString(),
     });
@@ -150,11 +156,24 @@ class FirestoreParticipantCaptureRepository {
         if (!Array.isArray(rawRequirements) || rawRequirements.some((entry) => typeof entry !== 'string')) {
             throw new Error('Persisted transaction has invalid capture requirements.');
         }
+        const commerceContextId = transactionCommerceContextId(data);
+        let originalArtifactSha256 = null;
+        let normalizedSnapshotSha256 = null;
+        if (commerceContextId) {
+            const contextSnap = await this.firestore.collection('commerceContexts').doc(commerceContextId).get();
+            const contextData = contextSnap.data();
+            if (contextData) {
+                originalArtifactSha256 = typeof contextData.source?.originalArtifactSha256 === 'string' ? contextData.source.originalArtifactSha256 : null;
+                normalizedSnapshotSha256 = typeof contextData.canonicalPayloadSha256 === 'string' ? contextData.canonicalPayloadSha256 : null;
+            }
+        }
         return {
             id: snap.id,
             organizationId,
             status: requiredString(data.apiStatus, 'apiStatus'),
-            commerceContextId: transactionCommerceContextId(data),
+            commerceContextId,
+            originalArtifactSha256,
+            normalizedSnapshotSha256,
             participantReferences,
             requiredArtifactTypes: rawRequirements,
         };
@@ -353,13 +372,17 @@ class FirestoreParticipantCaptureRepository {
             const capture = decision.captureSession;
             const nextRedemptionCount = snapshot.session.redemptionCount + 1;
             const startedAt = snapshot.session.startedAt ?? capture.issuedAt.toISOString();
-            const nextSession = evidence_1.evidenceSessionDtoSchema.parse({
+            const nextSession = (0, evidence_1.freezeEvidenceSessionIntake)(evidence_1.evidenceSessionDtoSchema.parse({
                 ...snapshot.session,
                 status: 'CAPTURING',
                 captureState: 'CAPTURING',
                 redemptionCount: nextRedemptionCount,
                 startedAt,
                 updatedAt: capture.issuedAt.toISOString(),
+            }), {
+                originalArtifactSha256: snapshot.session.originalArtifactSha256,
+                normalizedSnapshotSha256: snapshot.session.normalizedSnapshotSha256,
+                frozenAt: capture.issuedAt.toISOString(),
             });
             const outboxRef = this.firestore.collection('domainOutbox').doc(decision.event.id);
             const transactionRef = this.firestore.collection('transactions').doc(snapshot.session.transactionId);
@@ -395,6 +418,9 @@ class FirestoreParticipantCaptureRepository {
                 redemptionCount: nextRedemptionCount,
                 startedAt: firestore_1.Timestamp.fromDate(new Date(startedAt)),
                 updatedAt: firestore_1.Timestamp.fromDate(capture.issuedAt),
+                originalArtifactSha256: nextSession.originalArtifactSha256,
+                normalizedSnapshotSha256: nextSession.normalizedSnapshotSha256,
+                intakeFrozenAt: nextSession.intakeFrozenAt ? firestore_1.Timestamp.fromDate(new Date(nextSession.intakeFrozenAt)) : null,
                 appCheckContext: { appId: capture.appId, verifiedAt: firestore_1.Timestamp.fromDate(capture.issuedAt) },
                 ...(nextRedemptionCount >= snapshot.session.maximumRedemptions ? { redemptionTokenHash: firestore_1.FieldValue.delete() } : {}),
             });

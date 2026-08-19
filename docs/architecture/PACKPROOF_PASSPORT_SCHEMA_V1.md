@@ -116,7 +116,7 @@ type PassportFact<T> = {
   value: T;
   provenanceClass: 'SOURCE_ASSERTION' | 'PARTICIPANT_ASSERTION' | 'PACKPROOF_OBSERVATION' | 'THIRD_PARTY_ASSERTION' | 'INTEGRITY_RESULT' | 'DERIVED_COMPARISON';
   assertingSource: string | null; // e.g. MERCHANT_API, PACKPROOF_CAPTURE, UPS_TRACKING_API
-  trustClass: 'MERCHANT_SERVER_ATTESTED' | 'PLATFORM_API_ATTESTED' | 'PAGE_DECLARED' | 'PACKPROOF_CAPTURE' | 'PACKPROOF_SERVICE' | null;
+  trustClass: 'MERCHANT_SERVER_ATTESTED' | 'PLATFORM_API_ATTESTED' | 'USER_PROVIDED_COMMERCE_ARTIFACT' | 'PAGE_DECLARED' | 'PACKPROOF_CAPTURE' | 'PACKPROOF_SERVICE' | null;
   recordedAt: string | null;
   sourceRecordId: string | null; // ctx_, art_, shipment_, txn_, pps_, ...
   sourceReference: string | null; // external order/listing id, artifact id
@@ -124,7 +124,9 @@ type PassportFact<T> = {
 };
 ```
 
-`PAGE_DECLARED` facts may appear only as draft lineage. They must not be presented as authoritative order context on the Passport.
+`PAGE_DECLARED` facts may appear only as draft lineage. They must not be presented as Passport order context.
+
+`USER_PROVIDED_COMMERCE_ARTIFACT` facts may appear as Passport order context with provenance class `SOURCE_ASSERTION`. Approved copy is that PackProof received transaction metadata from seller-provided commerce correspondence. They must not be presented as a merchant- or platform-attested order, a verified purchase, or an `ORDER_BOUND` fact.
 
 ## 5. Identity
 
@@ -206,7 +208,7 @@ Evaluation (1.0):
 | Provenance | Displayed commerce facts have attribution | Some facts omitted rather than unattributed | Unattributed commercial fact displayed |
 | Lineage | Artifact IDs resolve to this transaction | Legacy IDs accepted via compatibility | Artifact bound to another transaction |
 
-`AUTHENTIC_PACKPROOF` requires no `FAILED` criterion and at least one `FINALIZED` artifact. `QUARANTINED` artifacts produce `LIMITED` on finalization, not an inauthentic Passport.
+`AUTHENTIC_PACKPROOF` requires no `FAILED` criterion and at least one `FINALIZED` artifact. `QUARANTINED` artifacts produce `LIMITED` on finalization, not an inauthentic Passport. `LIMITED` criteria stay on the individual integrity/inventory dimensions; they do not change the authenticity banner.
 
 Never describe HMAC-SHA256 service authentication as a digital signature. External reviewers verify file / manifest / bundle hashes. PackProof verifies service MAC. A future asymmetric KMS/HSM signer is a new `manifestAuthentication.type`; it must not reinterpret HMAC records.
 
@@ -222,7 +224,7 @@ type PassportTransaction = {
   sellerReference: PassportFact<string | null>;
   destination: PassportFact<PassportDestination | null>;
   itemCount: PassportFact<number | null>;
-  sourceTrustClass: 'MERCHANT_SERVER_ATTESTED' | 'PLATFORM_API_ATTESTED' | 'PAGE_DECLARED' | null;
+  sourceTrustClass: 'MERCHANT_SERVER_ATTESTED' | 'PLATFORM_API_ATTESTED' | 'USER_PROVIDED_COMMERCE_ARTIFACT' | 'PAGE_DECLARED' | null;
   importedAt: string | null;
   canonicalPayloadSha256: string | null;
 };
@@ -245,7 +247,7 @@ Aggregation:
 | destination | **Not stored in 1.0 core records.** Emit `null` + inventory `NOT_AVAILABLE` until a privacy-scoped destination resource exists |
 | importedAt / digest | `commerceContext.source.capturedAt`, `canonicalPayloadSha256` |
 
-Display copy: “eBay asserted SKU … as part of the imported order context,” never a bare `SKU: ABC123` without source.
+Display copy: “eBay asserted SKU … as part of the imported order context,” never a bare `SKU: ABC123` without source. For `USER_PROVIDED_COMMERCE_ARTIFACT`, say PackProof received transaction metadata from seller-provided commerce correspondence. Evidence sessions freeze `originalArtifactSha256` and `normalizedSnapshotSha256` at `CAPTURING` so later context changes cannot rewrite the import capture was started against.
 
 ## 8. Items, observations, comparisons
 

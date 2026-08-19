@@ -5,6 +5,7 @@ import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import { callFunction } from '@/lib/api';
+import { toHref } from '@/lib/ux-flow';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({ shouldShowBanner: true, shouldShowList: true, shouldPlaySound: false, shouldSetBadge: false }),
@@ -18,8 +19,7 @@ export function useNotifications(uid?: string) {
     const register = async () => {
       if (Platform.OS === 'android') await Notifications.setNotificationChannelAsync('transactions', { name: 'Transaction updates', importance: Notifications.AndroidImportance.DEFAULT, vibrationPattern: [0, 180, 100, 180], lightColor: '#467C63' });
       const existing = await Notifications.getPermissionsAsync();
-      const permission = existing.status === 'granted' ? existing : await Notifications.requestPermissionsAsync();
-      if (permission.status !== 'granted' || !active) return;
+      if (existing.status !== 'granted' || !active) return;
       const projectId = Constants.expoConfig?.extra?.eas?.projectId ?? Constants.easConfig?.projectId;
       if (!projectId) return;
       const token = (await Notifications.getExpoPushTokenAsync({ projectId })).data;
@@ -31,7 +31,7 @@ export function useNotifications(uid?: string) {
   useEffect(() => {
     const subscription = Notifications.addNotificationResponseReceivedListener((response) => {
       const transactionId = response.notification.request.content.data?.transactionId;
-      if (typeof transactionId === 'string') router.push(`/transaction/${transactionId}`);
+      if (typeof transactionId === 'string') router.push(toHref({ pathname: '/task/[id]', params: { id: transactionId } }));
     });
     return () => subscription.remove();
   }, [router]);

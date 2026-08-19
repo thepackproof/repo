@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import {
   apiClientDtoSchema,
@@ -10,9 +13,11 @@ import {
   claimTransitions,
   commerceContextCanAuthoritativelyBindOrder,
   commerceContextDtoSchema,
+  commerceContextMayAppearAsPassportOrderContext,
   commerceContextStatuses,
   commerceContextTransitions,
   commerceImageReferenceIsFinalizedEvidence,
+  commerceTrustLevelForIntakeSource,
   deliveryStatuses,
   DomainValidationError,
   evidenceArtifactDtoSchema,
@@ -25,6 +30,7 @@ import {
   evidenceSessionDtoSchema,
   evidenceSessionStatuses,
   evidenceSessionTransitions,
+  freezeEvidenceSessionIntake,
   integrationDtoSchema,
   mapLegacyConsumerTransaction,
   mapLegacyMerchantTransaction,
@@ -49,6 +55,11 @@ import {
   webhookDeliveryTransitions,
   webhookEndpointDtoSchema,
   webhookEventDtoSchema,
+  parseCommerceArtifact,
+  EBAY_EMAIL_PARSER_V1,
+  ETSY_EMAIL_PARSER_V1,
+  SHOPIFY_EMAIL_PARSER_V1,
+  GENERIC_COMMERCE_TEXT_PARSER_V1,
 } from '../lib/domain/v1/index.js';
 
 const now = '2026-08-11T12:00:00.000Z';
@@ -96,12 +107,13 @@ const samples = {
   commerceContext: {
     id: 'ctx_12345678', object: 'commerce_context', schemaVersion: 1, integrationId: 'int_12345678',
     source: {
-      platform: 'SHOPIFY', trustLevel: 'PLATFORM_API_ATTESTED', externalShopId: 'shop-1', externalProductId: 'product-1', externalListingId: null,
+      platform: 'SHOPIFY', trustLevel: 'PLATFORM_API_ATTESTED', intakeSourceType: null, platformIdentifier: null, parserVersion: null, originalArtifactSha256: null,
+      externalShopId: 'shop-1', externalProductId: 'product-1', externalListingId: null,
       externalVariantId: 'variant-1', externalOrderId: 'order-1', externalLineItemId: 'line-1', productUrl: 'https://merchant.example/products/item', capturedAt: now,
     },
     item,
     fieldProvenance: {
-      'item.title': { source: 'PLATFORM_API', confidence: 'ASSERTED', importedAt: now, sourceReference: 'product-1' },
+      'item.title': { source: 'PLATFORM_API', confidence: 'ASSERTED', importedAt: now, sourceReference: 'product-1', extractionMethod: null, sourceArtifactSha256: null },
     },
     canonicalPayloadSha256: sha, status: 'ORDER_BOUND', supersedesCommerceContextId: null, expiresAt: null, createdAt: now, updatedAt: now,
   },
@@ -126,6 +138,7 @@ const samples = {
     type: 'OUTBOUND_PACK', protocolVersion: 'PP_CAPTURE_1', allowedArtifactTypes: ['PACKING_VIDEO', 'SHIPPING_LABEL'], status: 'PROCESSING',
     captureState: 'CAPTURED', syncState: 'AWAITING_FINALIZATION', processingState: 'PROCESSING', maximumRedemptions: 1, redemptionCount: 1,
     requestedEvidenceCount: 1, captureProfileId: null, captureGroupId: null, expiresAt: later, startedAt: now, completedAt: null,
+    originalArtifactSha256: null, normalizedSnapshotSha256: null, intakeFrozenAt: null,
     createdAt: now, updatedAt: now,
   },
   evidenceArtifact: {
@@ -261,6 +274,59 @@ test('page-declared context can prefill but cannot authoritatively bind an order
   assert.throws(() => commerceContextDtoSchema.parse({ ...structuredClone(pageDeclared), status: 'ORDER_BOUND' }), DomainValidationError);
 });
 
+test('user-provided commerce artifacts prefill and appear on a Passport but cannot bind an order', () => {
+  assert.equal(commerceTrustLevelForIntakeSource('EMAIL_RECEIPT'), 'USER_PROVIDED_COMMERCE_ARTIFACT');
+  assert.equal(commerceTrustLevelForIntakeSource('BROWSER_EXTENSION'), 'PAGE_DECLARED');
+  const imported = commerceContextDtoSchema.parse({
+    ...structuredClone(samples.commerceContext),
+    source: {
+      ...structuredClone(samples.commerceContext.source),
+      platform: 'MARKETPLACE',
+      trustLevel: 'USER_PROVIDED_COMMERCE_ARTIFACT',
+      intakeSourceType: 'EMAIL_RECEIPT',
+      platformIdentifier: 'EBAY',
+      parserVersion: 'EBAY_EMAIL_PARSER_V4',
+      originalArtifactSha256: sha,
+    },
+    fieldProvenance: {
+      'item.title': {
+        source: 'EMAIL_RECEIPT', confidence: 'ASSERTED', importedAt: now, sourceReference: 'order-1',
+        extractionMethod: 'EBAY_EMAIL_PARSER_V4', sourceArtifactSha256: sha,
+      },
+    },
+    status: 'CREATED',
+  });
+  assert.equal(commerceContextCanAuthoritativelyBindOrder(imported), false);
+  assert.equal(commerceContextMayAppearAsPassportOrderContext(imported.source.trustLevel), true);
+  assert.throws(() => commerceContextDtoSchema.parse({ ...structuredClone(imported), status: 'ORDER_BOUND' }), DomainValidationError);
+  assert.throws(() => commerceContextDtoSchema.parse({
+    ...structuredClone(imported),
+    source: { ...imported.source, originalArtifactSha256: null },
+  }), DomainValidationError);
+});
+
+test('evidence-session intake freeze is idempotent and immutable after capture starts', () => {
+  const ready = evidenceSessionDtoSchema.parse(structuredClone(samples.evidenceSession));
+  const frozen = freezeEvidenceSessionIntake(ready, {
+    originalArtifactSha256: sha,
+    normalizedSnapshotSha256: 'b'.repeat(64),
+    frozenAt: now,
+  });
+  assert.equal(frozen.intakeFrozenAt, now);
+  assert.equal(frozen.originalArtifactSha256, sha);
+  const replay = freezeEvidenceSessionIntake(frozen, {
+    originalArtifactSha256: sha,
+    normalizedSnapshotSha256: 'b'.repeat(64),
+    frozenAt: later,
+  });
+  assert.equal(replay.intakeFrozenAt, now);
+  assert.throws(() => freezeEvidenceSessionIntake(frozen, {
+    originalArtifactSha256: 'c'.repeat(64),
+    normalizedSnapshotSha256: 'b'.repeat(64),
+    frozenAt: later,
+  }), DomainValidationError);
+});
+
 test('commerce origins, image references and webhook endpoints require HTTPS', () => {
   assert.throws(() => integrationDtoSchema.parse({ ...structuredClone(samples.integration), allowedOrigins: ['packproof://merchant.example'] }), DomainValidationError);
   assert.throws(() => commerceContextDtoSchema.parse({
@@ -333,4 +399,47 @@ test('public DTO samples exclude internal secret and storage fields', () => {
   for (const forbidden of ['credentialVerifier', 'secretReference', 'signingSecretReference', 'tokenHash', 'storagePath', 'claimedActorId', 'requestedByActorId', 'uploaderId']) {
     assert.equal(serialized.includes(forbidden), false, `public examples leaked ${forbidden}`);
   }
+});
+
+test('versioned commerce parsers extract order metadata from eBay, Etsy, Shopify, and generic fixtures', () => {
+  const fixtureDir = join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'intake');
+  const ebay = parseCommerceArtifact(readFileSync(join(fixtureDir, 'ebay-sold.eml'), 'utf8'), 'EMAIL_RECEIPT');
+  assert.equal(ebay.parserVersion, EBAY_EMAIL_PARSER_V1);
+  assert.equal(ebay.platformIdentifier, 'EBAY');
+  assert.equal(ebay.item.title, 'Nintendo Switch 2');
+  assert.equal(ebay.item.amount?.minorUnits, 44900);
+  assert.equal(ebay.externalOrderId, '12-34567-89012');
+  assert.equal(ebay.item.selectedOptions[0]?.value, 'Mario Kart World Bundle');
+  assert.equal(ebay.missingFields.includes('title'), false);
+
+  const etsy = parseCommerceArtifact(readFileSync(join(fixtureDir, 'etsy-sold.txt'), 'utf8'), 'EMAIL_RECEIPT');
+  assert.equal(etsy.parserVersion, ETSY_EMAIL_PARSER_V1);
+  assert.equal(etsy.item.title, 'Handmade leather wallet');
+  assert.equal(etsy.externalOrderId, '2233445566');
+  assert.equal(etsy.item.amount?.minorUnits, 4500);
+
+  const shopify = parseCommerceArtifact(readFileSync(join(fixtureDir, 'shopify-order.txt'), 'utf8'), 'SHARE_SHEET');
+  assert.equal(shopify.parserVersion, SHOPIFY_EMAIL_PARSER_V1);
+  assert.equal(shopify.item.title, 'Nike Air Max 90');
+  assert.equal(shopify.externalOrderId, '1042');
+  assert.equal(shopify.item.amount?.minorUnits, 12900);
+
+  const generic = parseCommerceArtifact(readFileSync(join(fixtureDir, 'generic-receipt.txt'), 'utf8'), 'PDF_IMPORT');
+  assert.equal(generic.parserVersion, GENERIC_COMMERCE_TEXT_PARSER_V1);
+  assert.equal(generic.item.title, 'Sony A7 Camera');
+  assert.equal(generic.externalOrderId, 'A-998877');
+  assert.equal(generic.item.amount?.minorUnits, 129900);
+  assert.equal(generic.item.sku, 'A7-BODY');
+
+  const screenshot = parseCommerceArtifact(null, 'SCREENSHOT_IMPORT');
+  assert.deepEqual(screenshot.missingFields, ['title', 'price', 'variant', 'orderNumber']);
+  assert.equal(canTransition(commerceContextTransitions, 'CREATED', 'CLAIMED'), true);
+
+  const html = parseCommerceArtifact(
+    '<html><script>window.steal="secret"</script\t\n bar><p>Item: Safe listing</p><p>Order: 99-88888-77777</p></html>',
+    'EMAIL_RECEIPT',
+  );
+  assert.equal(html.item.title.includes('secret'), false);
+  assert.equal(html.item.description.includes('secret'), false);
+  assert.match(html.item.title, /Safe listing/);
 });

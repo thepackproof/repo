@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.evidenceManifestDtoSchema = exports.evidenceArtifactDtoSchema = exports.evidenceSessionDtoSchema = exports.evidenceArtifactTransitions = exports.evidenceArtifactStatuses = exports.evidenceArtifactTypes = exports.processingStates = exports.syncStates = exports.captureStates = exports.evidenceSessionTransitions = exports.evidenceSessionStatuses = exports.evidenceSessionTypes = void 0;
 exports.parseAssurance = parseAssurance;
+exports.freezeEvidenceSessionIntake = freezeEvidenceSessionIntake;
 exports.assuranceHasRecordedIntegrityFailure = assuranceHasRecordedIntegrityFailure;
 exports.evidenceCanAdvanceWorkflow = evidenceCanAdvanceWorkflow;
 exports.evidenceAuthenticationIsPubliclyVerifiable = evidenceAuthenticationIsPubliclyVerifiable;
@@ -86,7 +87,8 @@ exports.evidenceSessionDtoSchema = (0, runtime_1.schema)((value) => {
     const input = (0, runtime_1.strictObject)(value, 'evidenceSession', [
         'id', 'object', 'schemaVersion', 'transactionId', 'commerceContextId', 'returnPassportId', 'actorRole', 'type', 'protocolVersion',
         'allowedArtifactTypes', 'status', 'captureState', 'syncState', 'processingState', 'maximumRedemptions', 'redemptionCount',
-        'requestedEvidenceCount', 'captureProfileId', 'captureGroupId', 'expiresAt', 'startedAt', 'completedAt', 'createdAt', 'updatedAt',
+        'requestedEvidenceCount', 'captureProfileId', 'captureGroupId', 'expiresAt', 'startedAt', 'completedAt',
+        'originalArtifactSha256', 'normalizedSnapshotSha256', 'intakeFrozenAt', 'createdAt', 'updatedAt',
     ]);
     (0, runtime_1.literalValue)(input.object, 'evidenceSession.object', 'evidence_session');
     (0, runtime_1.literalValue)(input.schemaVersion, 'evidenceSession.schemaVersion', 1);
@@ -119,10 +121,32 @@ exports.evidenceSessionDtoSchema = (0, runtime_1.schema)((value) => {
         expiresAt: (0, runtime_1.isoDateTime)(input.expiresAt, 'evidenceSession.expiresAt'),
         startedAt: input.startedAt === undefined || input.startedAt === null ? null : (0, runtime_1.isoDateTime)(input.startedAt, 'evidenceSession.startedAt'),
         completedAt: input.completedAt === undefined || input.completedAt === null ? null : (0, runtime_1.isoDateTime)(input.completedAt, 'evidenceSession.completedAt'),
+        originalArtifactSha256: (0, runtime_1.optionalSha256)(input.originalArtifactSha256, 'evidenceSession.originalArtifactSha256'),
+        normalizedSnapshotSha256: (0, runtime_1.optionalSha256)(input.normalizedSnapshotSha256, 'evidenceSession.normalizedSnapshotSha256'),
+        intakeFrozenAt: (0, runtime_1.optionalIsoDateTime)(input.intakeFrozenAt, 'evidenceSession.intakeFrozenAt'),
         createdAt: (0, runtime_1.isoDateTime)(input.createdAt, 'evidenceSession.createdAt'),
         updatedAt: (0, runtime_1.isoDateTime)(input.updatedAt, 'evidenceSession.updatedAt'),
     };
 });
+function freezeEvidenceSessionIntake(session, freeze) {
+    if (session.intakeFrozenAt) {
+        if (session.originalArtifactSha256 !== freeze.originalArtifactSha256
+            || session.normalizedSnapshotSha256 !== freeze.normalizedSnapshotSha256) {
+            throw new runtime_1.DomainValidationError({
+                path: 'evidenceSession.intakeFrozenAt',
+                code: 'FORMAT',
+                message: 'intake freeze hashes cannot change after capture starts',
+            });
+        }
+        return session;
+    }
+    return exports.evidenceSessionDtoSchema.parse({
+        ...session,
+        originalArtifactSha256: freeze.originalArtifactSha256,
+        normalizedSnapshotSha256: freeze.normalizedSnapshotSha256,
+        intakeFrozenAt: freeze.frozenAt,
+    });
+}
 exports.evidenceArtifactDtoSchema = (0, runtime_1.schema)((value) => {
     const input = (0, runtime_1.strictObject)(value, 'evidenceArtifact', [
         'id', 'object', 'schemaVersion', 'transactionId', 'evidenceSessionId', 'type', 'status', 'contentType', 'sizeBytes',

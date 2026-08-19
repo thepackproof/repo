@@ -41,7 +41,7 @@ function mapLegacyConsumerTransaction(input) {
                 : 'CONSUMER',
         merchantReference: input.source?.type === 'PACKPROOF_CONNECT' ? input.source.externalOrderId : null,
         commerceContextId: input.source?.commerceContextId ?? null,
-        passportDraftId: input.source?.type === 'PACKPROOF_BUTTON'
+        passportDraftId: input.source?.type === 'PACKPROOF_BUTTON' || input.source?.type === 'TRANSACTION_INTAKE'
             ? input.source.passportDraftId
             : null,
         item: {

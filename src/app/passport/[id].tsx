@@ -61,7 +61,7 @@ export default function PackProofPassportScreen() {
         <Text style={styles.body}>A live Passport is issued only after a bound transaction has a server-finalized evidence artifact with file and manifest hashes. Missing inventory never makes a Passport inauthentic.</Text>
       </Card> : null}
       {passport ? <>
-        <ScreenTitle eyebrow="PackProof Passport™" title={passport.identity.displayId} subtitle={passport.identity.passportId} />
+        <ScreenTitle eyebrow="PackProof Passport" title="Your PackProof Passport is ready" subtitle={passport.identity.displayId} />
         <Card style={styles.banner}>
           <Text style={styles.bannerTitle}>{passport.integrity.banner.replaceAll('_', ' ')}</Text>
           <Text style={styles.bannerSummary}>{passport.integrity.summary}</Text>

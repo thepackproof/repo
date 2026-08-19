@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 import { after, before, test } from 'node:test';
 import { deleteApp, initializeApp } from 'firebase-admin/app';
@@ -14,6 +17,7 @@ const {
   MerchantConnectApplicationService,
   ParticipantCaptureApplicationService,
   PublicCommerceHandoffApplicationService,
+  TransactionIntakeApplicationService,
   sha256,
 } = require('../lib/application/v1/index.js');
 const { FirestoreAuditWriter } = require('../lib/api/v1/controls.js');
@@ -27,6 +31,7 @@ const { FirestoreConsumerTransactionRepository } = require('../lib/infrastructur
 const { FirestorePublicCommerceHandoffRepository } = require('../lib/infrastructure/firebase/v1/public-commerce-handoff-repository.js');
 const { FirestoreParticipantCaptureRepository } = require('../lib/infrastructure/firebase/v1/participant-capture-repository.js');
 const { FirestoreMerchantConnectAdapter } = require('../lib/infrastructure/firebase/v1/merchant-evidence-repository.js');
+const { FirestoreTransactionIntakeRepository } = require('../lib/infrastructure/firebase/v1/transaction-intake-repository.js');
 
 const emulatorAvailable = Boolean(process.env.FIRESTORE_EMULATOR_HOST);
 const adminApp = emulatorAvailable ? initializeApp({ projectId: 'packproof-application-test' }, `application-v1-${Date.now()}`) : null;
@@ -533,3 +538,65 @@ test('participant claim and evidence-session persistence consume hashed capabili
   assert.equal(outbox.size, 5);
   assert.equal(outbox.docs.every((doc) => doc.data().deliveryState === 'PENDING'), true);
 });
+
+test('consumer intake persists a pending projection, then claims a draft transaction atomically', { skip: !emulatorAvailable }, async () => {
+  const service = new TransactionIntakeApplicationService(new FirestoreTransactionIntakeRepository(firestore), () => now);
+  const artifactText = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'intake', 'ebay-sold.eml'), 'utf8');
+  const imported = await service.ingestArtifact({
+    actorId: 'intake-seller',
+    operationKey: 'firestore-intake-1',
+    requestId: 'request-firestore-intake-1',
+    intakeSourceType: 'EMAIL_RECEIPT',
+    originalArtifactSha256: sha256(artifactText),
+    artifactText,
+  });
+  assert.equal(imported.replayed, false);
+  assert.equal(imported.pending.title, 'Nintendo Switch 2');
+  const context = await firestore.collection('commerceContexts').doc(imported.commerceContextId).get();
+  const draft = await firestore.collection('passportDrafts').doc(imported.passportDraftId).get();
+  const pending = await firestore.collection('users').doc('intake-seller').collection('pendingIntakes').doc(imported.commerceContextId).get();
+  assert.equal(context.exists, true);
+  assert.equal(context.data().source.trustLevel, 'USER_PROVIDED_COMMERCE_ARTIFACT');
+  assert.equal(context.data().status, 'CREATED');
+  assert.equal(draft.data().status, 'READY_FOR_REVIEW');
+  assert.equal(pending.exists, true);
+  assert.equal(pending.data().orderNumber, '12-34567-89012');
+
+  const replayed = await service.ingestArtifact({
+    actorId: 'intake-seller',
+    operationKey: 'firestore-intake-1',
+    requestId: 'request-firestore-intake-2',
+    intakeSourceType: 'EMAIL_RECEIPT',
+    originalArtifactSha256: sha256(artifactText),
+    artifactText,
+  });
+  assert.equal(replayed.replayed, true);
+
+  const started = await service.start({
+    actorId: 'intake-seller',
+    plan: 'PRO',
+    commerceContextId: imported.commerceContextId,
+    requestId: 'request-firestore-intake-start-1',
+  });
+  const transaction = await firestore.collection('transactions').doc(started.transactionId).get();
+  const claimedContext = await firestore.collection('commerceContexts').doc(imported.commerceContextId).get();
+  const boundDraft = await firestore.collection('passportDrafts').doc(imported.passportDraftId).get();
+  const remaining = await firestore.collection('users').doc('intake-seller').collection('pendingIntakes').doc(imported.commerceContextId).get();
+  assert.equal(transaction.exists, true);
+  assert.equal(transaction.data().source.type, 'TRANSACTION_INTAKE');
+  assert.equal(transaction.data().title, 'Nintendo Switch 2');
+  assert.equal(claimedContext.data().status, 'CLAIMED');
+  assert.equal(boundDraft.data().status, 'BOUND');
+  assert.equal(boundDraft.data().transactionId, started.transactionId);
+  assert.equal(remaining.exists, false);
+
+  const startedReplay = await service.start({
+    actorId: 'intake-seller',
+    plan: 'PRO',
+    commerceContextId: imported.commerceContextId,
+    requestId: 'request-firestore-intake-start-2',
+  });
+  assert.equal(startedReplay.replayed, true);
+  assert.equal(startedReplay.transactionId, started.transactionId);
+});
+

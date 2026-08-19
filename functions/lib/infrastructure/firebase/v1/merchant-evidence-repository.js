@@ -2,6 +2,8 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.FirestoreMerchantConnectAdapter = exports.FirestoreMerchantEvidenceRepository = void 0;
 const firestore_1 = require("firebase-admin/firestore");
+const errors_1 = require("../../../application/v1/errors");
+const commerce_1 = require("../../../domain/v1/commerce");
 const merchant_transaction_service_1 = require("../../../application/v1/merchant-transaction-service");
 const shipping_tracker_1 = require("../../../shipping-tracker");
 const outbox_1 = require("./outbox");
@@ -133,6 +135,8 @@ function toAccessible(id, data) {
         externalSellerId: optionalString(source?.externalSellerId),
         declaredWeightGrams: Number.isFinite(declaredWeight) ? Number(declaredWeight) : null,
         sourceTrackingNumber: optionalString(source?.trackingNumber),
+        sourceTrustLevel: (0, commerce_1.parseCommerceTrustLevel)(source?.trustLevel)
+            ?? (optionalString(source?.type) === 'PACKPROOF_BUTTON' ? 'PAGE_DECLARED' : null),
         passportId: optionalString(data.passportId),
         passportDisplayId: optionalString(data.passportDisplayId),
         passportIssuedAt: data.passportIssuedAt ? dateValue(data.passportIssuedAt, createdAt) : null,
@@ -169,14 +173,17 @@ function toCommerce(id, data) {
         .map((entry) => `${typeof entry.name === 'string' ? entry.name : ''}: ${typeof entry.value === 'string' ? entry.value : ''}`.trim())
         .filter(Boolean)
         .join('; ') || null;
-    const trust = source?.trustLevel === 'MERCHANT_SERVER_ATTESTED' || source?.trustLevel === 'PLATFORM_API_ATTESTED' || source?.trustLevel === 'PAGE_DECLARED'
-        ? source.trustLevel
+    const trust = (0, commerce_1.parseCommerceTrustLevel)(source?.trustLevel);
+    const intakeSourceType = typeof source?.intakeSourceType === 'string' && commerce_1.commerceIntakeSourceTypes.includes(source.intakeSourceType)
+        ? source.intakeSourceType
         : null;
     return {
         id,
-        platform: optionalString(source?.platform),
+        platform: optionalString(source?.platformIdentifier) ?? optionalString(source?.platform),
         trustLevel: trust,
-        assertingSource: trust === 'PAGE_DECLARED' ? 'PAGE_DECLARED' : trust === 'PLATFORM_API_ATTESTED' ? 'PLATFORM_API' : 'MERCHANT_API',
+        assertingSource: trust === 'USER_PROVIDED_COMMERCE_ARTIFACT'
+            ? (intakeSourceType ? (0, commerce_1.assertionSourceForIntakeSource)(intakeSourceType) : 'EXTERNAL_ADAPTER')
+            : trust === 'PAGE_DECLARED' ? 'PAGE_DECLARED' : trust === 'PLATFORM_API_ATTESTED' ? 'PLATFORM_API' : 'MERCHANT_API',
         externalOrderId: optionalString(source?.externalOrderId),
         externalSellerId: optionalString(data.externalSellerId),
         capturedAt: source?.capturedAt ? dateValue(source.capturedAt, new Date(0)).toISOString() : null,
@@ -373,25 +380,38 @@ class FirestoreMerchantEvidenceRepository {
             return null;
         return toPassportSnapshot(snap.id, snap.data());
     }
-    async createPassportSnapshot(transactionId, record) {
-        const ref = this.firestore.collection('transactions').doc(transactionId).collection('passportSnapshots').doc(record.snapshotId);
-        await ref.create({
-            id: record.snapshotId,
-            object: 'packproof_passport_snapshot',
-            schemaVersion: 1,
-            snapshotId: record.snapshotId,
-            passportId: record.passportId,
-            transactionId: record.transactionId,
-            snapshotVersion: record.snapshotVersion,
-            passport: record.passport,
-            canonicalPayloadSha256: record.canonicalPayloadSha256,
-            rendererVersion: record.rendererVersion,
-            generatedAt: firestore_1.Timestamp.fromDate(record.generatedAt),
-            pdfStoragePath: record.pdfStoragePath,
-            pdfSha256: record.pdfSha256,
-            createdAt: firestore_1.Timestamp.fromDate(record.generatedAt),
+    async createPassportSnapshot(transactionId, build) {
+        const txnRef = this.firestore.collection('transactions').doc(transactionId);
+        const snapshots = txnRef.collection('passportSnapshots');
+        return this.firestore.runTransaction(async (tx) => {
+            const snap = await tx.get(txnRef);
+            if (!snap.exists) {
+                throw new errors_1.ApplicationError('NOT_FOUND', 'TRANSACTION_NOT_FOUND', 'The requested transaction was not found.');
+            }
+            const latest = await tx.get(snapshots.orderBy('snapshotVersion', 'desc').limit(1));
+            const lastVersion = latest.empty ? 0 : (optionalInteger(latest.docs[0].data().snapshotVersion) ?? 0);
+            const counter = optionalInteger(snap.data().passportSnapshotVersion) ?? 0;
+            const version = Math.max(lastVersion, counter) + 1;
+            const record = build(version);
+            tx.update(txnRef, { passportSnapshotVersion: version });
+            tx.create(snapshots.doc(record.snapshotId), {
+                id: record.snapshotId,
+                object: 'packproof_passport_snapshot',
+                schemaVersion: 1,
+                snapshotId: record.snapshotId,
+                passportId: record.passportId,
+                transactionId: record.transactionId,
+                snapshotVersion: record.snapshotVersion,
+                passport: record.passport,
+                canonicalPayloadSha256: record.canonicalPayloadSha256,
+                rendererVersion: record.rendererVersion,
+                generatedAt: firestore_1.Timestamp.fromDate(record.generatedAt),
+                pdfStoragePath: record.pdfStoragePath,
+                pdfSha256: record.pdfSha256,
+                createdAt: firestore_1.Timestamp.fromDate(record.generatedAt),
+            });
+            return record;
         });
-        return record;
     }
     async savePassportExport(transactionId, snapshotId, record) {
         await this.firestore.collection('transactions').doc(transactionId).collection('passportSnapshots').doc(snapshotId).update({

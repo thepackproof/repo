@@ -1,5 +1,6 @@
 import { FieldValue, Timestamp, type DocumentData, type Firestore } from 'firebase-admin/firestore';
 import type { ApplicationEvent } from '../../../application/v1/events';
+import { ApplicationError } from '../../../application/v1/errors';
 import type {
   AccessibleMerchantTransaction,
   AssociateDeliveryRecord,
@@ -18,6 +19,12 @@ import type {
   StoredReportRecord,
 } from '../../../application/v1/merchant-evidence-ports';
 import type { PassportCommerceInput } from '../../../domain/v1/passport';
+import {
+  assertionSourceForIntakeSource,
+  commerceIntakeSourceTypes,
+  parseCommerceTrustLevel,
+  type CommerceIntakeSourceType,
+} from '../../../domain/v1/commerce';
 import type { MerchantDeliveryDto, MerchantReturnPassportDto, MerchantShipmentDto, MerchantTimelineEventDto } from '../../../application/v1/merchant-evidence-types';
 import type { MerchantPrincipal } from '../../../application/v1/merchant-types';
 import { sha256 } from '../../../application/v1/merchant-transaction-service';
@@ -160,6 +167,8 @@ function toAccessible(id: string, data: DocumentData): AccessibleMerchantTransac
     externalSellerId: optionalString(source?.externalSellerId),
     declaredWeightGrams: Number.isFinite(declaredWeight) ? Number(declaredWeight) : null,
     sourceTrackingNumber: optionalString(source?.trackingNumber),
+    sourceTrustLevel: parseCommerceTrustLevel(source?.trustLevel)
+      ?? (optionalString(source?.type) === 'PACKPROOF_BUTTON' ? 'PAGE_DECLARED' : null),
     passportId: optionalString(data.passportId),
     passportDisplayId: optionalString(data.passportDisplayId),
     passportIssuedAt: data.passportIssuedAt ? dateValue(data.passportIssuedAt, createdAt) : null,
@@ -197,14 +206,17 @@ function toCommerce(id: string, data: DocumentData): PassportCommerceInput {
     .map((entry) => `${typeof entry.name === 'string' ? entry.name : ''}: ${typeof entry.value === 'string' ? entry.value : ''}`.trim())
     .filter(Boolean)
     .join('; ') || null;
-  const trust = source?.trustLevel === 'MERCHANT_SERVER_ATTESTED' || source?.trustLevel === 'PLATFORM_API_ATTESTED' || source?.trustLevel === 'PAGE_DECLARED'
-    ? source.trustLevel
+  const trust = parseCommerceTrustLevel(source?.trustLevel);
+  const intakeSourceType = typeof source?.intakeSourceType === 'string' && (commerceIntakeSourceTypes as readonly string[]).includes(source.intakeSourceType)
+    ? source.intakeSourceType as CommerceIntakeSourceType
     : null;
   return {
     id,
-    platform: optionalString(source?.platform),
+    platform: optionalString(source?.platformIdentifier) ?? optionalString(source?.platform),
     trustLevel: trust,
-    assertingSource: trust === 'PAGE_DECLARED' ? 'PAGE_DECLARED' : trust === 'PLATFORM_API_ATTESTED' ? 'PLATFORM_API' : 'MERCHANT_API',
+    assertingSource: trust === 'USER_PROVIDED_COMMERCE_ARTIFACT'
+      ? (intakeSourceType ? assertionSourceForIntakeSource(intakeSourceType) : 'EXTERNAL_ADAPTER')
+      : trust === 'PAGE_DECLARED' ? 'PAGE_DECLARED' : trust === 'PLATFORM_API_ATTESTED' ? 'PLATFORM_API' : 'MERCHANT_API',
     externalOrderId: optionalString(source?.externalOrderId),
     externalSellerId: optionalString(data.externalSellerId),
     capturedAt: source?.capturedAt ? dateValue(source.capturedAt, new Date(0)).toISOString() : null,
@@ -403,25 +415,41 @@ export class FirestoreMerchantEvidenceRepository implements MerchantEvidenceRepo
     return toPassportSnapshot(snap.id, snap.data()!);
   }
 
-  async createPassportSnapshot(transactionId: string, record: StoredPassportSnapshot): Promise<StoredPassportSnapshot> {
-    const ref = this.firestore.collection('transactions').doc(transactionId).collection('passportSnapshots').doc(record.snapshotId);
-    await ref.create({
-      id: record.snapshotId,
-      object: 'packproof_passport_snapshot',
-      schemaVersion: 1,
-      snapshotId: record.snapshotId,
-      passportId: record.passportId,
-      transactionId: record.transactionId,
-      snapshotVersion: record.snapshotVersion,
-      passport: record.passport,
-      canonicalPayloadSha256: record.canonicalPayloadSha256,
-      rendererVersion: record.rendererVersion,
-      generatedAt: Timestamp.fromDate(record.generatedAt),
-      pdfStoragePath: record.pdfStoragePath,
-      pdfSha256: record.pdfSha256,
-      createdAt: Timestamp.fromDate(record.generatedAt),
+  async createPassportSnapshot(
+    transactionId: string,
+    build: (version: number) => StoredPassportSnapshot,
+  ): Promise<StoredPassportSnapshot> {
+    const txnRef = this.firestore.collection('transactions').doc(transactionId);
+    const snapshots = txnRef.collection('passportSnapshots');
+    return this.firestore.runTransaction(async (tx) => {
+      const snap = await tx.get(txnRef);
+      if (!snap.exists) {
+        throw new ApplicationError('NOT_FOUND', 'TRANSACTION_NOT_FOUND', 'The requested transaction was not found.');
+      }
+      const latest = await tx.get(snapshots.orderBy('snapshotVersion', 'desc').limit(1));
+      const lastVersion = latest.empty ? 0 : (optionalInteger(latest.docs[0].data().snapshotVersion) ?? 0);
+      const counter = optionalInteger(snap.data()!.passportSnapshotVersion) ?? 0;
+      const version = Math.max(lastVersion, counter) + 1;
+      const record = build(version);
+      tx.update(txnRef, { passportSnapshotVersion: version });
+      tx.create(snapshots.doc(record.snapshotId), {
+        id: record.snapshotId,
+        object: 'packproof_passport_snapshot',
+        schemaVersion: 1,
+        snapshotId: record.snapshotId,
+        passportId: record.passportId,
+        transactionId: record.transactionId,
+        snapshotVersion: record.snapshotVersion,
+        passport: record.passport,
+        canonicalPayloadSha256: record.canonicalPayloadSha256,
+        rendererVersion: record.rendererVersion,
+        generatedAt: Timestamp.fromDate(record.generatedAt),
+        pdfStoragePath: record.pdfStoragePath,
+        pdfSha256: record.pdfSha256,
+        createdAt: Timestamp.fromDate(record.generatedAt),
+      });
+      return record;
     });
-    return record;
   }
 
   async savePassportExport(transactionId: string, snapshotId: string, record: { storagePath: string; sha256: string }): Promise<void> {

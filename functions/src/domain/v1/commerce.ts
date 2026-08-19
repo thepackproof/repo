@@ -1,5 +1,5 @@
 import type { FieldProvenance, FieldProvenanceDto, Money, OrganizationScopedResource, PublicResource, ResourceId, VersionedResource } from './common';
-import { parseMoney, parseResourceId } from './common';
+import { assertionSources, parseMoney, parseResourceId } from './common';
 import {
   arrayValue,
   DomainValidationError,
@@ -8,6 +8,7 @@ import {
   isoDateTime,
   literalValue,
   optionalIsoDateTime,
+  optionalSha256,
   optionalString,
   recordValue,
   schema,
@@ -20,14 +21,35 @@ import {
 export const commercePlatforms = ['SHOPIFY', 'WOOCOMMERCE', 'MAGENTO', 'CUSTOM', 'MARKETPLACE', 'STRUCTURED_PAGE_DATA'] as const;
 export type CommercePlatform = (typeof commercePlatforms)[number];
 
-export const commerceTrustLevels = ['MERCHANT_SERVER_ATTESTED', 'PLATFORM_API_ATTESTED', 'PAGE_DECLARED'] as const;
+export const commerceTrustLevels = ['MERCHANT_SERVER_ATTESTED', 'PLATFORM_API_ATTESTED', 'USER_PROVIDED_COMMERCE_ARTIFACT', 'PAGE_DECLARED'] as const;
 export type CommerceTrustLevel = (typeof commerceTrustLevels)[number];
+
+export const commerceIntakeSourceTypes = [
+  'EMAIL_RECEIPT',
+  'SHARE_SHEET',
+  'BROWSER_EXTENSION',
+  'SCREENSHOT_IMPORT',
+  'PDF_IMPORT',
+  'MERCHANT_API',
+  'PLATFORM_API',
+  'PACKPROOF_BUTTON',
+] as const;
+export type CommerceIntakeSourceType = (typeof commerceIntakeSourceTypes)[number];
+
+export const consumerIntakeSourceTypes = [
+  'EMAIL_RECEIPT',
+  'SHARE_SHEET',
+  'BROWSER_EXTENSION',
+  'SCREENSHOT_IMPORT',
+  'PDF_IMPORT',
+] as const;
+export type ConsumerIntakeSourceType = (typeof consumerIntakeSourceTypes)[number];
 
 export const commerceContextStatuses = ['CREATED', 'HANDOFF_ISSUED', 'CLAIMED', 'ORDER_BOUND', 'EXPIRED', 'REVOKED'] as const;
 export type CommerceContextStatus = (typeof commerceContextStatuses)[number];
 
 export const commerceContextTransitions: Readonly<Record<CommerceContextStatus, readonly CommerceContextStatus[]>> = {
-  CREATED: ['HANDOFF_ISSUED', 'ORDER_BOUND', 'EXPIRED', 'REVOKED'],
+  CREATED: ['HANDOFF_ISSUED', 'CLAIMED', 'ORDER_BOUND', 'EXPIRED', 'REVOKED'],
   HANDOFF_ISSUED: ['CLAIMED', 'ORDER_BOUND', 'EXPIRED', 'REVOKED'],
   CLAIMED: ['ORDER_BOUND', 'EXPIRED', 'REVOKED'],
   ORDER_BOUND: [],
@@ -38,6 +60,10 @@ export const commerceContextTransitions: Readonly<Record<CommerceContextStatus, 
 export type CommerceSource = {
   platform: CommercePlatform;
   trustLevel: CommerceTrustLevel;
+  intakeSourceType: CommerceIntakeSourceType | null;
+  platformIdentifier: string | null;
+  parserVersion: string | null;
+  originalArtifactSha256: string | null;
   externalShopId: string | null;
   externalProductId: string | null;
   externalListingId: string | null;
@@ -96,13 +122,20 @@ export type CommerceContextDto = PublicResource<'commerce_context', 'commerce_co
 
 function parseCommerceSource(value: unknown, path: string): CommerceSourceDto {
   const input = strictObject(value, path, [
-    'platform', 'trustLevel', 'externalShopId', 'externalProductId', 'externalListingId', 'externalVariantId',
+    'platform', 'trustLevel', 'intakeSourceType', 'platformIdentifier', 'parserVersion', 'originalArtifactSha256',
+    'externalShopId', 'externalProductId', 'externalListingId', 'externalVariantId',
     'externalOrderId', 'externalLineItemId', 'productUrl', 'capturedAt',
   ]);
   const productUrl = input.productUrl === undefined || input.productUrl === null ? null : urlValue(input.productUrl, `${path}.productUrl`);
   return {
     platform: enumValue(input.platform, `${path}.platform`, commercePlatforms),
     trustLevel: enumValue(input.trustLevel, `${path}.trustLevel`, commerceTrustLevels),
+    intakeSourceType: input.intakeSourceType === undefined || input.intakeSourceType === null
+      ? null
+      : enumValue(input.intakeSourceType, `${path}.intakeSourceType`, commerceIntakeSourceTypes),
+    platformIdentifier: optionalString(input.platformIdentifier, `${path}.platformIdentifier`, { min: 1, max: 200, pattern: /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}$/ }),
+    parserVersion: optionalString(input.parserVersion, `${path}.parserVersion`, { min: 1, max: 80, pattern: /^[A-Z0-9][A-Z0-9._-]{0,79}$/ }),
+    originalArtifactSha256: optionalSha256(input.originalArtifactSha256, `${path}.originalArtifactSha256`),
     externalShopId: optionalString(input.externalShopId, `${path}.externalShopId`, { min: 1, max: 200 }),
     externalProductId: optionalString(input.externalProductId, `${path}.externalProductId`, { min: 1, max: 200 }),
     externalListingId: optionalString(input.externalListingId, `${path}.externalListingId`, { min: 1, max: 200 }),
@@ -162,16 +195,17 @@ export function parseItemDescriptor(value: unknown, path: string): ItemDescripto
   };
 }
 
-const assertionSources = ['MERCHANT_API', 'PLATFORM_API', 'MERCHANT_PAGE_STRUCTURED_DATA', 'SELLER_ENTERED', 'BUYER_ENTERED', 'PACKPROOF_OBSERVED', 'EXTERNAL_ADAPTER'] as const;
 const assertionConfidences = ['ASSERTED', 'OBSERVED', 'DERIVED'] as const;
 
 function parseFieldProvenance(value: unknown, path: string): FieldProvenanceDto {
-  const input = strictObject(value, path, ['source', 'confidence', 'importedAt', 'sourceReference']);
+  const input = strictObject(value, path, ['source', 'confidence', 'importedAt', 'sourceReference', 'extractionMethod', 'sourceArtifactSha256']);
   return {
     source: enumValue(input.source, `${path}.source`, assertionSources),
     confidence: enumValue(input.confidence, `${path}.confidence`, assertionConfidences),
     importedAt: isoDateTime(input.importedAt, `${path}.importedAt`),
     sourceReference: optionalString(input.sourceReference, `${path}.sourceReference`, { min: 1, max: 500 }),
+    extractionMethod: optionalString(input.extractionMethod, `${path}.extractionMethod`, { min: 1, max: 80, pattern: /^[A-Z0-9][A-Z0-9._-]{0,79}$/ }),
+    sourceArtifactSha256: optionalSha256(input.sourceArtifactSha256, `${path}.sourceArtifactSha256`),
   };
 }
 
@@ -205,6 +239,23 @@ export const commerceContextDtoSchema = schema<CommerceContextDto>((value) => {
       code: 'FORMAT',
       message: 'ORDER_BOUND requires an authoritative merchant-server or platform-API source with an external order ID',
     });
+  }
+  if (result.source.intakeSourceType) {
+    const expectedTrust = commerceTrustLevelForIntakeSource(result.source.intakeSourceType);
+    if (result.source.trustLevel !== expectedTrust) {
+      throw new DomainValidationError({
+        path: 'commerceContext.source.trustLevel',
+        code: 'FORMAT',
+        message: `intake source ${result.source.intakeSourceType} requires trustLevel ${expectedTrust}`,
+      });
+    }
+    if ((consumerIntakeSourceTypes as readonly string[]).includes(result.source.intakeSourceType) && !result.source.originalArtifactSha256) {
+      throw new DomainValidationError({
+        path: 'commerceContext.source.originalArtifactSha256',
+        code: 'REQUIRED',
+        message: 'consumer intake requires the original artifact SHA-256',
+      });
+    }
   }
   return result;
 });
@@ -258,8 +309,61 @@ export const passportDraftDtoSchema = schema<PassportDraftDto>((value) => {
   return result;
 });
 
+export function isAuthoritativeCommerceTrustLevel(trust: CommerceTrustLevel | null | undefined): boolean {
+  return trust === 'MERCHANT_SERVER_ATTESTED' || trust === 'PLATFORM_API_ATTESTED';
+}
+
+export function isUserProvidedCommerceArtifact(trust: CommerceTrustLevel | null | undefined): boolean {
+  return trust === 'USER_PROVIDED_COMMERCE_ARTIFACT';
+}
+
+export function commerceContextMayAppearAsPassportOrderContext(trust: CommerceTrustLevel | null | undefined): boolean {
+  return isAuthoritativeCommerceTrustLevel(trust) || isUserProvidedCommerceArtifact(trust);
+}
+
+export function parseCommerceTrustLevel(value: unknown): CommerceTrustLevel | null {
+  return typeof value === 'string' && (commerceTrustLevels as readonly string[]).includes(value)
+    ? value as CommerceTrustLevel
+    : null;
+}
+
+export function commerceTrustLevelForIntakeSource(intakeSourceType: CommerceIntakeSourceType): CommerceTrustLevel {
+  switch (intakeSourceType) {
+    case 'MERCHANT_API':
+      return 'MERCHANT_SERVER_ATTESTED';
+    case 'PLATFORM_API':
+      return 'PLATFORM_API_ATTESTED';
+    case 'BROWSER_EXTENSION':
+    case 'PACKPROOF_BUTTON':
+      return 'PAGE_DECLARED';
+    default:
+      return 'USER_PROVIDED_COMMERCE_ARTIFACT';
+  }
+}
+
+export function assertionSourceForIntakeSource(intakeSourceType: CommerceIntakeSourceType): (typeof assertionSources)[number] {
+  switch (intakeSourceType) {
+    case 'EMAIL_RECEIPT':
+      return 'EMAIL_RECEIPT';
+    case 'SHARE_SHEET':
+      return 'SHARE_SHEET';
+    case 'BROWSER_EXTENSION':
+      return 'BROWSER_EXTENSION';
+    case 'SCREENSHOT_IMPORT':
+      return 'SCREENSHOT_IMPORT';
+    case 'PDF_IMPORT':
+      return 'PDF_IMPORT';
+    case 'PLATFORM_API':
+      return 'PLATFORM_API';
+    case 'PACKPROOF_BUTTON':
+      return 'MERCHANT_PAGE_STRUCTURED_DATA';
+    default:
+      return 'MERCHANT_API';
+  }
+}
+
 export function commerceContextCanAuthoritativelyBindOrder(context: CommerceContextDto): boolean {
-  return context.source.trustLevel !== 'PAGE_DECLARED' && context.source.externalOrderId !== null;
+  return isAuthoritativeCommerceTrustLevel(context.source.trustLevel) && context.source.externalOrderId !== null;
 }
 
 export function commerceImageReferenceIsFinalizedEvidence(_image: ImageReference): false {

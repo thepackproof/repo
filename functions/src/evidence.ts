@@ -426,10 +426,10 @@ export const onEvidenceUploaded = onObjectFinalized({ timeoutSeconds: 540, memor
     await notifyOtherParticipants(
       transactionId,
       uploaderId,
-      integrityAccepted ? 'New evidence finalized' : 'Evidence requires integrity review',
+      integrityAccepted ? 'Evidence saved' : 'Please recapture',
       integrityAccepted
-        ? `${evidenceType.replaceAll('_', ' ').toLowerCase()} was server-hashed and added to the evidence record.`
-        : `${evidenceType.replaceAll('_', ' ').toLowerCase()} did not advance the workflow because an integrity check failed.`,
+        ? 'PackProof finished saving the evidence. Open the PackProof to see what happens next.'
+        : 'That recording could not be used. Open the PackProof to try this step again.',
     );
   }
 });

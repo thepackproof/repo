@@ -41,6 +41,7 @@ export type AccessibleMerchantTransaction = {
   externalSellerId: string | null;
   declaredWeightGrams: number | null;
   sourceTrackingNumber: string | null;
+  sourceTrustLevel: 'MERCHANT_SERVER_ATTESTED' | 'PLATFORM_API_ATTESTED' | 'USER_PROVIDED_COMMERCE_ARTIFACT' | 'PAGE_DECLARED' | null;
   passportId: string | null;
   passportDisplayId: string | null;
   passportIssuedAt: Date | null;
@@ -160,7 +161,10 @@ export interface MerchantEvidenceRepository {
   findCommerceContext(commerceContextId: string): Promise<PassportCommerceInput | null>;
   listPassportSnapshots(transactionId: string): Promise<StoredPassportSnapshot[]>;
   findPassportSnapshot(transactionId: string, snapshotId: string): Promise<StoredPassportSnapshot | null>;
-  createPassportSnapshot(transactionId: string, record: StoredPassportSnapshot): Promise<StoredPassportSnapshot>;
+  createPassportSnapshot(
+    transactionId: string,
+    build: (version: number) => StoredPassportSnapshot,
+  ): Promise<StoredPassportSnapshot>;
   savePassportExport(transactionId: string, snapshotId: string, record: { storagePath: string; sha256: string }): Promise<void>;
   listEvidence(transactionId: string): Promise<StoredEvidenceRecord[]>;
   findEvidence(transactionId: string, artifactId: string): Promise<StoredEvidenceRecord | null>;

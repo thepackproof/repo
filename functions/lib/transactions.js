@@ -182,7 +182,7 @@ exports.acceptInvite = (0, https_1.onCall)(callOptions, async (request) => {
         return { transactionId: transactionRef.id };
     });
     await (0, helpers_1.appendEvent)(result.transactionId, uid, 'BUYER_JOINED', 'Buyer joined the PackProof and can review the proposed terms.');
-    await (0, helpers_1.notifyOtherParticipants)(result.transactionId, uid, 'Buyer joined your PackProof', 'Review the transaction before confirming the terms.');
+    await (0, helpers_1.notifyOtherParticipants)(result.transactionId, uid, 'The buyer joined', 'Review the details and confirm them.');
     return result;
 });
 exports.confirmTerms = (0, https_1.onCall)(callOptions, async (request) => {
@@ -210,7 +210,18 @@ exports.confirmTerms = (0, https_1.onCall)(callOptions, async (request) => {
         return bothConfirmed;
     });
     await (0, helpers_1.appendEvent)(transactionId, uid, 'TERMS_CONFIRMED', locked ? 'Both parties confirmed and locked the transaction terms.' : 'A participant confirmed the proposed terms.');
-    await (0, helpers_1.notifyOtherParticipants)(transactionId, uid, locked ? 'PackProof terms locked' : 'Terms confirmed', locked ? 'The transaction is ready for evidence capture.' : 'The other participant confirmed the proposed terms.');
+    const { data: notified } = await (0, helpers_1.getTransaction)(transactionId);
+    const actorIsSeller = uid === notified.sellerId;
+    const shippedSale = notified.terms.saleType === 'SHIPPED';
+    await (0, helpers_1.notifyOtherParticipants)(transactionId, uid, locked
+        ? (actorIsSeller
+            ? 'Confirmed'
+            : shippedSale ? 'The buyer confirmed. Ready to pack.' : 'Confirmed')
+        : 'Confirm the transaction', locked
+        ? (actorIsSeller
+            ? (shippedSale ? 'The seller is preparing your shipment. You are done for now.' : 'Confirm when the item changes hands.')
+            : (shippedSale ? 'Start packing whenever you are ready.' : 'Confirm when the item changes hands.'))
+        : 'Review the details and confirm them.');
     return { locked };
 });
 exports.requestEvidenceUpload = (0, https_1.onCall)(uploadCallOptions, async (request) => {
@@ -744,7 +755,7 @@ exports.submitShipping = (0, https_1.onCall)(callOptions, async (request) => {
         labelEvidenceMatchStatus,
         scannedTrackingNumber,
     });
-    await (0, helpers_1.notifyOtherParticipants)(input.transactionId, uid, 'Package marked shipped', `${input.carrier} tracking has been added to the PackProof.`);
+    await (0, helpers_1.notifyOtherParticipants)(input.transactionId, uid, 'On the way', "We'll notify you when anything else needs your attention.");
     return { success: true, labelEvidenceMatchStatus };
 });
 exports.markReceived = (0, https_1.onCall)(callOptions, async (request) => {
@@ -758,7 +769,7 @@ exports.markReceived = (0, https_1.onCall)(callOptions, async (request) => {
         throw new https_1.HttpsError('failed-precondition', 'This item is not currently marked as shipped.');
     await ref.update({ status: 'BUYER_REVIEW', receivedAt: firestore_1.FieldValue.serverTimestamp(), updatedAt: firestore_1.FieldValue.serverTimestamp() });
     await (0, helpers_1.appendEvent)(transactionId, uid, 'RECEIVED', 'Buyer confirmed receipt of the shipment.');
-    await (0, helpers_1.notifyOtherParticipants)(transactionId, uid, 'Buyer confirmed receipt', 'The shipment is now in buyer review.');
+    await (0, helpers_1.notifyOtherParticipants)(transactionId, uid, 'Delivery recorded', 'Finish this PackProof when you are ready.');
     return { success: true };
 });
 exports.confirmLocalHandoff = (0, https_1.onCall)(callOptions, async (request) => {
@@ -809,7 +820,7 @@ exports.completeTransaction = (0, https_1.onCall)(callOptions, async (request) =
         return both;
     });
     await (0, helpers_1.appendEvent)(transactionId, uid, 'COMPLETION_CONFIRMED', completed ? 'Both parties marked the PackProof complete.' : 'A participant marked the transaction complete.');
-    await (0, helpers_1.notifyOtherParticipants)(transactionId, uid, completed ? 'PackProof complete' : 'Completion confirmed', completed ? 'Both parties completed the transaction.' : 'The other participant marked the transaction complete.');
+    await (0, helpers_1.notifyOtherParticipants)(transactionId, uid, completed ? 'PackProof complete' : 'Finish this PackProof', completed ? 'The finished record is ready when you need it.' : 'Confirm that everything looks complete.');
     return { completed };
 });
 exports.raiseConcern = (0, https_1.onCall)(callOptions, async (request) => {

@@ -379,9 +379,9 @@ exports.onEvidenceUploaded = (0, storage_1.onObjectFinalized)({ timeoutSeconds: 
         return true;
     });
     if (created) {
-        await (0, helpers_1.notifyOtherParticipants)(transactionId, uploaderId, integrityAccepted ? 'New evidence finalized' : 'Evidence requires integrity review', integrityAccepted
-            ? `${evidenceType.replaceAll('_', ' ').toLowerCase()} was server-hashed and added to the evidence record.`
-            : `${evidenceType.replaceAll('_', ' ').toLowerCase()} did not advance the workflow because an integrity check failed.`);
+        await (0, helpers_1.notifyOtherParticipants)(transactionId, uploaderId, integrityAccepted ? 'Evidence saved' : 'Please recapture', integrityAccepted
+            ? 'PackProof finished saving the evidence. Open the PackProof to see what happens next.'
+            : 'That recording could not be used. Open the PackProof to try this step again.');
     }
 });
 function money(minor, currency) {

@@ -26,5 +26,6 @@ export { claimParticipantInvitation, getMyEvidenceSession, redeemEvidenceSession
 export { getPhysicalCorrespondenceStatus } from './physical-correspondence';
 export { authorizeReturnPassport, completeReturnPassport, initiateReturnPassport, markReturnReceived, submitReturnShipping } from './returns';
 export { handleMarketplaceOrder, onConnectEvidenceVerified, provisionConnectIntegration, redeemConnectSession, redeemPublicCommerceHandoff, retryConnectCallbacks } from './platform-webhooks';
+export { ingestTransactionIntake, listPendingTransactionIntake, previewTransactionIntake, startPackProofFromIntake } from './transaction-intake-callables';
 export { packproofApi } from './api/v1/production';
 export { getPackProofPassport } from './passport-callables';

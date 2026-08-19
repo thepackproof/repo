@@ -1,76 +1,144 @@
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { AppIcon } from '@/components/app-icon';
-import { Button, Card, EmptyState } from '@/components/ui';
-import { TransactionCard } from '@/components/transaction-card';
+import { Button, Field } from '@/components/ui';
+import { TaskArt } from '@/components/task-art';
+import { HomeTaskTile, HomeWaitTile } from '@/components/task-session';
+import { transactionUx } from '@/components/transaction-card';
 import { colors } from '@/constants/brand';
 import { useTransactions } from '@/hooks/use-transactions';
-import { featureFlags } from '@/constants/features';
+import { usePendingIntakes } from '@/hooks/use-pending-intakes';
 import { useAuth } from '@/providers/auth-provider';
+import { useOfflineEvidence } from '@/providers/offline-evidence-provider';
+import { queueAttentionMessage } from '@/lib/queue-attention';
+import { formatMoney } from '@/lib/format';
+import { formatIntakeSource } from '@/lib/transaction-intake';
+import { groupHomeInbox, hrefForPrimaryAction, toHref, viewerRole } from '@/lib/ux-flow';
 
 export default function HomeScreen() {
   const router = useRouter();
   const { user, profile } = useAuth();
   const { items } = useTransactions(user?.uid);
-  const active = items.filter((item) => !['COMPLETED', 'ARCHIVED', 'CANCELLED'].includes(item.status));
-  const evidenceStage = items.reduce((count, item) => count + (['PACKED', 'SHIPPED', 'BUYER_REVIEW', 'COMPLETED'].includes(item.status) ? 1 : 0), 0);
+  const { items: pendingIntakes } = usePendingIntakes(user?.uid);
+  const { queuedCount, attentionCount, attentionReason, syncNow, retryAttention } = useOfflineEvidence();
+  const [joinOpen, setJoinOpen] = useState(false);
+  const [inviteCode, setInviteCode] = useState('');
+  const grouped = user ? groupHomeInbox(items, (item) => transactionUx(item, user.uid)) : {
+    needsAttention: [],
+    waiting: [],
+  };
 
-  return <SafeAreaView style={styles.safe} edges={['top']}>
-    <ScrollView contentContainerStyle={styles.container}>
-      <View style={styles.header}>
-        <View><Text style={styles.hello}>GOOD TO SEE YOU</Text><Text style={styles.name}>{profile?.displayName?.split(' ')[0] ?? 'Collector'}</Text></View>
-        <View style={styles.badge}><AppIcon name="checkmark.shield.fill" size={22} tintColor={colors.teal} /></View>
-      </View>
-
-      <Card style={styles.hero}>
-        <View style={styles.heroIcon}><AppIcon name="shippingbox.and.arrow.backward.fill" size={28} tintColor={colors.teal} /></View>
-        <Text style={styles.heroTitle}>Create a shared transaction record</Text>
-        <Text style={styles.heroBody}>Confirm terms with the other participant, capture the guided packing and arrival protocol, and keep a private review-ready record.</Text>
-        <Button label="Start a PackProof" icon="plus" onPress={() => router.push('/transaction/new')} />
-      </Card>
-
-      <View style={styles.stats}>
-        <Card style={styles.stat}><Text style={styles.statValue}>{active.length}</Text><Text style={styles.statLabel}>ACTIVE</Text></Card>
-        <Card style={styles.stat}><Text style={styles.statValue}>{evidenceStage}</Text><Text style={styles.statLabel}>EVIDENCE STAGE</Text></Card>
-        {featureFlags.billing ? <Card style={styles.stat}><Text style={styles.statValue}>{profile?.plan === 'PRO' ? 'PRO' : 'FREE'}</Text><Text style={styles.statLabel}>PLAN</Text></Card> : <Card style={styles.stat}><Text style={styles.statValue}>{items.length}</Text><Text style={styles.statLabel}>RECORDS</Text></Card>}
-      </View>
-
-      <View>
-        <View style={styles.sectionHead}><Text style={styles.sectionTitle}>Needs attention</Text><Text onPress={() => router.push('/(tabs)/transactions')} style={styles.link}>View all</Text></View>
-        <View style={styles.list}>
-          {active.slice(0, 3).map((item) => <TransactionCard key={item.id} transaction={item} uid={user!.uid} />)}
-          {!active.length ? <EmptyState title="Nothing waiting on you" body="Your active PackProofs will appear here with the next required action." /> : null}
+  return (
+    <SafeAreaView style={styles.safe} edges={['top']}>
+      <ScrollView contentContainerStyle={styles.container}>
+        <View style={styles.header}>
+          <Text style={styles.name}>{profile?.displayName?.split(' ')[0] ?? 'Home'}</Text>
+          <Pressable onPress={() => router.push('/transaction/orders')} style={styles.newButton} accessibilityRole="button" accessibilityLabel="Protect a shipment">
+            <AppIcon name="plus" size={20} tintColor={colors.teal} />
+          </Pressable>
         </View>
-      </View>
 
-      <Card style={styles.notice}>
-        <AppIcon name="info.circle.fill" size={20} tintColor={colors.blue} />
-        <Text style={styles.noticeText}>PackProof records evidence and mutual acknowledgements. It does not authenticate merchandise, transfer money, provide insurance, or determine who is right in a dispute.</Text>
-      </Card>
-    </ScrollView>
-  </SafeAreaView>;
+        {queuedCount || attentionCount ? (
+          <View style={styles.queue}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.queueTitle}>{attentionCount ? 'Your recording is safe' : 'Saved on this phone'}</Text>
+              <Text style={styles.queueText}>
+                {attentionCount && attentionReason
+                  ? queueAttentionMessage(attentionReason)
+                  : 'Uploading when your connection returns. You can leave PackProof.'}
+              </Text>
+            </View>
+            {attentionCount ? <Button label="Retry" variant="secondary" onPress={retryAttention} /> : queuedCount ? <Button label="Sync now" variant="secondary" onPress={syncNow} /> : null}
+          </View>
+        ) : null}
+
+        {!grouped.needsAttention.length && !grouped.waiting.length && !pendingIntakes.length ? (
+          <View style={styles.empty}>
+            <TaskArt kind="box" />
+            <Text style={styles.emptyTitle}>Protect a shipment</Text>
+            <Text style={styles.emptyBody}>PackProof will tell you the next step. You should not have to hunt for it.</Text>
+            <Button label="Protect this shipment" onPress={() => router.push('/transaction/orders')} />
+            <Pressable onPress={() => setJoinOpen((value) => !value)} accessibilityRole="button">
+              <Text style={styles.quietLink}>I have an invite</Text>
+            </Pressable>
+            {joinOpen ? (
+              <View style={styles.join}>
+                <Field label="Invitation" value={inviteCode} onChangeText={setInviteCode} autoCapitalize="characters" placeholder="Paste the code" />
+                <Button
+                  label="Open invitation"
+                  disabled={inviteCode.trim().length < 4}
+                  onPress={() => router.push({ pathname: '/invite', params: { code: inviteCode.trim() } })}
+                />
+              </View>
+            ) : null}
+          </View>
+        ) : (
+          <>
+            {pendingIntakes.map((item) => (
+              <HomeTaskTile
+                key={item.commerceContextId}
+                identity={`${formatIntakeSource(item.intakeSourceType)}${item.amount ? ` · ${formatMoney(item.amount.minorUnits, item.amount.currency)}` : ''}`}
+                title={item.title}
+                job={item.orderNumber ? `Order ${item.orderNumber}` : 'Imported purchase ready to protect'}
+                cta="Protect this shipment"
+                onPress={() => router.push('/transaction/orders')}
+                onCta={() => router.push('/transaction/orders')}
+              />
+            ))}
+            {grouped.needsAttention.map((item) => {
+              const ux = transactionUx(item, user!.uid);
+              const href = ux.primaryAction
+                ? hrefForPrimaryAction(ux.primaryAction.kind, item.id)
+                : { pathname: '/task/[id]' as const, params: { id: item.id } };
+              return (
+                <HomeTaskTile
+                  key={item.id}
+                  identity={`${viewerRole(item, user!.uid) === 'SELLER' ? 'Selling' : 'Buying'} · ${formatMoney(item.priceMinor, item.currency)}`}
+                  title={item.title}
+                  job={ux.inboxSentence}
+                  cta={ux.primaryAction?.label ?? null}
+                  onPress={() => router.push(toHref(href))}
+                  onCta={() => router.push(toHref(href))}
+                />
+              );
+            })}
+            {grouped.waiting.length ? (
+              <View style={styles.waiting}>
+                {grouped.waiting.map((item) => {
+                  const ux = transactionUx(item, user!.uid);
+                  return (
+                    <HomeWaitTile
+                      key={item.id}
+                      title={item.title}
+                      sentence={ux.inboxSentence}
+                      onPress={() => router.push(toHref({ pathname: '/task/[id]', params: { id: item.id } }))}
+                    />
+                  );
+                })}
+              </View>
+            ) : null}
+          </>
+        )}
+      </ScrollView>
+    </SafeAreaView>
+  );
 }
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
-  container: { padding: 20, paddingBottom: 36, gap: 24 },
+  container: { padding: 20, paddingBottom: 36, gap: 20 },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  hello: { color: colors.teal, fontSize: 10, fontWeight: '900', letterSpacing: 1.5 },
-  name: { color: colors.ink, fontSize: 28, fontWeight: '900' },
-  badge: { width: 46, height: 46, borderRadius: 23, backgroundColor: 'rgba(70,124,99,0.08)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(70,124,99,0.25)' },
-  hero: { gap: 12, padding: 22 },
-  heroIcon: { width: 54, height: 54, borderRadius: 18, backgroundColor: 'rgba(70,124,99,0.09)', alignItems: 'center', justifyContent: 'center' },
-  heroTitle: { color: colors.ink, fontSize: 23, lineHeight: 28, fontWeight: '900' },
-  heroBody: { color: colors.muted, fontSize: 14, lineHeight: 21, marginBottom: 4 },
-  stats: { flexDirection: 'row', gap: 10 },
-  stat: { flex: 1, alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 16 },
-  statValue: { color: colors.ink, fontSize: 20, fontWeight: '900' },
-  statLabel: { color: colors.muted, fontSize: 9, fontWeight: '900', letterSpacing: 1.1 },
-  sectionHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
-  sectionTitle: { color: colors.ink, fontSize: 18, fontWeight: '900' },
-  link: { color: colors.teal, fontSize: 13, fontWeight: '800' },
-  list: { gap: 12 },
-  notice: { flexDirection: 'row', gap: 11, alignItems: 'flex-start', backgroundColor: 'rgba(45,106,138,0.05)' },
-  noticeText: { flex: 1, color: colors.muted, fontSize: 11, lineHeight: 17 },
+  name: { color: colors.ink, fontSize: 28, fontWeight: '800' },
+  newButton: { width: 46, height: 46, borderRadius: 23, backgroundColor: 'rgba(70,124,99,0.08)', alignItems: 'center', justifyContent: 'center' },
+  queue: { flexDirection: 'row', gap: 12, alignItems: 'center', padding: 14, borderRadius: 16, backgroundColor: 'rgba(70,124,99,0.08)' },
+  queueTitle: { color: colors.ink, fontSize: 15, fontWeight: '800' },
+  queueText: { color: colors.muted, fontSize: 13, marginTop: 3, lineHeight: 18 },
+  empty: { paddingTop: 28, alignItems: 'stretch', gap: 14 },
+  emptyTitle: { color: colors.ink, fontSize: 34, lineHeight: 40, fontWeight: '800', textAlign: 'center' },
+  emptyBody: { color: colors.muted, fontSize: 17, lineHeight: 24, textAlign: 'center', marginBottom: 8 },
+  quietLink: { color: colors.teal, fontSize: 15, fontWeight: '700', textAlign: 'center', paddingVertical: 8 },
+  join: { gap: 10 },
+  waiting: { gap: 4, paddingTop: 8 },
 });

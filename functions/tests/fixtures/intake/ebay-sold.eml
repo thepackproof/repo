@@ -1,0 +1,14 @@
+From: "eBay" <ebay@ebay.com>
+To: seller@example.test
+Subject: You sold Nintendo Switch 2
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+
+Congratulations! You sold an item.
+
+Item: Nintendo Switch 2
+Quantity: 1
+Sold for: US $449.00
+Order number: 12-34567-89012
+Variant: Mario Kart World Bundle
+https://www.ebay.com/itm/123456789012

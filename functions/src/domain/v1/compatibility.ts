@@ -25,7 +25,8 @@ export type LegacyConsumerTransaction = {
   terms: TransactionDto['terms'];
   source?:
     | { type: 'PACKPROOF_CONNECT'; externalOrderId: string; commerceContextId?: string | null }
-    | { type: 'PACKPROOF_BUTTON'; commerceContextId: string; passportDraftId: string };
+    | { type: 'PACKPROOF_BUTTON'; commerceContextId: string; passportDraftId: string }
+    | { type: 'TRANSACTION_INTAKE'; commerceContextId: string; passportDraftId: string };
   createdAt: LegacyTimestampLike;
   updatedAt: LegacyTimestampLike;
   lockedAt?: LegacyTimestampLike | null;
@@ -60,7 +61,7 @@ export function mapLegacyConsumerTransaction(input: LegacyConsumerTransaction): 
         : 'CONSUMER',
     merchantReference: input.source?.type === 'PACKPROOF_CONNECT' ? input.source.externalOrderId : null,
     commerceContextId: input.source?.commerceContextId as TransactionDto['commerceContextId'] ?? null,
-    passportDraftId: input.source?.type === 'PACKPROOF_BUTTON'
+    passportDraftId: input.source?.type === 'PACKPROOF_BUTTON' || input.source?.type === 'TRANSACTION_INTAKE'
       ? input.source.passportDraftId as TransactionDto['passportDraftId']
       : null,
     item: {

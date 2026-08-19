@@ -83,6 +83,26 @@ const config: ExpoConfig = {
         { scheme: 'https', host: value('PACKPROOF_LINK_DOMAIN', 'packproof.link'), pathPrefix: '/invite' },
       ],
       category: ['BROWSABLE', 'DEFAULT'],
+    }, {
+      action: 'SEND',
+      category: ['DEFAULT'],
+      data: [{ mimeType: 'text/plain' }],
+    }, {
+      action: 'SEND',
+      category: ['DEFAULT'],
+      data: [{ mimeType: 'text/html' }],
+    }, {
+      action: 'SEND',
+      category: ['DEFAULT'],
+      data: [{ mimeType: 'message/rfc822' }],
+    }, {
+      action: 'SEND',
+      category: ['DEFAULT'],
+      data: [{ mimeType: 'application/pdf' }],
+    }, {
+      action: 'SEND',
+      category: ['DEFAULT'],
+      data: [{ mimeType: 'image/*' }],
     }],
     blockedPermissions: [
       'android.permission.READ_MEDIA_AUDIO',

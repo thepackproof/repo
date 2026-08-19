@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.resourceIdPrefixes = exports.resourceKinds = void 0;
+exports.assertionSources = exports.resourceIdPrefixes = exports.resourceKinds = void 0;
 exports.parseResourceId = parseResourceId;
 exports.parseMoney = parseMoney;
 exports.canTransition = canTransition;
@@ -70,4 +70,18 @@ function assertTransition(table, from, to, resource) {
         throw new runtime_1.DomainValidationError({ path: `${resource}.status`, code: 'FORMAT', message: `cannot transition from ${from} to ${to}` });
     }
 }
+exports.assertionSources = [
+    'MERCHANT_API',
+    'PLATFORM_API',
+    'MERCHANT_PAGE_STRUCTURED_DATA',
+    'SELLER_ENTERED',
+    'BUYER_ENTERED',
+    'PACKPROOF_OBSERVED',
+    'EXTERNAL_ADAPTER',
+    'EMAIL_RECEIPT',
+    'SHARE_SHEET',
+    'BROWSER_EXTENSION',
+    'SCREENSHOT_IMPORT',
+    'PDF_IMPORT',
+];
 //# sourceMappingURL=common.js.map

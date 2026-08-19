@@ -101,6 +101,16 @@ export type PackProofTransaction = {
       trustLevel: 'PAGE_DECLARED';
       origin: string;
       productUrl: string;
+    }
+    | {
+      type: 'TRANSACTION_INTAKE';
+      intakeSourceType?: string | null;
+      commerceContextId: string;
+      passportDraftId: string;
+      trustLevel?: string;
+      platformIdentifier?: string | null;
+      parserVersion?: string | null;
+      originalArtifactSha256?: string | null;
     };
   listingImageReferences?: { url: string; altText?: string | null }[];
 };

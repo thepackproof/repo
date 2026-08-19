@@ -19,6 +19,10 @@ service cloud.firestore {
         allow read: if signedIn() && request.auth.uid == userId;
         allow write: if false;
       }
+      match /pendingIntakes/{intakeId} {
+        allow read: if signedIn() && request.auth.uid == userId;
+        allow write: if false;
+      }
     }
 
     match /publicProfiles/{userId} {
@@ -63,6 +67,7 @@ service cloud.firestore {
     match /connectSessions/{sessionId} { allow read, write: if false; }
     match /commerceContexts/{commerceContextId} { allow read, write: if false; }
     match /passportDrafts/{passportDraftId} { allow read, write: if false; }
+    match /consumerIntakeRecords/{intakeId} { allow read, write: if false; }
     match /publicCommerceHandoffs/{handoffId} { allow read, write: if false; }
     match /participantClaims/{claimId} { allow read, write: if false; }
     match /evidenceSessions/{evidenceSessionId} { allow read, write: if false; }

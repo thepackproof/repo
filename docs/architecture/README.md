@@ -13,7 +13,7 @@ This directory records the controlled migration of the current PackProof 0.9.5.0
 - [Baseline evidence](BASELINE_2026-08-11.md) - exact local source/emulator results and known open risks for the uncommitted 0.3.0 working tree.
 - [Migration map](MIGRATION_MAP.md) - current modules, current coupling and their target architectural destinations.
 - [Checkpoint plan](CHECKPOINT_PLAN.md) - historical disposition of the now-resolved uncommitted-baseline problem.
-- [Architecture decisions](../adr/README.md) - accepted decisions that later sections must preserve.
+- [Architecture decisions](../adr/README.md) - accepted decisions that later sections must preserve, including [ADR 0013](../adr/0013-transaction-intake-layer.md) (consumer intake over `commerce_context`).
 
 ## Section 2 artifacts
 

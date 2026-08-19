@@ -144,6 +144,7 @@ The migration also corrected the internal domain base type: a versioned resource
 |---|---|
 | REST transaction create/get/list | Active through shared service |
 | Consumer draft create/update | Active through shared service |
+| Consumer transaction intake ingest/list/start | Active through shared service; Android share/import and Find my order call the same service |
 | Connect order ingestion/context creation | Active through shared service |
 | Connect redemption/transaction creation | Active through shared service |
 | Invite creation/redemption | Still legacy callable logic |
@@ -159,6 +160,8 @@ The migration also corrected the internal domain base type: a versioned resource
 | Exact Android binary/device validation | Not performed for Section 3 |
 
 This is a strangler migration. The remaining direct-Firebase paths are explicitly visible and will move only after equivalent command, authorization, state and emulator tests exist.
+
+Consumer transaction intake (`TransactionIntakeApplicationService`) is an application service over the same `commerce_context` and `passport_draft` resources. Email, share-sheet, screenshot, and PDF adapters create `USER_PROVIDED_COMMERCE_ARTIFACT` snapshots; browser-extension intake remains `PAGE_DECLARED`. `ingest` / `ingestArtifact` do not create a `transaction` and do not authoritatively bind an order. `start` creates a consumer `DRAFT` transaction and claims the context. See [ADR 0013](../adr/0013-transaction-intake-layer.md).
 
 ## 10. Executable gates
 
