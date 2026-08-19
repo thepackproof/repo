@@ -5,6 +5,7 @@ exports.toMerchantEvidenceArtifactDto = toMerchantEvidenceArtifactDto;
 const package_seal_protocol_1 = require("../../package-seal-protocol");
 const errors_1 = require("./errors");
 const merchant_transaction_service_1 = require("./merchant-transaction-service");
+const passport_projection_1 = require("./passport-projection");
 const REPORT_URL_TTL_MS = 15 * 60 * 1000;
 const ACTIVE_RETURN_STATUSES = ['REQUESTED', 'AUTHORIZED', 'PACKED', 'IN_TRANSIT', 'RECEIVED_REVIEW', 'DISPUTED'];
 const RETURN_ELIGIBLE_CONSUMER_STATUSES = ['SHIPPED', 'BUYER_REVIEW', 'COMPLETED', 'DISPUTED'];
@@ -88,6 +89,7 @@ function toMerchantEvidenceArtifactDto(record) {
         }),
         assurance: finalized ? publicAssurance(record) : record.assurance ? publicAssurance(record) : null,
         carrierTrackingMatchStatus: record.carrierTrackingMatchStatus,
+        shippingTracker: record.shippingTracker ?? null,
         finalizedAt: record.finalizedAt?.toISOString() ?? null,
         createdAt: record.createdAt.toISOString(),
         updatedAt: record.updatedAt.toISOString(),
@@ -166,7 +168,8 @@ class MerchantEvidenceApplicationService {
     urls;
     config;
     now;
-    constructor(repository, idempotency, audit, authorization, reports, urls, config, now = () => new Date()) {
+    passportOptions;
+    constructor(repository, idempotency, audit, authorization, reports, urls, config, now = () => new Date(), passportOptions = {}) {
         this.repository = repository;
         this.idempotency = idempotency;
         this.audit = audit;
@@ -175,6 +178,7 @@ class MerchantEvidenceApplicationService {
         this.urls = urls;
         this.config = config;
         this.now = now;
+        this.passportOptions = passportOptions;
     }
     async requireAccessible(principal, transactionId) {
         this.authorization.requireEnvironment(principal, this.config.environment);
@@ -590,6 +594,158 @@ class MerchantEvidenceApplicationService {
             return { delivery };
         });
         return { delivery: execution.value.delivery, replayed: execution.replayed };
+    }
+    verificationBaseUrl() {
+        const value = this.passportOptions.verificationBaseUrl?.().trim();
+        return value || 'https://app.packproof.example';
+    }
+    async assemblePassport(principal, transaction, reviewQuery) {
+        const [records, timeline, returns] = await Promise.all([
+            this.repository.listEvidence(transaction.id),
+            this.repository.listTimeline(transaction.id),
+            this.repository.listReturns(transaction.id),
+        ]);
+        (0, passport_projection_1.assertPassportEligible)(transaction, records);
+        const issuedAt = this.now();
+        const identity = (0, passport_projection_1.boundOrIssuedIdentity)(transaction, issuedAt);
+        if (identity.bind) {
+            const bound = await this.repository.bindPassportIdentity(transaction.id, {
+                passportId: identity.passportId,
+                displayId: identity.displayId,
+                issuedAt: identity.issuedAt,
+            });
+            identity.passportId = bound.passportId;
+            identity.displayId = bound.displayId;
+            identity.issuedAt = bound.issuedAt;
+        }
+        const commerce = transaction.commerceContextId
+            ? await this.repository.findCommerceContext(transaction.commerceContextId)
+            : null;
+        return (0, passport_projection_1.projectPassport)({
+            transaction,
+            artifacts: records,
+            shipment: transaction.shipment,
+            delivery: transaction.delivery,
+            returns,
+            timeline,
+            commerce,
+            identity: {
+                passportId: identity.passportId,
+                displayId: identity.displayId,
+                issuedAt: identity.issuedAt.toISOString(),
+            },
+            verificationBaseUrl: this.verificationBaseUrl(),
+            reviewQuery,
+            now: issuedAt.toISOString(),
+        });
+    }
+    async getPassport(principal, transactionId, reviewQuery = null) {
+        this.authorization.requireScope(principal, 'evidence:read');
+        const transaction = await this.requireAccessible(principal, transactionId);
+        return this.assemblePassport(principal, transaction, reviewQuery);
+    }
+    async getPassportByIdentity(principal, passportIdentity, reviewQuery = null) {
+        this.authorization.requireScope(principal, 'evidence:read');
+        this.authorization.requireEnvironment(principal, this.config.environment);
+        if (!(0, passport_projection_1.looksLikePassportIdentity)(passportIdentity)) {
+            throw new errors_1.ApplicationError('INVALID_ARGUMENT', 'INVALID_PASSPORT_ID', 'passportId is not a valid PackProof Passport identifier.');
+        }
+        const transaction = await this.repository.findAccessibleTransactionByPassportIdentity(passportIdentity, principal);
+        if (!transaction)
+            throw notFound('PASSPORT_NOT_FOUND', 'The requested PackProof Passport was not found.');
+        return this.assemblePassport(principal, transaction, reviewQuery);
+    }
+    async createPassportSnapshot(principal, transactionId, idempotencyKey, requestId, reviewQuery = null) {
+        this.authorization.requireScope(principal, 'evidence:read');
+        const passport = await this.getPassport(principal, transactionId, reviewQuery);
+        const execution = await this.idempotency.execute({
+            principalId: `${principal.organizationId}:${principal.apiClientId}`,
+            operation: 'POST /v1/transactions/{transactionId}/passport/snapshots',
+            key: idempotencyKey,
+            requestFingerprint: (0, merchant_transaction_service_1.sha256)((0, merchant_transaction_service_1.canonicalize)({ transactionId })),
+            leaseSeconds: 900,
+        }, async () => {
+            const existing = await this.repository.listPassportSnapshots(transactionId);
+            const version = (existing.at(-1)?.snapshotVersion ?? 0) + 1;
+            const stored = (0, passport_projection_1.nextSnapshot)(passport, version, this.now());
+            await this.repository.createPassportSnapshot(transactionId, stored);
+            await this.audit.append({
+                eventId: `passport_snapshot_${stored.snapshotId}`,
+                organizationId: principal.organizationId,
+                type: 'PASSPORT_SNAPSHOT_CREATED',
+                actor: principal,
+                resourceType: 'TRANSACTION',
+                resourceId: transactionId,
+                requestId,
+                metadata: { apiVersion: 'v1', passportId: stored.passportId, snapshotId: stored.snapshotId, snapshotVersion: stored.snapshotVersion },
+            });
+            return (0, passport_projection_1.snapshotDto)(stored);
+        });
+        return { snapshot: execution.value, replayed: execution.replayed };
+    }
+    async getPassportSnapshot(principal, passportIdentity, snapshotId) {
+        this.authorization.requireScope(principal, 'evidence:read');
+        this.authorization.requireEnvironment(principal, this.config.environment);
+        const transaction = await this.repository.findAccessibleTransactionByPassportIdentity(passportIdentity, principal);
+        if (!transaction)
+            throw notFound('PASSPORT_NOT_FOUND', 'The requested PackProof Passport was not found.');
+        const record = await this.repository.findPassportSnapshot(transaction.id, snapshotId);
+        if (!record)
+            throw notFound('PASSPORT_SNAPSHOT_NOT_FOUND', 'The requested Passport snapshot was not found.');
+        return (0, passport_projection_1.snapshotDto)(record);
+    }
+    async createPassportExport(principal, passportIdentity, snapshotId, idempotencyKey, requestId) {
+        this.authorization.requireScope(principal, 'evidence:read');
+        this.authorization.requireEnvironment(principal, this.config.environment);
+        const transaction = await this.repository.findAccessibleTransactionByPassportIdentity(passportIdentity, principal);
+        if (!transaction)
+            throw notFound('PASSPORT_NOT_FOUND', 'The requested PackProof Passport was not found.');
+        const snapshot = await this.repository.findPassportSnapshot(transaction.id, snapshotId);
+        if (!snapshot)
+            throw notFound('PASSPORT_SNAPSHOT_NOT_FOUND', 'The requested Passport snapshot was not found.');
+        const execution = await this.idempotency.execute({
+            principalId: `${principal.organizationId}:${principal.apiClientId}`,
+            operation: 'POST /v1/passports/{passportId}/snapshots/{snapshotId}/exports',
+            key: idempotencyKey,
+            requestFingerprint: (0, merchant_transaction_service_1.sha256)((0, merchant_transaction_service_1.canonicalize)({ passportIdentity, snapshotId })),
+            leaseSeconds: 900,
+        }, async (_operationId, fence) => {
+            let stored = snapshot;
+            if (!stored.pdfStoragePath || !stored.pdfSha256) {
+                const generatePdf = this.passportOptions.generatePdf;
+                if (!generatePdf)
+                    throw new errors_1.ApplicationError('FAILED_PRECONDITION', 'PASSPORT_EXPORT_UNAVAILABLE', 'Passport PDF export is not configured.');
+                const generated = await fence.runSideEffect('generate-passport-pdf', () => generatePdf({
+                    transactionId: transaction.id,
+                    snapshotId: stored.snapshotId,
+                    passport: stored.passport,
+                }));
+                await this.repository.savePassportExport(transaction.id, stored.snapshotId, generated);
+                stored = { ...stored, pdfStoragePath: generated.storagePath, pdfSha256: generated.sha256 };
+            }
+            const expiresAt = new Date(this.now().getTime() + REPORT_URL_TTL_MS);
+            const downloadUrl = stored.pdfStoragePath
+                ? await fence.runSideEffect('sign-passport-pdf-url', () => this.urls.sign(stored.pdfStoragePath, expiresAt))
+                : null;
+            await fence.runSideEffect('audit-passport-export', () => this.audit.append({
+                eventId: `passport_export_${stored.snapshotId}`,
+                organizationId: principal.organizationId,
+                type: 'PASSPORT_EXPORT_CREATED',
+                actor: principal,
+                resourceType: 'TRANSACTION',
+                resourceId: transaction.id,
+                requestId,
+                metadata: { apiVersion: 'v1', snapshotId: stored.snapshotId, presentationOnly: true, fileSha256: stored.pdfSha256 },
+            }));
+            return { stored, downloadUrl, expiresAt: expiresAt.toISOString() };
+        });
+        const value = execution.value;
+        if (execution.replayed && value.stored.pdfStoragePath) {
+            const expiresAt = new Date(this.now().getTime() + REPORT_URL_TTL_MS);
+            const downloadUrl = await this.urls.sign(value.stored.pdfStoragePath, expiresAt);
+            return { export: (0, passport_projection_1.exportDto)(value.stored, { url: downloadUrl, expiresAt: expiresAt.toISOString() }), replayed: true };
+        }
+        return { export: (0, passport_projection_1.exportDto)(value.stored, { url: value.downloadUrl, expiresAt: value.expiresAt }), replayed: execution.replayed };
     }
 }
 exports.MerchantEvidenceApplicationService = MerchantEvidenceApplicationService;

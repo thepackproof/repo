@@ -23,7 +23,7 @@ PackProof Enterprise transforms the cameras, scanners, scales, and fulfillment s
                             │
                      Evidence Format v2
                             │
-                    PackProof Connect
+                    PackProof API
                             │
           Marketplace / Merchant / Claims
 ```
@@ -39,7 +39,7 @@ WMS / OMS / Marketplace
   → Encrypted/hashed evidence
   → PackProof server finalization
   → Evidence Format v2
-  → PackProof Connect / Claims API
+  → PackProof API / Claims API
 ```
 
 ## 1. Freeze the evidence core

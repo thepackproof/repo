@@ -2,6 +2,8 @@
 
 Status: Confirmed (agentic). Decision date: 2026-08-11
 
+Product-name note: PackProof Connect is now the user-facing product **PackProof API**. Technical identifiers still use Connect. The decision below is unchanged.
+
 Context
 - The application uses an outbox pattern for domain events. Webhook delivery must be reliable, idempotent, and auditable for merchant integrations and PackProof Connect callbacks.
 

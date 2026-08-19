@@ -178,7 +178,7 @@ Use two phones and two Google accounts. Keep both screens visible during a partn
 
 Also test airplane mode during capture. Offline capture must remain explicitly `OFFLINE_UNATTESTED`, encrypted in app-private storage, and synchronized without later upgrading its capture-time assurance. A bounded provider-unavailable fallback must record `ATTESTATION_PROVIDER_UNAVAILABLE`; authorization, account, context, or validation failures must still block rather than masquerade as offline operation.
 
-## 9. Demonstrate PackProof Connect to a vendor
+## 9. Demonstrate PackProof API to a vendor
 
 Authenticate Application Default Credentials with an authorized staging operator:
 
@@ -203,7 +203,7 @@ Idempotency-Key: fulfillment-order-123-v1
 Content-Type: application/json
 ```
 
-Use `docs/PACKPROOF_CONNECT.md` and `docs/openapi/packproof-api-v1.json` for the payload. Existing v0.2 clients may keep `POST /api/connect/orders`. The JavaScript SDK in `sdk/javascript` verifies the exact-body HMAC on the `packproof.evidence.finalized` callback. The capture URL opens the native evidence-capture workflow through Android App Links, with the hosted fallback available when the app is not installed.
+Use `docs/PACKPROOF_API.md` and `docs/openapi/packproof-api-v1.json` for the payload. Existing v0.2 clients may keep `POST /api/connect/orders`. The JavaScript SDK in `sdk/javascript` verifies the exact-body HMAC on the `packproof.evidence.finalized` callback. The capture URL opens the native evidence-capture workflow through Android App Links, with the hosted fallback available when the app is not installed.
 
 ## 10. Five-minute pre-meeting check
 

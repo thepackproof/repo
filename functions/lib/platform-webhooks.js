@@ -17,6 +17,7 @@ const evidence_1 = require("./evidence");
 const helpers_1 = require("./helpers");
 const http_security_1 = require("./http-security");
 const package_seal_protocol_1 = require("./package-seal-protocol");
+const shipping_tracker_1 = require("./shipping-tracker");
 const connect_session_token_issuer_1 = require("./infrastructure/crypto/connect-session-token-issuer");
 const public_handoff_token_issuer_1 = require("./infrastructure/crypto/public-handoff-token-issuer");
 const sha256_token_verifier_1 = require("./infrastructure/crypto/sha256-token-verifier");
@@ -252,6 +253,7 @@ exports.onConnectEvidenceVerified = (0, firestore_2.onDocumentCreated)('transact
         assurance: evidence.assurance && typeof evidence.assurance === 'object' ? evidence.assurance : null,
         attestationStatus: String(evidence.attestationStatus ?? ''),
         carrierTrackingMatchStatus: typeof evidence.carrierTrackingMatchStatus === 'string' ? evidence.carrierTrackingMatchStatus : null,
+        shippingTracker: (0, shipping_tracker_1.asShippingTrackerObservation)(evidence.shippingTracker),
         declaredWeightGrams: transaction.source.declaredWeightGrams ?? null,
         dossierSha256: packet.sha256,
         serverFinalized: evidence.serverFinalized === true,

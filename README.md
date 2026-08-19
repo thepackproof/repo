@@ -31,7 +31,7 @@ These controls are not certification, scientific validation, a penetration test,
 - Added exact client/server byte-length comparison, media magic-byte inspection, declared/detected media-type comparison, and fail-closed workflow transitions for integrity mismatches.
 - Split assurance into acquisition quality, app/device context, byte integrity, physical correspondence, carrier context, and business/legal relevance. Missing dimensions never collapse into one green verdict.
 - Routed supporting PDFs through the same encrypted, idempotent queue as camera evidence.
-- Changed PackProof Connect to emit `packproof.evidence.finalized`, bounded digital-evidence states, reason codes, layered assurance, and a freshly generated 15-minute dossier URL for each callback attempt.
+- Changed PackProof API to emit `packproof.evidence.finalized`, bounded digital-evidence states, reason codes, layered assurance, and a freshly generated 15-minute dossier URL for each callback attempt.
 
 ## Architecture included
 
@@ -43,7 +43,7 @@ These controls are not certification, scientific validation, a penetration test,
 - Android Keystore AES-256-GCM app-private offline queue with streaming SHA-256.
 - Server-side authorization, exact-path upload grants, independent hashing, media sniffing, JCS manifest creation, and HMAC service authentication.
 - Private native evidence and manifests plus separately labeled, source-linked PDF presentation dossiers.
-- PackProof Connect order ingestion, idempotent handoff, exact-body webhook HMAC, and retry delivery.
+- PackProof API order ingestion, idempotent handoff, exact-body webhook HMAC, and retry delivery.
 - Contract-first PackProof Merchant API v1 foundation with scoped merchant credentials, organization-isolated transaction create/read/list, idempotency, rate controls, structured errors/logs, and hash-linked audit events. See [`docs/API_ARCHITECTURE.md`](docs/API_ARCHITECTURE.md).
 - PackProof Enterprise™ architecture, warehouse domain, Edge protocol, simulated single-station Edge runtime, application-layer Evidence Format v2 finalization, Enterprise console projection, and simulated WMS ingest (`SOURCE_CHECKED` only). See [`docs/PACKPROOF_ENTERPRISE.md`](docs/PACKPROOF_ENTERPRISE.md).
 - Google Play / RevenueCat subscription scaffolding and policy templates.

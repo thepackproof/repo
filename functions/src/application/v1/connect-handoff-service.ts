@@ -103,18 +103,18 @@ export function evaluateConnectGrantExchange(
   transactionId: string,
   now: Date,
 ): ConnectRedemptionDecision {
-  if (!session) throw new ApplicationError('NOT_FOUND', 'CONNECT_SESSION_NOT_FOUND', 'PackProof Connect session not found.');
+  if (!session) throw new ApplicationError('NOT_FOUND', 'CONNECT_SESSION_NOT_FOUND', 'PackProof API session not found.');
   if (session.claimedBy && session.claimedBy !== command.actorId) {
-    throw new ApplicationError('CONFLICT', 'CONNECT_SESSION_ALREADY_CLAIMED', 'This PackProof Connect session was claimed by another account.');
+    throw new ApplicationError('CONFLICT', 'CONNECT_SESSION_ALREADY_CLAIMED', 'This PackProof API session was claimed by another account.');
   }
   if (session.claimedBy === command.actorId && session.transactionId) {
     return { type: 'REPLAY', result: { transactionId: session.transactionId, connectSessionId: session.id } };
   }
   if (session.expiresAt.getTime() < now.getTime()) {
-    throw new ApplicationError('DEADLINE_EXCEEDED', 'CONNECT_SESSION_EXPIRED', 'PackProof Connect session expired.');
+    throw new ApplicationError('DEADLINE_EXCEEDED', 'CONNECT_SESSION_EXPIRED', 'PackProof API session expired.');
   }
   if (session.status !== 'PENDING_REDEMPTION') {
-    throw new ApplicationError('FAILED_PRECONDITION', 'CONNECT_SESSION_NOT_REDEEMABLE', 'This PackProof Connect session cannot be redeemed in its current state.');
+    throw new ApplicationError('FAILED_PRECONDITION', 'CONNECT_SESSION_NOT_REDEEMABLE', 'This PackProof API session cannot be redeemed in its current state.');
   }
   if (command.clientId && command.clientId !== session.integrationId) {
     throw new ApplicationError('FORBIDDEN', 'CONNECT_CLIENT_MISMATCH', 'The client does not match the Connect session that issued this grant.');
@@ -130,7 +130,7 @@ export function evaluateConnectGrantExchange(
     throw new ApplicationError('FORBIDDEN', 'CONNECT_PKCE_MISMATCH', 'PKCE verification failed for this Connect grant.');
   }
   if (!session.tokenHash || !tokenVerifier.verify(command.token, session.tokenHash)) {
-    throw new ApplicationError('FORBIDDEN', 'INVALID_HANDOFF_TOKEN', 'Invalid PackProof Connect handoff token.');
+    throw new ApplicationError('FORBIDDEN', 'INVALID_HANDOFF_TOKEN', 'Invalid PackProof API handoff token.');
   }
 
   const terms: TransactionTerms = {

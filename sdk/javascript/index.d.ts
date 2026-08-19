@@ -98,6 +98,18 @@ export type EvidenceFinalizedCallback = {
   assurance: Record<string, unknown> | null;
   attestationStatus: string;
   carrierTrackingMatchStatus: string;
+  shippingTracker?: {
+    lookupStatus: 'DATASET_VALIDATED' | 'UNRECOGNIZED' | 'LOOKUP_INCOMPLETE';
+    courierCode: string | null;
+    courierName: string | null;
+    publicTrackingUrl: string | null;
+    stillSha256: string | null;
+    stillCaptureStatus: 'CAPTURED' | 'FAILED' | 'UNAVAILABLE_WHILE_RECORDING' | 'NOT_ATTEMPTED' | null;
+    observationSha256: string;
+    clientObservationSha256: string | null;
+    hashMatched: boolean | null;
+    interpretation: 'OPEN_SOURCE_TRACKING_NUMBER_VALIDATION_NOT_CARRIER_CUSTODY';
+  } | null;
   declaredWeightGrams: number | null;
   dossierUrl: string;
   dossierUrlExpiresAt: string;

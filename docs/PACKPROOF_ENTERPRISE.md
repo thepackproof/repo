@@ -4,7 +4,7 @@ PackProof Enterprise is an additional acquisition and orchestration layer around
 
 **Definition:** PackProof Enterprise transforms the cameras, scanners, scales, and fulfillment systems already present in commercial logistics operations into transaction-bound, independently finalized evidence—without requiring workers to perform a separate evidence workflow.
 
-Native capture, PackProof Connect, Evidence Format v2, and the transaction/dossier model stay. What Enterprise adds is a station Edge that can turn ordinary fulfillment events into bounded evidence sessions.
+Native capture, PackProof API, Evidence Format v2, and the transaction/dossier model stay. What Enterprise adds is a station Edge that can turn ordinary fulfillment events into bounded evidence sessions.
 
 Authoritative architecture: [`docs/architecture/ENTERPRISE_ARCHITECTURE_CONTRACT_V1.md`](architecture/ENTERPRISE_ARCHITECTURE_CONTRACT_V1.md). Decision record: [`docs/adr/0012-packproof-enterprise-acquisition-surface.md`](adr/0012-packproof-enterprise-acquisition-surface.md).
 

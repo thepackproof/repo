@@ -2,6 +2,8 @@
 
 Status: source-implemented and locally tested; not yet deployed or live-credential accepted.
 
+The partner product name is PackProof API (formerly PackProof Connect). Technical identifiers still use Connect (`/v1/connect/sessions`, `@packproof/connect`, and related collections/callables). Partner guide: [`PACKPROOF_API.md`](PACKPROOF_API.md).
+
 The canonical API contract is [`openapi/packproof-api-v1.json`](openapi/packproof-api-v1.json). The implemented production-pattern slices now include:
 
 - `GET /v1/health`

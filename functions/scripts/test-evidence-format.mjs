@@ -119,6 +119,45 @@ assert.equal(parsedLabelManifest.cameraObservation.flashMode, 'AUTO');
 assert.equal(parsedLabelManifest.cameraObservation.zoom, 0.15);
 assert.equal(parsedLabelManifest.shippingLabel?.rawDecodedValue, ' 1Z 999 AA1 01 2345 6784 ');
 assert.equal(parsedLabelManifest.shippingLabel?.trackingNumber, '1Z999AA10123456784');
+assert.equal(parsedLabelManifest.shippingLabel?.tracker, null);
+assert.equal(parsedLabelManifest.shippingLabel?.still, null);
+
+const trackedLabelManifest = {
+  ...labelManifest,
+  shippingLabel: {
+    ...labelManifest.shippingLabel,
+    tracker: {
+      profileId: 'PACKPROOF_OSS_TRACKING_NUMBER_V1',
+      dataset: 'jkeen/tracking_number_data via ts-tracking-number',
+      identified: true,
+      checksumValid: true,
+      courierCode: 'ups',
+      courierName: 'UPS',
+      trackerName: 'UPS',
+      publicTrackingUrl: 'https://wwwapps.ups.com/WebTracking/track?track=yes&trackNums=1Z999AA10123456784',
+      alternateCourierCodes: [],
+      lookupStatus: 'DATASET_VALIDATED',
+      interpretation: 'OPEN_SOURCE_TRACKING_NUMBER_VALIDATION_NOT_CARRIER_CUSTODY',
+      hashedAt: '2026-08-10T12:00:01.000Z',
+      sha256: 'b'.repeat(64),
+    },
+    still: {
+      capturedAt: '2026-08-10T12:00:00.700Z',
+      sha256: 'c'.repeat(64),
+      sizeBytes: 120000,
+      widthPixels: 1280,
+      heightPixels: 720,
+      captureStatus: 'CAPTURED',
+    },
+  },
+};
+const parsedTracked = captureManifestInputSchema.parse(trackedLabelManifest);
+assert.equal(parsedTracked.shippingLabel?.tracker?.courierCode, 'ups');
+assert.equal(parsedTracked.shippingLabel?.still?.captureStatus, 'CAPTURED');
+assert.throws(() => captureManifestInputSchema.parse({
+  ...trackedLabelManifest,
+  shippingLabel: { ...trackedLabelManifest.shippingLabel, still: { ...trackedLabelManifest.shippingLabel.still, sha256: null } },
+}), /required when a still was captured/);
 assert.throws(() => captureManifestInputSchema.parse({
   ...labelManifest,
   shippingLabel: { ...labelManifest.shippingLabel, normalizationProfile: undefined },

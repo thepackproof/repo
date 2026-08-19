@@ -4,7 +4,7 @@ Status: `SOURCE_CHECKED` on 2026-08-11. The model is implemented and unit-tested
 
 ## 1. Purpose and boundary
 
-This model gives PackProof one vocabulary for mobile workflows, merchant APIs, PackProof Connect, commerce-platform adapters, evidence processing, reports, webhooks and audit history. It is the pure policy and contract layer required before those transports can share application services.
+This model gives PackProof one vocabulary for mobile workflows, merchant APIs, PackProof API, commerce-platform adapters, evidence processing, reports, webhooks and audit history. It is the pure policy and contract layer required before those transports can share application services.
 
 The source is `functions/src/domain/v1`. It imports no React, React Native, Expo, Express, Firebase Functions, Firestore, Cloud Storage or commerce-platform SDK. It currently lives under the Functions TypeScript package so the deployable backend build owns one compiled copy while the migration is in progress.
 

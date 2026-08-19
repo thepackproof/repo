@@ -66,6 +66,9 @@ export type PackProofTransaction = {
   createdAt: DateLike;
   updatedAt: DateLike;
   lockedAt: DateLike;
+  passportId?: string | null;
+  passportDisplayId?: string | null;
+  passportIssuedAt?: DateLike;
   shipping?: {
     carrier: string;
     trackingNumber: string;
@@ -153,6 +156,18 @@ export type EvidenceRecord = {
   };
   carrierTrackingMatchStatus?: 'MATCHED' | 'MISMATCH' | 'NO_EXPECTED_TRACKING' | 'NOT_SCANNED';
   scannedTrackingNumber?: string | null;
+  shippingTracker?: {
+    lookupStatus: 'DATASET_VALIDATED' | 'UNRECOGNIZED' | 'LOOKUP_INCOMPLETE';
+    courierCode?: string | null;
+    courierName?: string | null;
+    publicTrackingUrl?: string | null;
+    stillSha256?: string | null;
+    stillCaptureStatus?: 'CAPTURED' | 'FAILED' | 'UNAVAILABLE_WHILE_RECORDING' | 'NOT_ATTEMPTED' | null;
+    observationSha256: string;
+    clientObservationSha256?: string | null;
+    hashMatched?: boolean | null;
+    interpretation?: 'OPEN_SOURCE_TRACKING_NUMBER_VALIDATION_NOT_CARRIER_CUSTODY';
+  } | null;
   postSubmissionTrackingMatchStatus?: 'MATCHED' | 'MISMATCH' | 'NOT_SCANNED';
   postSubmissionExpectedTrackingNumber?: string | null;
   postSubmissionComparedAt?: DateLike;
@@ -200,6 +215,49 @@ export type TimelineEvent = {
   type: string;
   summary: string;
   createdAt: DateLike;
+};
+
+export type PackProofPassportView = {
+  object: 'packproof_passport';
+  identity: {
+    passportId: string;
+    displayId: string;
+    transactionId: string;
+    verificationUrl: string;
+    qrPayload: string;
+    merchantPlatform: string | null;
+    externalOrderId: string | null;
+  };
+  integrity: {
+    banner: 'AUTHENTIC_PACKPROOF' | 'PACKPROOF_RECORD_WITH_LIMITATIONS';
+    summary: string;
+    meaning: string;
+  };
+  transaction: {
+    platform: { value: string | null };
+    externalOrderId: { value: string | null };
+    transactionDate: { value: string | null };
+    amount: { value: { currency: string; minorUnits: number } | null };
+  };
+  items: {
+    expected: { title: { value: string | null } };
+    comparisons: { attribute: string; expected: string | null; observed: string | null; result: string }[];
+  }[];
+  evidenceInventory: { category: string; state: string }[];
+  fulfillment: {
+    packingArtifactId: string | null;
+    sealArtifactId: string | null;
+    labelArtifactId: string | null;
+    trackingObserved: { value: string | null };
+  };
+  limitations: {
+    doesNotAuthenticateItem: true;
+    doesNotProveCustody: true;
+    doesNotDecideFraudOrFault: true;
+    doesNotGuaranteeDisputeOutcome: true;
+    shippingTrackerInterpretation: string;
+    humanReviewDisclaimer: string;
+  };
 };
 
 export type UserProfile = {

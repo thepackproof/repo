@@ -21,6 +21,11 @@ exports.parseReturnPassportId = parseReturnPassportId;
 exports.parseConnectSessionId = parseConnectSessionId;
 exports.parseListConnectSessions = parseListConnectSessions;
 exports.parseCancelConnectSession = parseCancelConnectSession;
+exports.parsePassportId = parsePassportId;
+exports.parsePassportSnapshotId = parsePassportSnapshotId;
+exports.parsePassportReviewQuery = parsePassportReviewQuery;
+exports.parseCreatePassportSnapshot = parseCreatePassportSnapshot;
+exports.parseCreatePassportExport = parseCreatePassportExport;
 exports.parseCreateConnectSession = parseCreateConnectSession;
 exports.parseAssociateShipment = parseAssociateShipment;
 exports.parseCreateReturn = parseCreateReturn;
@@ -385,7 +390,7 @@ function parseReturnPassportId(value) {
 }
 function parseConnectSessionId(value) {
     if (typeof value !== 'string' || !/^[a-f0-9]{64}$/.test(value)) {
-        throw new core_1.InputValidationError([{ field: 'sessionId', code: 'INVALID_ID', message: 'sessionId is not a valid PackProof Connect session identifier.' }]);
+        throw new core_1.InputValidationError([{ field: 'sessionId', code: 'INVALID_ID', message: 'sessionId is not a valid PackProof API session identifier.' }]);
     }
     return value;
 }
@@ -418,6 +423,45 @@ function parseHttpsCallbackUrl(value, field) {
         throw new core_1.InputValidationError([{ field, code: 'INVALID_URL', message: `${field} must use HTTPS without embedded credentials.` }]);
     }
     return raw;
+}
+function parsePassportId(value) {
+    if (typeof value === 'string' && /^ppt_[a-f0-9]{40}$/.test(value))
+        return value;
+    if (typeof value === 'string' && /^PP-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$/i.test(value)) {
+        return value.toUpperCase();
+    }
+    throw new core_1.InputValidationError([{ field: 'passportId', code: 'INVALID_ID', message: 'passportId is not a valid PackProof Passport identifier.' }]);
+}
+function parsePassportSnapshotId(value) {
+    if (typeof value !== 'string' || !/^pps_[a-f0-9]{40}$/.test(value)) {
+        throw new core_1.InputValidationError([{ field: 'snapshotId', code: 'INVALID_ID', message: 'snapshotId is not a valid PackProof Passport snapshot identifier.' }]);
+    }
+    return value;
+}
+function parsePassportReviewQuery(query) {
+    rejectUnknown(query, ['framework', 'category'], 'query');
+    const framework = oneQueryValue(query.framework, 'framework');
+    const category = oneQueryValue(query.category, 'category');
+    if (!framework && !category)
+        return null;
+    if (!framework || !category) {
+        throw new core_1.InputValidationError([{ field: framework ? 'category' : 'framework', code: 'REQUIRED', message: 'framework and category must be supplied together.' }]);
+    }
+    return {
+        framework: string(framework, 'framework', 1, 80),
+        category: string(category, 'category', 1, 120),
+    };
+}
+function parseCreatePassportSnapshot(value) {
+    const input = object(value, 'body');
+    rejectUnknown(input, ['schemaVersion']);
+    if (input.schemaVersion !== 1) {
+        throw new core_1.InputValidationError([{ field: 'schemaVersion', code: 'UNSUPPORTED_SCHEMA_VERSION', message: 'schemaVersion must equal 1.' }]);
+    }
+    return { schemaVersion: 1 };
+}
+function parseCreatePassportExport(value) {
+    return parseCreatePassportSnapshot(value);
 }
 function parseCreateConnectSession(value) {
     const input = object(value, 'body');

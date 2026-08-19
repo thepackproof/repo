@@ -98,6 +98,7 @@ function buildConnectEvidenceFinalizedCallback(input) {
         assurance: input.assurance,
         attestationStatus: input.attestationStatus,
         carrierTrackingMatchStatus: input.carrierTrackingMatchStatus ?? 'NOT_SCANNED',
+        shippingTracker: input.shippingTracker ?? null,
         declaredWeightGrams: input.declaredWeightGrams,
         dossierSha256: input.dossierSha256,
     };

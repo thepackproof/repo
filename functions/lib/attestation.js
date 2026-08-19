@@ -22,7 +22,7 @@ exports.beginCaptureSession = (0, https_1.onCall)({ enforceAppCheck: true, consu
         }
     }
     if (input.connectSessionId && data.source?.connectSessionId !== input.connectSessionId) {
-        throw new https_1.HttpsError('permission-denied', 'PackProof Connect session mismatch.');
+        throw new https_1.HttpsError('permission-denied', 'PackProof API session mismatch.');
     }
     if (input.requestedEvidenceCount > 1) {
         if (input.requestedEvidenceCount !== 15 || input.captureProfileId !== 'PP-PHYSICAL-MATTE-V1' || !input.captureGroupId) {

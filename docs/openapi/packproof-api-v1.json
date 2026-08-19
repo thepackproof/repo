@@ -24,7 +24,8 @@
     { "name": "Returns" },
     { "name": "Connect Sessions" },
     { "name": "Connect Callbacks" },
-    { "name": "Claims Review" }
+    { "name": "Claims Review" },
+    { "name": "Passports" }
   ],
   "paths": {
     "/v1/health": {
@@ -441,6 +442,136 @@
         }
       }
     },
+    "/v1/transactions/{transactionId}/passport": {
+      "get": {
+        "operationId": "getPassport",
+        "tags": ["Passports"],
+        "summary": "Retrieve the live PackProof Passport",
+        "description": "Returns the canonical PackProof Passport aggregation for a transaction and binds a stable Passport identity the first time eligibility passes. The Passport inventories source-attributed records and integrity bindings. It does not authenticate items, prove custody, decide fraud or fault, or guarantee a dispute outcome. Absence of evidence does not make a Passport inauthentic. Returns 409 PASSPORT_NOT_READY when eligibility fails.",
+        "security": [{ "merchantApiKey": [] }],
+        "parameters": [
+          { "$ref": "#/components/parameters/AccessibleTransactionId" },
+          { "$ref": "#/components/parameters/PassportFrameworkQuery" },
+          { "$ref": "#/components/parameters/PassportCategoryQuery" }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/PassportRetrieved" },
+          "400": { "$ref": "#/components/responses/InvalidRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/v1/transactions/{transactionId}/passport/snapshots": {
+      "post": {
+        "operationId": "createPassportSnapshot",
+        "tags": ["Passports"],
+        "summary": "Freeze a PackProof Passport snapshot",
+        "description": "Stores an immutable canonical JSON snapshot of the live Passport for later PDF export. Native evidence remains the source.",
+        "security": [{ "merchantApiKey": [] }],
+        "parameters": [
+          { "$ref": "#/components/parameters/AccessibleTransactionId" },
+          { "$ref": "#/components/parameters/IdempotencyKey" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreatePassportSnapshotRequest" } } }
+        },
+        "responses": {
+          "201": { "$ref": "#/components/responses/PassportSnapshotCreated" },
+          "200": { "$ref": "#/components/responses/PassportSnapshotReplayed" },
+          "400": { "$ref": "#/components/responses/InvalidRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "413": { "$ref": "#/components/responses/RequestTooLarge" },
+          "415": { "$ref": "#/components/responses/UnsupportedMediaType" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/v1/passports/{passportId}": {
+      "get": {
+        "operationId": "getPassportById",
+        "tags": ["Passports"],
+        "summary": "Retrieve a live PackProof Passport by Passport id",
+        "description": "Accepts a ppt_ resource id or a PP-XXXX-XXXX-XXXX display id. Authorization is still required. The QR or verification URL does not grant access.",
+        "security": [{ "merchantApiKey": [] }],
+        "parameters": [
+          { "$ref": "#/components/parameters/PassportId" },
+          { "$ref": "#/components/parameters/PassportFrameworkQuery" },
+          { "$ref": "#/components/parameters/PassportCategoryQuery" }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/PassportRetrieved" },
+          "400": { "$ref": "#/components/responses/InvalidRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/v1/passports/{passportId}/snapshots/{snapshotId}": {
+      "get": {
+        "operationId": "getPassportSnapshot",
+        "tags": ["Passports"],
+        "summary": "Retrieve an immutable Passport snapshot",
+        "security": [{ "merchantApiKey": [] }],
+        "parameters": [
+          { "$ref": "#/components/parameters/PassportId" },
+          { "$ref": "#/components/parameters/PassportSnapshotId" }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/PassportSnapshotRetrieved" },
+          "400": { "$ref": "#/components/responses/InvalidRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/v1/passports/{passportId}/snapshots/{snapshotId}/exports": {
+      "post": {
+        "operationId": "createPassportExport",
+        "tags": ["Passports"],
+        "summary": "Create a presentation-only Passport PDF export",
+        "description": "Renders a frozen snapshot to PDF. presentationOnly remains true. Native artifacts and manifests remain the source records. HMAC-SHA256 service authentication is not a digital signature.",
+        "security": [{ "merchantApiKey": [] }],
+        "parameters": [
+          { "$ref": "#/components/parameters/PassportId" },
+          { "$ref": "#/components/parameters/PassportSnapshotId" },
+          { "$ref": "#/components/parameters/IdempotencyKey" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreatePassportExportRequest" } } }
+        },
+        "responses": {
+          "201": { "$ref": "#/components/responses/PassportExportCreated" },
+          "200": { "$ref": "#/components/responses/PassportExportReplayed" },
+          "400": { "$ref": "#/components/responses/InvalidRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "413": { "$ref": "#/components/responses/RequestTooLarge" },
+          "415": { "$ref": "#/components/responses/UnsupportedMediaType" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
     "/v1/transactions/{transactionId}/reports": {
       "post": {
         "operationId": "createEvidenceReport",
@@ -689,7 +820,7 @@
         "operationId": "createConnectSession",
         "tags": ["Connect Sessions"],
         "summary": "Create or replay an order-bound Connect session",
-        "description": "Creates a seven-day order-bound capture session for an API client bound to an active PackProof Connect integration. This is merchant-server attested order binding, not the page-declared Button path. The capture URL and token are returned only here and on exact idempotent replay. Send the capture URL to the seller; do not log the token. After the seller redeems the handoff and packing evidence is server-finalized, PackProof posts packproof.evidence.finalized to callbackUrl.",
+        "description": "Creates a seven-day order-bound capture session for an API client bound to an active PackProof API integration. This is merchant-server attested order binding, not the page-declared Button path. The capture URL and token are returned only here and on exact idempotent replay. Send the capture URL to the seller; do not log the token. After the seller redeems the handoff and packing evidence is server-finalized, PackProof posts packproof.evidence.finalized to callbackUrl.",
         "security": [{ "merchantApiKey": [] }],
         "parameters": [{ "$ref": "#/components/parameters/IdempotencyKey" }],
         "requestBody": {
@@ -904,6 +1035,33 @@
         "required": true,
         "description": "The partner's order identifier supplied when the Connect session was created.",
         "schema": { "type": "string", "minLength": 1, "maxLength": 200 }
+      },
+      "PassportId": {
+        "name": "passportId",
+        "in": "path",
+        "required": true,
+        "description": "A PackProof Passport resource id (ppt_) or display id (PP-XXXX-XXXX-XXXX). Possession of the identifier does not grant access.",
+        "schema": { "type": "string", "pattern": "^(ppt_[a-f0-9]{40}|PP-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4})$" }
+      },
+      "PassportSnapshotId": {
+        "name": "snapshotId",
+        "in": "path",
+        "required": true,
+        "schema": { "type": "string", "pattern": "^pps_[a-f0-9]{40}$" }
+      },
+      "PassportFrameworkQuery": {
+        "name": "framework",
+        "in": "query",
+        "required": false,
+        "description": "Optional receiving-party workflow identifier used only to fill reviewContext. Not stored on Passport identity.",
+        "schema": { "type": "string", "minLength": 1, "maxLength": 80 }
+      },
+      "PassportCategoryQuery": {
+        "name": "category",
+        "in": "query",
+        "required": false,
+        "description": "Optional dispute category used only with framework to fill reviewContext.",
+        "schema": { "type": "string", "minLength": 1, "maxLength": 120 }
       }
     },
     "headers": {
@@ -1392,6 +1550,24 @@
         },
         "description": "Layered observation metadata. physicalCorrespondence is always NOT_AVAILABLE and businessLegalRelevance is always REVIEW_REQUIRED in this release. These dimensions are not a MATCH/NON_MATCH verdict."
       },
+      "ShippingTrackerObservation": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Open-source tracking-number identification and canonical observation hash. This is checksum and courier identification from published tracking-number data, not live carrier custody.",
+        "required": ["lookupStatus", "courierCode", "courierName", "publicTrackingUrl", "stillSha256", "stillCaptureStatus", "observationSha256", "clientObservationSha256", "hashMatched", "interpretation"],
+        "properties": {
+          "lookupStatus": { "type": "string", "enum": ["DATASET_VALIDATED", "UNRECOGNIZED", "LOOKUP_INCOMPLETE"] },
+          "courierCode": { "type": ["string", "null"] },
+          "courierName": { "type": ["string", "null"] },
+          "publicTrackingUrl": { "type": ["string", "null"], "format": "uri" },
+          "stillSha256": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$" },
+          "stillCaptureStatus": { "type": ["string", "null"], "enum": ["CAPTURED", "FAILED", "UNAVAILABLE_WHILE_RECORDING", "NOT_ATTEMPTED", null] },
+          "observationSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+          "clientObservationSha256": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$" },
+          "hashMatched": { "type": ["boolean", "null"] },
+          "interpretation": { "const": "OPEN_SOURCE_TRACKING_NUMBER_VALIDATION_NOT_CARRIER_CUSTODY" }
+        }
+      },
       "EvidenceArtifact": {
         "type": "object",
         "additionalProperties": false,
@@ -1413,6 +1589,7 @@
           "workflowReady": { "type": "boolean" },
           "assurance": { "oneOf": [{ "$ref": "#/components/schemas/AssuranceAssessment" }, { "type": "null" }] },
           "carrierTrackingMatchStatus": { "type": ["string", "null"] },
+          "shippingTracker": { "oneOf": [{ "$ref": "#/components/schemas/ShippingTrackerObservation" }, { "type": "null" }], "description": "Present when a shipping barcode was observed at capture. Null for artifacts without an open-source tracker observation." },
           "finalizedAt": { "type": ["string", "null"], "format": "date-time" },
           "createdAt": { "type": "string", "format": "date-time" },
           "updatedAt": { "type": "string", "format": "date-time" }
@@ -1547,6 +1724,294 @@
           "createdAt": { "type": "string", "format": "date-time" },
           "updatedAt": { "type": "string", "format": "date-time" }
         }
+      },
+      "PassportProvenanceClass": {
+        "type": "string",
+        "enum": ["SOURCE_ASSERTION", "PARTICIPANT_ASSERTION", "PACKPROOF_OBSERVATION", "THIRD_PARTY_ASSERTION", "INTEGRITY_RESULT", "DERIVED_COMPARISON"]
+      },
+      "PassportFact": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["value", "provenanceClass", "assertingSource", "trustClass", "recordedAt", "sourceRecordId", "sourceReference", "digestSha256"],
+        "properties": {
+          "value": {},
+          "provenanceClass": { "$ref": "#/components/schemas/PassportProvenanceClass" },
+          "assertingSource": { "type": ["string", "null"] },
+          "trustClass": { "type": ["string", "null"], "enum": ["MERCHANT_SERVER_ATTESTED", "PLATFORM_API_ATTESTED", "PAGE_DECLARED", "PACKPROOF_CAPTURE", "PACKPROOF_SERVICE", null] },
+          "recordedAt": { "type": ["string", "null"], "format": "date-time" },
+          "sourceRecordId": { "type": ["string", "null"] },
+          "sourceReference": { "type": ["string", "null"] },
+          "digestSha256": { "type": ["string", "null"], "pattern": "^([a-f0-9]{64})?$" }
+        }
+      },
+      "PassportComparison": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["attribute", "expected", "observed", "result", "method", "footnote"],
+        "properties": {
+          "attribute": { "type": "string", "enum": ["UPC", "GTIN", "SKU", "SERIAL", "QUANTITY", "VARIANT", "TRACKING", "TITLE"] },
+          "expected": { "type": ["string", "null"] },
+          "observed": { "type": ["string", "null"] },
+          "result": { "type": "string", "enum": ["SAME", "DIFFERENT", "CONSISTENT_WITH_DECLARED", "NOT_CONSISTENT_WITH_DECLARED", "NOT_COMPARED"] },
+          "method": { "type": "string", "enum": ["EXACT_NORMALIZED", "DECLARED_INTERPRETATION", "NOT_COMPARABLE"] },
+          "footnote": { "const": "RELATIONSHIP_ONLY" }
+        }
+      },
+      "PassportInventoryEntry": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["category", "state", "artifactIds"],
+        "properties": {
+          "category": { "type": "string", "enum": ["COMMERCE_ORDER_RECORD", "ITEM_IDENTIFIER_EVIDENCE", "CONDITION_EVIDENCE", "PACKING_CAPTURE", "PACKAGE_SEALING", "SHIPPING_LABEL_EVIDENCE", "TRACKING_ASSOCIATION", "WEIGHT_OBSERVATION", "CARRIER_ACCEPTANCE", "DELIVERY_EVIDENCE", "RECEIVER_CAPTURE", "RETURN_EVIDENCE", "REFUND_EVIDENCE"] },
+          "state": { "type": "string", "enum": ["AVAILABLE", "NOT_AVAILABLE", "NOT_APPLICABLE", "REVIEW_REQUIRED"] },
+          "artifactIds": { "type": "array", "items": { "type": "string" } }
+        }
+      },
+      "PackProofPassport": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["object", "schemaVersion", "identity", "integrity", "transaction", "items", "fulfillment", "shipment", "delivery", "receiver", "returns", "evidenceInventory", "artifacts", "timeline", "reviewContext", "provenance", "limitations", "createdAt", "updatedAt"],
+        "description": "Canonical PackProof Passport. Web/API JSON is the Passport. PDF is a presentation export of a frozen snapshot. It does not authenticate items, prove custody, decide fraud or fault, or guarantee a dispute outcome.",
+        "properties": {
+          "object": { "const": "packproof_passport" },
+          "schemaVersion": { "const": 1 },
+          "identity": { "type": "object", "additionalProperties": false, "required": ["passportId", "displayId", "schemaVersion", "rendererCompatibility", "transactionId", "state", "issuedAt", "sourceUpdatedAt", "merchantPlatform", "externalOrderId", "verificationUrl", "qrPayload"], "properties": {
+            "passportId": { "type": "string", "pattern": "^ppt_[a-f0-9]{40}$" },
+            "displayId": { "type": "string", "pattern": "^PP-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$" },
+            "schemaVersion": { "const": 1 },
+            "rendererCompatibility": { "const": "PASSPORT_WEB_V1" },
+            "transactionId": { "type": "string" },
+            "state": { "const": "CURRENT" },
+            "issuedAt": { "type": "string", "format": "date-time" },
+            "sourceUpdatedAt": { "type": "string", "format": "date-time" },
+            "merchantPlatform": { "type": ["string", "null"] },
+            "externalOrderId": { "type": ["string", "null"] },
+            "verificationUrl": { "type": "string", "format": "uri" },
+            "qrPayload": { "type": "string" }
+          }},
+          "integrity": { "type": "object", "additionalProperties": false, "required": ["banner", "summary", "meaning", "criteria", "manifestAuthentication", "canonicalizationProfile", "bundleBindingProfile"], "properties": {
+            "banner": { "type": "string", "enum": ["AUTHENTIC_PACKPROOF", "PACKPROOF_RECORD_WITH_LIMITATIONS"] },
+            "summary": { "type": "string", "enum": ["PackProof record integrity verified", "PackProof record integrity verified with recorded limitations"] },
+            "meaning": { "type": "string" },
+            "criteria": { "type": "object", "additionalProperties": false, "required": ["passportRecord", "evidenceManifests", "evidenceFileDigests", "bundleBindings", "finalization", "provenance", "evidenceLineage"], "properties": {
+              "passportRecord": { "type": "string", "enum": ["VERIFIED", "RECORDED", "LIMITED", "FAILED"] },
+              "evidenceManifests": { "type": "string", "enum": ["VERIFIED", "RECORDED", "LIMITED", "FAILED"] },
+              "evidenceFileDigests": { "type": "string", "enum": ["VERIFIED", "RECORDED", "LIMITED", "FAILED"] },
+              "bundleBindings": { "type": "string", "enum": ["VERIFIED", "RECORDED", "LIMITED", "FAILED"] },
+              "finalization": { "type": "string", "enum": ["VERIFIED", "RECORDED", "LIMITED", "FAILED"] },
+              "provenance": { "type": "string", "enum": ["VERIFIED", "RECORDED", "LIMITED", "FAILED"] },
+              "evidenceLineage": { "type": "string", "enum": ["VERIFIED", "RECORDED", "LIMITED", "FAILED"] }
+            }},
+            "manifestAuthentication": { "type": "object", "additionalProperties": false, "required": ["type", "algorithm", "verificationScope", "keyId", "publiclyVerifiable"], "properties": {
+              "type": { "type": "string", "enum": ["SERVICE_MAC", "LEGACY_SERVICE_MAC"] },
+              "algorithm": { "type": ["string", "null"], "enum": ["HMAC-SHA256", null] },
+              "verificationScope": { "const": "PACKPROOF_SERVICE_ONLY" },
+              "keyId": { "type": ["string", "null"] },
+              "publiclyVerifiable": { "const": false }
+            }},
+            "canonicalizationProfile": { "const": "PACKPROOF_JCS_1" },
+            "bundleBindingProfile": { "type": "string", "enum": ["PACKPROOF_EVIDENCE_BUNDLE_V2", "LEGACY_V1"] }
+          }},
+          "transaction": { "type": "object", "additionalProperties": false, "required": ["commerceContextId", "platform", "externalOrderId", "transactionDate", "amount", "sellerReference", "destination", "itemCount", "sourceTrustClass", "importedAt", "canonicalPayloadSha256"], "properties": {
+            "commerceContextId": { "type": ["string", "null"] },
+            "platform": { "$ref": "#/components/schemas/PassportFact" },
+            "externalOrderId": { "$ref": "#/components/schemas/PassportFact" },
+            "transactionDate": { "$ref": "#/components/schemas/PassportFact" },
+            "amount": { "$ref": "#/components/schemas/PassportFact" },
+            "sellerReference": { "$ref": "#/components/schemas/PassportFact" },
+            "destination": { "$ref": "#/components/schemas/PassportFact" },
+            "itemCount": { "$ref": "#/components/schemas/PassportFact" },
+            "sourceTrustClass": { "type": ["string", "null"], "enum": ["MERCHANT_SERVER_ATTESTED", "PLATFORM_API_ATTESTED", "PAGE_DECLARED", null] },
+            "importedAt": { "type": ["string", "null"], "format": "date-time" },
+            "canonicalPayloadSha256": { "type": ["string", "null"] }
+          }},
+          "items": { "type": "array", "items": { "type": "object", "additionalProperties": false, "required": ["index", "expected", "observations", "comparisons"], "properties": {
+            "index": { "type": "integer", "minimum": 0 },
+            "expected": { "type": "object", "additionalProperties": false, "required": ["title", "sku", "gtin", "upc", "variant", "quantity", "declaredCondition", "serialExpected", "merchantItemId", "listingReference"], "properties": {
+              "title": { "$ref": "#/components/schemas/PassportFact" },
+              "sku": { "$ref": "#/components/schemas/PassportFact" },
+              "gtin": { "$ref": "#/components/schemas/PassportFact" },
+              "upc": { "$ref": "#/components/schemas/PassportFact" },
+              "variant": { "$ref": "#/components/schemas/PassportFact" },
+              "quantity": { "$ref": "#/components/schemas/PassportFact" },
+              "declaredCondition": { "$ref": "#/components/schemas/PassportFact" },
+              "serialExpected": { "$ref": "#/components/schemas/PassportFact" },
+              "merchantItemId": { "$ref": "#/components/schemas/PassportFact" },
+              "listingReference": { "$ref": "#/components/schemas/PassportFact" }
+            }},
+            "observations": { "type": "array", "items": { "type": "object", "additionalProperties": false, "required": ["kind", "result", "artifactId", "evidenceSessionId", "frameReference", "capturedAt"], "properties": {
+              "kind": { "type": "string", "enum": ["ITEM_CAPTURED", "BARCODE_OBSERVED", "SERIAL_OBSERVED", "QUANTITY_OBSERVED", "CONDITION_IMAGERY", "PACKING_CAPTURE", "PACKAGE_INTERIOR", "SEAL_EVENT", "SHIPPING_LABEL", "TRACKING_OBSERVED", "WEIGHT", "APP_DEVICE_CONTEXT"] },
+              "result": { "$ref": "#/components/schemas/PassportFact" },
+              "artifactId": { "type": ["string", "null"] },
+              "evidenceSessionId": { "type": ["string", "null"] },
+              "frameReference": { "type": ["string", "null"] },
+              "capturedAt": { "type": ["string", "null"], "format": "date-time" }
+            }}},
+            "comparisons": { "type": "array", "items": { "$ref": "#/components/schemas/PassportComparison" } }
+          }}},
+          "fulfillment": { "type": "object", "additionalProperties": false, "required": ["captureSessionId", "packingArtifactId", "sealArtifactId", "labelArtifactId", "trackingObserved", "shippingTracker"], "properties": {
+            "captureSessionId": { "type": ["string", "null"] },
+            "packingArtifactId": { "type": ["string", "null"] },
+            "sealArtifactId": { "type": ["string", "null"] },
+            "labelArtifactId": { "type": ["string", "null"] },
+            "trackingObserved": { "$ref": "#/components/schemas/PassportFact" },
+            "shippingTracker": { "$ref": "#/components/schemas/PassportFact" }
+          }},
+          "shipment": { "oneOf": [{ "type": "object", "additionalProperties": false, "required": ["carrier", "trackingSupplied", "trackingObserved", "trackingThirdParty", "labelObservedByPackProof", "associatedAt", "packingEvidenceId", "sealEvidenceId"], "properties": {
+            "carrier": { "$ref": "#/components/schemas/PassportFact" },
+            "trackingSupplied": { "$ref": "#/components/schemas/PassportFact" },
+            "trackingObserved": { "$ref": "#/components/schemas/PassportFact" },
+            "trackingThirdParty": { "$ref": "#/components/schemas/PassportFact" },
+            "labelObservedByPackProof": { "type": "boolean" },
+            "associatedAt": { "type": ["string", "null"], "format": "date-time" },
+            "packingEvidenceId": { "type": ["string", "null"] },
+            "sealEvidenceId": { "type": ["string", "null"] }
+          }}, { "type": "null" }] },
+          "delivery": { "oneOf": [{ "type": "object", "additionalProperties": false, "required": ["carrier", "trackingNumber", "receivedAt", "arrivalArtifactId", "signatureAvailable", "deliveryPhotoAvailable"], "properties": {
+            "carrier": { "$ref": "#/components/schemas/PassportFact" },
+            "trackingNumber": { "$ref": "#/components/schemas/PassportFact" },
+            "receivedAt": { "$ref": "#/components/schemas/PassportFact" },
+            "arrivalArtifactId": { "type": ["string", "null"] },
+            "signatureAvailable": { "const": false },
+            "deliveryPhotoAvailable": { "type": "boolean" }
+          }}, { "type": "null" }] },
+          "receiver": { "oneOf": [{ "type": "object", "additionalProperties": false, "required": ["arrivalArtifactId", "unboxingArtifactId", "observedAt"], "properties": {
+            "arrivalArtifactId": { "type": ["string", "null"] },
+            "unboxingArtifactId": { "type": ["string", "null"] },
+            "observedAt": { "type": ["string", "null"], "format": "date-time" }
+          }}, { "type": "null" }] },
+          "returns": { "type": "array", "items": { "type": "object", "additionalProperties": false, "required": ["returnPassportId", "status", "reason", "packingArtifactId", "sealArtifactId", "trackingSupplied"], "properties": {
+            "returnPassportId": { "type": "string" },
+            "status": { "type": "string" },
+            "reason": { "type": ["string", "null"] },
+            "packingArtifactId": { "type": ["string", "null"] },
+            "sealArtifactId": { "type": ["string", "null"] },
+            "trackingSupplied": { "$ref": "#/components/schemas/PassportFact" }
+          }}},
+          "evidenceInventory": { "type": "array", "items": { "$ref": "#/components/schemas/PassportInventoryEntry" } },
+          "artifacts": { "type": "array", "items": { "type": "object", "additionalProperties": false, "required": ["artifactId", "type", "source", "capturedAt", "finalizedAt", "contentType", "sizeBytes", "sha256", "manifestSha256", "evidenceBundleSha256", "finalization", "evidenceSessionId", "shippingTracker"], "properties": {
+            "artifactId": { "type": "string" },
+            "type": { "type": "string" },
+            "source": { "type": "string", "enum": ["PACKPROOF_CAPTURE", "ENTERPRISE_EDGE", "EXTERNAL_DECLARED", "UNKNOWN"] },
+            "capturedAt": { "type": ["string", "null"], "format": "date-time" },
+            "finalizedAt": { "type": ["string", "null"], "format": "date-time" },
+            "contentType": { "type": ["string", "null"] },
+            "sizeBytes": { "type": ["integer", "null"] },
+            "sha256": { "type": ["string", "null"] },
+            "manifestSha256": { "type": ["string", "null"] },
+            "evidenceBundleSha256": { "type": ["string", "null"] },
+            "finalization": { "type": "string", "enum": ["FINALIZED", "QUARANTINED", "FAILED", "UPLOADED", "RESERVED"] },
+            "evidenceSessionId": { "type": ["string", "null"] },
+            "shippingTracker": { "type": ["object", "null"] }
+          }}},
+          "timeline": { "type": "array", "items": { "type": "object", "additionalProperties": false, "required": ["eventId", "occurredAt", "source", "provenanceClass", "title", "evidenceReference"], "properties": {
+            "eventId": { "type": "string" },
+            "occurredAt": { "type": "string", "format": "date-time" },
+            "source": { "type": "string" },
+            "provenanceClass": { "$ref": "#/components/schemas/PassportProvenanceClass" },
+            "title": { "type": "string" },
+            "evidenceReference": { "type": ["string", "null"] }
+          }}},
+          "reviewContext": { "oneOf": [{ "type": "object", "additionalProperties": false, "required": ["receivingFramework", "disputeCategory", "relevance", "footnote"], "properties": {
+            "receivingFramework": { "type": "string" },
+            "disputeCategory": { "type": "string" },
+            "relevance": { "type": "array", "items": { "type": "object", "additionalProperties": false, "required": ["category", "inventoryState"], "properties": {
+              "category": { "type": "string" },
+              "inventoryState": { "type": "string", "enum": ["AVAILABLE", "NOT_AVAILABLE", "NOT_APPLICABLE", "REVIEW_REQUIRED"] }
+            }}},
+            "footnote": { "const": "CONFIGURATION_ONLY" }
+          }}, { "type": "null" }] },
+          "provenance": { "type": "array", "items": { "type": "object", "additionalProperties": false, "required": ["field", "value", "provenanceClass", "assertingSource", "trustClass", "recordedAt", "sourceRecordId", "sourceReference", "digestSha256"], "properties": {
+            "field": { "type": "string" },
+            "value": {},
+            "provenanceClass": { "$ref": "#/components/schemas/PassportProvenanceClass" },
+            "assertingSource": { "type": ["string", "null"] },
+            "trustClass": { "type": ["string", "null"] },
+            "recordedAt": { "type": ["string", "null"] },
+            "sourceRecordId": { "type": ["string", "null"] },
+            "sourceReference": { "type": ["string", "null"] },
+            "digestSha256": { "type": ["string", "null"] }
+          }}},
+          "limitations": { "type": "object", "additionalProperties": false, "required": ["physicalCorrespondence", "businessLegalRelevance", "doesNotAuthenticateItem", "doesNotProveCustody", "doesNotDecideFraudOrFault", "doesNotGuaranteeDisputeOutcome", "absenceOfEvidenceDoesNotAffectAuthenticity", "noEvidentiaryWeightScore", "presentationExportIsNotSource", "manifestAuthenticationScope", "shippingTrackerInterpretation", "humanReviewDisclaimer"], "properties": {
+            "physicalCorrespondence": { "const": "NOT_AVAILABLE" },
+            "businessLegalRelevance": { "const": "REVIEW_REQUIRED" },
+            "doesNotAuthenticateItem": { "const": true },
+            "doesNotProveCustody": { "const": true },
+            "doesNotDecideFraudOrFault": { "const": true },
+            "doesNotGuaranteeDisputeOutcome": { "const": true },
+            "absenceOfEvidenceDoesNotAffectAuthenticity": { "const": true },
+            "noEvidentiaryWeightScore": { "const": true },
+            "presentationExportIsNotSource": { "const": true },
+            "manifestAuthenticationScope": { "const": "PACKPROOF_SERVICE_ONLY" },
+            "shippingTrackerInterpretation": { "const": "OPEN_SOURCE_TRACKING_NUMBER_VALIDATION_NOT_CARRIER_CUSTODY" },
+            "humanReviewDisclaimer": { "type": "string" }
+          }},
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "PackProofPassportSnapshot": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["object", "schemaVersion", "snapshotId", "passportId", "transactionId", "snapshotVersion", "passport", "canonicalPayloadSha256", "rendererVersion", "generatedAt"],
+        "properties": {
+          "object": { "const": "packproof_passport_snapshot" },
+          "schemaVersion": { "const": 1 },
+          "snapshotId": { "type": "string", "pattern": "^pps_[a-f0-9]{40}$" },
+          "passportId": { "type": "string", "pattern": "^ppt_[a-f0-9]{40}$" },
+          "transactionId": { "type": "string" },
+          "snapshotVersion": { "type": "integer", "minimum": 1 },
+          "passport": { "$ref": "#/components/schemas/PackProofPassport" },
+          "canonicalPayloadSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+          "rendererVersion": { "type": "string" },
+          "generatedAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "PackProofPassportExport": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["object", "schemaVersion", "snapshotId", "format", "presentationOnly", "downloadUrl", "downloadUrlExpiresAt", "fileSha256", "rendererVersion"],
+        "properties": {
+          "object": { "const": "packproof_passport_export" },
+          "schemaVersion": { "const": 1 },
+          "snapshotId": { "type": "string" },
+          "format": { "const": "PDF" },
+          "presentationOnly": { "const": true },
+          "downloadUrl": { "type": ["string", "null"], "format": "uri" },
+          "downloadUrlExpiresAt": { "type": ["string", "null"], "format": "date-time" },
+          "fileSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+          "rendererVersion": { "type": "string" }
+        }
+      },
+      "CreatePassportSnapshotRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["schemaVersion"],
+        "properties": { "schemaVersion": { "const": 1 } }
+      },
+      "CreatePassportExportRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["schemaVersion"],
+        "properties": { "schemaVersion": { "const": 1 } }
+      },
+      "PassportResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["data"],
+        "properties": { "data": { "$ref": "#/components/schemas/PackProofPassport" } }
+      },
+      "PassportSnapshotResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["data"],
+        "properties": { "data": { "$ref": "#/components/schemas/PackProofPassportSnapshot" } }
+      },
+      "PassportExportResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["data"],
+        "properties": { "data": { "$ref": "#/components/schemas/PackProofPassportExport" } }
       },
       "ConnectSession": {
         "type": "object",
@@ -1774,6 +2239,7 @@
           "assurance": { "oneOf": [{ "$ref": "#/components/schemas/AssuranceAssessment" }, { "type": "null" }] },
           "attestationStatus": { "type": "string" },
           "carrierTrackingMatchStatus": { "type": "string" },
+          "shippingTracker": { "oneOf": [{ "$ref": "#/components/schemas/ShippingTrackerObservation" }, { "type": "null" }] },
           "declaredWeightGrams": { "type": ["integer", "null"] },
           "dossierUrl": { "type": "string", "format": "uri" },
           "dossierUrlExpiresAt": { "type": "string", "format": "date-time" },
@@ -1995,6 +2461,36 @@
         "description": "The claims-review evidence package. It organizes documentation; it does not decide a claim.",
         "headers": { "X-Request-Id": { "$ref": "#/components/headers/XRequestId" }, "RateLimit-Limit": { "$ref": "#/components/headers/RateLimitLimit" }, "RateLimit-Remaining": { "$ref": "#/components/headers/RateLimitRemaining" }, "RateLimit-Reset": { "$ref": "#/components/headers/RateLimitReset" } },
         "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ReviewPackageResponse" } } }
+      },
+      "PassportRetrieved": {
+        "description": "The live PackProof Passport aggregation. It does not authenticate items, prove custody, decide fraud or fault, or guarantee a dispute outcome.",
+        "headers": { "X-Request-Id": { "$ref": "#/components/headers/XRequestId" }, "RateLimit-Limit": { "$ref": "#/components/headers/RateLimitLimit" }, "RateLimit-Remaining": { "$ref": "#/components/headers/RateLimitRemaining" }, "RateLimit-Reset": { "$ref": "#/components/headers/RateLimitReset" } },
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PassportResponse" } } }
+      },
+      "PassportSnapshotCreated": {
+        "description": "An immutable Passport snapshot was stored.",
+        "headers": { "X-Request-Id": { "$ref": "#/components/headers/XRequestId" }, "Idempotent-Replayed": { "$ref": "#/components/headers/IdempotentReplayed" }, "RateLimit-Limit": { "$ref": "#/components/headers/RateLimitLimit" }, "RateLimit-Remaining": { "$ref": "#/components/headers/RateLimitRemaining" }, "RateLimit-Reset": { "$ref": "#/components/headers/RateLimitReset" } },
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PassportSnapshotResponse" } } }
+      },
+      "PassportSnapshotReplayed": {
+        "description": "The original Passport snapshot for an exact idempotent retry.",
+        "headers": { "X-Request-Id": { "$ref": "#/components/headers/XRequestId" }, "Idempotent-Replayed": { "$ref": "#/components/headers/IdempotentReplayed" }, "RateLimit-Limit": { "$ref": "#/components/headers/RateLimitLimit" }, "RateLimit-Remaining": { "$ref": "#/components/headers/RateLimitRemaining" }, "RateLimit-Reset": { "$ref": "#/components/headers/RateLimitReset" } },
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PassportSnapshotResponse" } } }
+      },
+      "PassportSnapshotRetrieved": {
+        "description": "The immutable Passport snapshot.",
+        "headers": { "X-Request-Id": { "$ref": "#/components/headers/XRequestId" }, "RateLimit-Limit": { "$ref": "#/components/headers/RateLimitLimit" }, "RateLimit-Remaining": { "$ref": "#/components/headers/RateLimitRemaining" }, "RateLimit-Reset": { "$ref": "#/components/headers/RateLimitReset" } },
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PassportSnapshotResponse" } } }
+      },
+      "PassportExportCreated": {
+        "description": "A presentation-only Passport PDF was generated from a frozen snapshot.",
+        "headers": { "X-Request-Id": { "$ref": "#/components/headers/XRequestId" }, "Idempotent-Replayed": { "$ref": "#/components/headers/IdempotentReplayed" }, "RateLimit-Limit": { "$ref": "#/components/headers/RateLimitLimit" }, "RateLimit-Remaining": { "$ref": "#/components/headers/RateLimitRemaining" }, "RateLimit-Reset": { "$ref": "#/components/headers/RateLimitReset" } },
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PassportExportResponse" } } }
+      },
+      "PassportExportReplayed": {
+        "description": "The original Passport PDF export for an exact idempotent retry.",
+        "headers": { "X-Request-Id": { "$ref": "#/components/headers/XRequestId" }, "Idempotent-Replayed": { "$ref": "#/components/headers/IdempotentReplayed" }, "RateLimit-Limit": { "$ref": "#/components/headers/RateLimitLimit" }, "RateLimit-Remaining": { "$ref": "#/components/headers/RateLimitRemaining" }, "RateLimit-Reset": { "$ref": "#/components/headers/RateLimitReset" } },
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PassportExportResponse" } } }
       },
       "EvidenceReportCreated": {
         "description": "A presentation dossier was generated.",

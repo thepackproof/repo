@@ -1,3 +1,5 @@
+import type { ShippingTrackerObservation } from '../../shipping-tracker';
+
 export const connectEvidenceStatuses = [
   'DIGITAL_EVIDENCE_READY',
   'DIGITAL_EVIDENCE_WITH_LIMITATIONS',
@@ -56,6 +58,7 @@ export type ConnectEvidenceFinalizedCallback = {
   assurance: Record<string, unknown> | null;
   attestationStatus: string;
   carrierTrackingMatchStatus: string;
+  shippingTracker: ShippingTrackerObservation | null;
   declaredWeightGrams: number | null;
   dossierSha256: string;
 };
@@ -71,6 +74,7 @@ export type ConnectEvidenceFinalizedInput = {
   assurance: Record<string, unknown> | null;
   attestationStatus: string;
   carrierTrackingMatchStatus: string | null;
+  shippingTracker?: ShippingTrackerObservation | null;
   declaredWeightGrams: number | null;
   dossierSha256: string;
   serverFinalized: boolean;
@@ -148,6 +152,7 @@ export function buildConnectEvidenceFinalizedCallback(input: ConnectEvidenceFina
     assurance: input.assurance,
     attestationStatus: input.attestationStatus,
     carrierTrackingMatchStatus: input.carrierTrackingMatchStatus ?? 'NOT_SCANNED',
+    shippingTracker: input.shippingTracker ?? null,
     declaredWeightGrams: input.declaredWeightGrams,
     dossierSha256: input.dossierSha256,
   };

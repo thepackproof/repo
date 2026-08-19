@@ -12,7 +12,7 @@ import { forceFreshCallableCredentials } from '@/lib/firebase';
 import { enqueueEvidence, syncEvidenceQueue } from '@/lib/offline-evidence-queue';
 import { formatDate, formatMoney, readableError, statusProgress } from '@/lib/format';
 import { HUMAN_REVIEW_DISCLAIMER, groupHumanReviewObservations, packageSealProtocolStatus } from '@/lib/package-seal-protocol';
-import { attestationLabel, byteIntegrityLabel, evidenceLabels, trackingLabel, trackingStatus } from '@/lib/transaction-detail-labels';
+import { attestationLabel, byteIntegrityLabel, evidenceLabels, shippingTrackerLabel, trackingLabel, trackingStatus } from '@/lib/transaction-detail-labels';
 import { formatRuntimeEnum, normalizePhysicalStatus, type PhysicalStatusView } from '@/lib/runtime-display';
 import { useAuth } from '@/providers/auth-provider';
 import type { EvidenceRecord, EvidenceType, PackProofTransaction, ReturnPassport, TimelineEvent } from '@/types/models';
@@ -147,6 +147,7 @@ export default function TransactionDetail() {
     {activeReturn?.status === 'IN_TRANSIT' && returnRecipient ? <Button label="Mark return received without video" variant="secondary" busy={busy === 'returnReceived'} onPress={() => run('returnReceived', () => callFunction('markReturnReceived', { transactionId: id, returnPassportId: activeReturn.id }).then(() => undefined))} /> : null}
     {activeReturn && !['REQUESTED', 'COMPLETED', 'CANCELLED'].includes(activeReturn.status) ? <Button label="Add return condition photo" icon="camera.fill" variant="secondary" onPress={() => capture('RETURN_CONDITION_PHOTO', activeReturn.id)} /> : null}
     {activeReturn?.status === 'RECEIVED_REVIEW' ? <Button label={(activeReturn.completedBy ?? []).includes(user.uid) ? 'Return completion confirmed—waiting' : 'Complete return passport'} icon="checkmark.circle.fill" disabled={(activeReturn.completedBy ?? []).includes(user.uid)} busy={busy === 'completeReturn'} onPress={() => run('completeReturn', () => callFunction('completeReturnPassport', { transactionId: id, returnPassportId: activeReturn.id }).then(() => undefined))} /> : null}
+    {!['DRAFT', 'CANCELLED', 'ARCHIVED'].includes(item.status) ? <Button label="Open PackProof Passport" icon="checkmark.shield.fill" variant="secondary" onPress={() => router.push({ pathname: '/passport/[id]', params: { id } })} /> : null}
     {!['DRAFT', 'CANCELLED', 'ARCHIVED'].includes(item.status) ? <Button label="Generate evidence packet" icon="doc.text.fill" variant="secondary" busy={busy === 'packet'} onPress={createPacket} /> : null}
     {item.buyerId && !['COMPLETED', 'CANCELLED', 'ARCHIVED'].includes(item.status) ? <Button label="Raise a concern" icon="exclamationmark.triangle.fill" variant="danger" onPress={() => setShowConcern(!showConcern)} /> : null}
     {role === 'SELLER' && ['DRAFT', 'AWAITING_BUYER', 'TERMS_REVIEW'].includes(item.status) ? <Button label="Cancel PackProof" icon="xmark.circle.fill" variant="danger" busy={busy === 'cancel'} onPress={cancelTransaction} /> : null}
@@ -274,6 +275,7 @@ export default function TransactionDetail() {
             <Text style={styles.verification}>ACQUISITION {formatRuntimeEnum(acquisitionQuality)}</Text>
             <Text style={styles.verificationWarning}>PHYSICAL {formatRuntimeEnum(physicalCorrespondence)}</Text>
             {trackingLabel(record) ? <Text style={[styles.verification, trackingStatus(record) === 'MISMATCH' && styles.verificationDanger]}>{trackingLabel(record)}</Text> : <Text style={styles.verification}>CARRIER CONTEXT NONE</Text>}
+            {shippingTrackerLabel(record) ? <Text style={[styles.verification, record.shippingTracker?.hashMatched === false && styles.verificationDanger, record.shippingTracker?.lookupStatus === 'UNRECOGNIZED' && styles.verificationWarning]}>{shippingTrackerLabel(record)}</Text> : null}
             <Text style={styles.verificationWarning}>BUSINESS/LEGAL {formatRuntimeEnum(businessRelevance)}</Text>
           </View>
           <Text style={styles.evidenceMeta}>{formatDate(record.createdAt)} · {(record.sizeBytes / 1024 / 1024).toFixed(1)} MB</Text>

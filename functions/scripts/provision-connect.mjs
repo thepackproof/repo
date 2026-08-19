@@ -10,7 +10,7 @@ const valueAfter = (name) => valuesAfter(name)[0];
 const fail = (message) => { process.stderr.write(`${message}\n\nRun with --help for usage.\n`); process.exit(1); };
 
 if (args.includes('--help')) {
-  process.stdout.write(`PackProof Connect integration provisioner
+  process.stdout.write(`PackProof API integration provisioner
 
 Usage:
   npm --prefix functions run provision:connect -- \\

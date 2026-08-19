@@ -108,7 +108,7 @@ REQUESTED -> AUTHORIZED -> PACKED -> IN_TRANSIT -> RECEIVED_REVIEW -> COMPLETED
 
 Return evidence is linked by `returnPassportId`. A return record snapshots the SHA-256 values of existing finalized/legacy evidence for historical comparison. That snapshot documents digital records; it does not determine whether a physical item was swapped.
 
-## PackProof Connect
+## PackProof API
 
 ```text
 External order

@@ -236,4 +236,4 @@ assert.equal('Authorization' in buttonRequest.init.headers, false);
 assert.equal(JSON.parse(buttonRequest.init.body).source.externalOrderId, undefined);
 assert.equal(JSON.parse(buttonRequest.init.body).item.description, jsonLd.description);
 
-process.stdout.write('PackProof Connect SDK, browser extraction, and publishable-button request tests passed.\n');
+process.stdout.write('PackProof API SDK, browser extraction, and publishable-button request tests passed.\n');

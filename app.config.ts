@@ -67,6 +67,7 @@ const config: ExpoConfig = {
     permissions: [
       'android.permission.CAMERA',
       'android.permission.RECORD_AUDIO',
+      'android.permission.VIBRATE',
       'android.permission.POST_NOTIFICATIONS',
       'android.permission.ACCESS_FINE_LOCATION',
       'android.permission.ACCESS_COARSE_LOCATION',

@@ -32,7 +32,12 @@ import {
   parseEvidenceSessionId,
   parseListConnectSessions,
   parseListTransactions,
+  parsePassportId,
+  parsePassportReviewQuery,
+  parsePassportSnapshotId,
   parsePublishableKey,
+  parseCreatePassportExport,
+  parseCreatePassportSnapshot,
   parseRedeemEvidenceSession,
   parseReturnPassportId,
   parseTransactionId,
@@ -521,6 +526,76 @@ export function createApiV1App(dependencies: ApiAppDependencies): express.Expres
     res.status(200).json({ data: reviewPackage });
   }));
 
+  merchantRouter.get('/transactions/:transactionId/passport', asyncHandler(async (req, res) => {
+    res.locals.operation = 'getPassport';
+    const principal = res.locals.principal!;
+    await enforcePrincipalRateLimit(dependencies.rateLimiter, principal, ratePolicies.evidenceRead, res);
+    const passport = await dependencies.merchantEvidenceService.getPassport(
+      principal,
+      parseAccessibleTransactionId(req.params.transactionId),
+      parsePassportReviewQuery(req.query as Record<string, unknown>),
+    );
+    res.status(200).json({ data: passport });
+  }));
+
+  merchantRouter.post('/transactions/:transactionId/passport/snapshots', asyncHandler(async (req, res) => {
+    res.locals.operation = 'createPassportSnapshot';
+    requireJson(req);
+    const principal = res.locals.principal!;
+    await enforcePrincipalRateLimit(dependencies.rateLimiter, principal, ratePolicies.evidenceReportCreate, res);
+    parseCreatePassportSnapshot(req.body);
+    const result = await dependencies.merchantEvidenceService.createPassportSnapshot(
+      principal,
+      parseAccessibleTransactionId(req.params.transactionId),
+      parseIdempotencyKey(req.get('idempotency-key')),
+      res.locals.requestId,
+      parsePassportReviewQuery(req.query as Record<string, unknown>),
+    );
+    res.setHeader('Idempotent-Replayed', String(result.replayed));
+    res.status(result.replayed ? 200 : 201).json({ data: result.snapshot });
+  }));
+
+  merchantRouter.get('/passports/:passportId', asyncHandler(async (req, res) => {
+    res.locals.operation = 'getPassportById';
+    const principal = res.locals.principal!;
+    await enforcePrincipalRateLimit(dependencies.rateLimiter, principal, ratePolicies.evidenceRead, res);
+    const passport = await dependencies.merchantEvidenceService.getPassportByIdentity(
+      principal,
+      parsePassportId(req.params.passportId),
+      parsePassportReviewQuery(req.query as Record<string, unknown>),
+    );
+    res.status(200).json({ data: passport });
+  }));
+
+  merchantRouter.get('/passports/:passportId/snapshots/:snapshotId', asyncHandler(async (req, res) => {
+    res.locals.operation = 'getPassportSnapshot';
+    const principal = res.locals.principal!;
+    await enforcePrincipalRateLimit(dependencies.rateLimiter, principal, ratePolicies.evidenceRead, res);
+    const snapshot = await dependencies.merchantEvidenceService.getPassportSnapshot(
+      principal,
+      parsePassportId(req.params.passportId),
+      parsePassportSnapshotId(req.params.snapshotId),
+    );
+    res.status(200).json({ data: snapshot });
+  }));
+
+  merchantRouter.post('/passports/:passportId/snapshots/:snapshotId/exports', asyncHandler(async (req, res) => {
+    res.locals.operation = 'createPassportExport';
+    requireJson(req);
+    const principal = res.locals.principal!;
+    await enforcePrincipalRateLimit(dependencies.rateLimiter, principal, ratePolicies.evidenceReportCreate, res);
+    parseCreatePassportExport(req.body);
+    const result = await dependencies.merchantEvidenceService.createPassportExport(
+      principal,
+      parsePassportId(req.params.passportId),
+      parsePassportSnapshotId(req.params.snapshotId),
+      parseIdempotencyKey(req.get('idempotency-key')),
+      res.locals.requestId,
+    );
+    res.setHeader('Idempotent-Replayed', String(result.replayed));
+    res.status(result.replayed ? 200 : 201).json({ data: result.export });
+  }));
+
   merchantRouter.post('/transactions/:transactionId/reports', asyncHandler(async (req, res) => {
     res.locals.operation = 'createEvidenceReport';
     requireJson(req);
@@ -746,6 +821,21 @@ export function createApiV1App(dependencies: ApiAppDependencies): express.Expres
   });
   merchantRouter.all('/transactions/:transactionId/review-package', (req, _res, next) => {
     next(new ApiError(405, 'METHOD_NOT_ALLOWED', 'This HTTP method is not supported for the resource.', [], { Allow: 'GET' }));
+  });
+  merchantRouter.all('/transactions/:transactionId/passport', (req, _res, next) => {
+    next(new ApiError(405, 'METHOD_NOT_ALLOWED', 'This HTTP method is not supported for the resource.', [], { Allow: 'GET' }));
+  });
+  merchantRouter.all('/transactions/:transactionId/passport/snapshots', (req, _res, next) => {
+    next(new ApiError(405, 'METHOD_NOT_ALLOWED', 'This HTTP method is not supported for the resource.', [], { Allow: 'POST' }));
+  });
+  merchantRouter.all('/passports/:passportId', (req, _res, next) => {
+    next(new ApiError(405, 'METHOD_NOT_ALLOWED', 'This HTTP method is not supported for the resource.', [], { Allow: 'GET' }));
+  });
+  merchantRouter.all('/passports/:passportId/snapshots/:snapshotId', (req, _res, next) => {
+    next(new ApiError(405, 'METHOD_NOT_ALLOWED', 'This HTTP method is not supported for the resource.', [], { Allow: 'GET' }));
+  });
+  merchantRouter.all('/passports/:passportId/snapshots/:snapshotId/exports', (req, _res, next) => {
+    next(new ApiError(405, 'METHOD_NOT_ALLOWED', 'This HTTP method is not supported for the resource.', [], { Allow: 'POST' }));
   });
   merchantRouter.all('/transactions/:transactionId/reports', (req, _res, next) => {
     next(new ApiError(405, 'METHOD_NOT_ALLOWED', 'This HTTP method is not supported for the resource.', [], { Allow: 'POST' }));

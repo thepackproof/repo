@@ -54,6 +54,7 @@ test('Connect evidence callback is DIGITAL_EVIDENCE_READY only when every implem
   ]);
   assert.equal(payload.fileSha256, payload.sha256Hash);
   assert.equal(payload.manifestAuthentication.type, 'SERVICE_MAC');
+  assert.equal(payload.shippingTracker, null);
 });
 
 test('Connect evidence callback reports limitations and never omits the permanent reason codes', () => {
@@ -93,4 +94,25 @@ test('Enterprise Edge attestation is DIGITAL_EVIDENCE_WITH_LIMITATIONS', () => {
   assert.ok(payload.statusReasonCodes.includes('STRONGEST_APP_DEVICE_CONTEXT_NOT_AVAILABLE'));
   assert.equal(strongestAppDeviceContextStatuses.includes('ENTERPRISE_EDGE_CERTIFICATE'), false);
   assert.deepEqual(connectAcquisitionProfiles.ENTERPRISE_EDGE.strongestAttestation, ['ENTERPRISE_EDGE_CERTIFICATE']);
+});
+
+test('Connect evidence callback includes the open-source shipping tracker observation', () => {
+  const shippingTracker = {
+    lookupStatus: 'DATASET_VALIDATED',
+    courierCode: 'ups',
+    courierName: 'UPS',
+    publicTrackingUrl: 'https://wwwapps.ups.com/WebTracking/track?track=yes&trackNums=1Z999AA10123456784',
+    stillSha256: 'e'.repeat(64),
+    stillCaptureStatus: 'CAPTURED',
+    observationSha256: 'f'.repeat(64),
+    clientObservationSha256: 'f'.repeat(64),
+    hashMatched: true,
+    interpretation: 'OPEN_SOURCE_TRACKING_NUMBER_VALIDATION_NOT_CARRIER_CUSTODY',
+  };
+  const payload = buildConnectEvidenceFinalizedCallback({
+    ...readyInput,
+    shippingTracker,
+  });
+  assert.deepEqual(payload.shippingTracker, shippingTracker);
+  assert.equal(payload.evidenceStatus, 'DIGITAL_EVIDENCE_READY');
 });

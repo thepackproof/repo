@@ -3,6 +3,7 @@
 /* tslint:disable */
 /* eslint-disable */
 import type { AssuranceAssessment } from './AssuranceAssessment';
+import type { ShippingTrackerObservation } from './ShippingTrackerObservation';
 export type EvidenceArtifact = {
     id: string;
     object: any;
@@ -20,6 +21,10 @@ export type EvidenceArtifact = {
     workflowReady: boolean;
     assurance: (AssuranceAssessment | null);
     carrierTrackingMatchStatus: string | null;
+    /**
+     * Present when a shipping barcode was observed at capture. Null for artifacts without an open-source tracker observation.
+     */
+    shippingTracker?: (ShippingTrackerObservation | null);
     finalizedAt: string | null;
     createdAt: string;
     updatedAt: string;

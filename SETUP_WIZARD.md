@@ -246,4 +246,4 @@ Open `functions/.env` and verify `CONNECT_LINK_BASE_URL=https://YOUR_LINK_DOMAIN
 
 5. Run the offline queue and Return Passport cases in `docs/TEST_PLAN.md`. Because the Keystore key is local to the installation, uninstalling/clearing app data can make queued evidence unrecoverable. Android data backup is disabled so ciphertext is not restored without its key.
 
-6. Provision Connect integrations either from an admin account carrying custom claim `packproofAdmin: true` or with the authorized staging CLI documented in `docs/PACKPROOF_CONNECT.md`. Save the returned API key and webhook signing secret in the marketplace’s secret manager. Review the OpenAPI file and JavaScript SDK before exposing the endpoint.
+6. Provision Connect integrations either from an admin account carrying custom claim `packproofAdmin: true` or with the authorized staging CLI documented in `docs/PACKPROOF_API.md`. Save the returned API key and webhook signing secret in the marketplace’s secret manager. Review the OpenAPI file and JavaScript SDK before exposing the endpoint.

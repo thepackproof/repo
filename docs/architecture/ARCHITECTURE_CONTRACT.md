@@ -6,7 +6,7 @@ Status: accepted for controlled migration on 2026-08-11.
 
 PackProof will evolve incrementally from the current Android/Firebase implementation. Existing working behavior is preserved behind compatibility adapters until a replacement path has passed equivalent tests. A wholesale rewrite is not authorized by this contract.
 
-The target is one domain and application-service core serving mobile, REST, PackProof Connect, commerce adapters, background processing, reports and webhooks.
+The target is one domain and application-service core serving mobile, REST, PackProof API, commerce adapters, background processing, reports and webhooks.
 
 ## 2. Dependency direction
 
@@ -42,7 +42,7 @@ Persistence records and public DTOs are separate types. A Firestore document mus
 
 ## 4. Transport rule
 
-Firebase callable functions, REST routes, scheduled jobs, Storage/Firestore triggers, PackProof Connect and platform adapters are transports or infrastructure. They must invoke the same application services.
+Firebase callable functions, REST routes, scheduled jobs, Storage/Firestore triggers, PackProof API and platform adapters are transports or infrastructure. They must invoke the same application services.
 
 No new feature may implement one set of rules for mobile and a second set for merchants. Connect remains compatible while its behavior is migrated behind the versioned service layer.
 

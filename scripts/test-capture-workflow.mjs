@@ -11,7 +11,9 @@ import {
   shouldDeletePhysicalOriginalsAfterSeriesCommit,
   shouldDeletePhysicalSourceAfterEachEncrypt,
 } from '../src/lib/capture-workflow.ts';
-import { captureGuideFor, captureTitles, formatCaptureBytes, formatCaptureDuration, videoTypes } from '../src/lib/capture-guides.ts';
+import { captureGuideFor, captureChecklists, captureTitles, formatCaptureBytes, formatCaptureDuration, videoTypes } from '../src/lib/capture-guides.ts';
+import { canonicalShippingObservationV1, identifyTrackingNumber } from '../src/lib/shipping-tracker.ts';
+import { createHash } from 'node:crypto';
 import {
   canDiscardQueuedEvidence,
   isStaleQueueTempFileName,
@@ -52,8 +54,33 @@ assert.equal(captureForegroundInterruption(false).stopRecording, false);
 assert.equal(captureTitles.PACKING_VIDEO.includes('packing'), true);
 assert.equal(videoTypes.has('PACKING_VIDEO'), true);
 assert.match(captureGuideFor('PACKING_VIDEO', true).instruction, /PP mark/);
+assert.match(captureChecklists.PACKING_VIDEO.join(' '), /paid postage is not required/i);
+assert.match(captureChecklists.PACKING_VIDEO.join(' '), /Scanning the tracking barcode is optional/);
+assert.match(captureChecklists.RETURN_PACKING_VIDEO.join(' '), /paid postage is not required/i);
 assert.equal(formatCaptureDuration(75), '01:15');
 assert.equal(formatCaptureBytes(2048), '2 KB');
+
+const ups = identifyTrackingNumber('1Z 999 AA1 01 2345 6784', '1Z999AA10123456784');
+assert.equal(ups.identified, true);
+assert.equal(ups.checksumValid, true);
+assert.equal(ups.courierCode, 'ups');
+assert.equal(ups.lookupStatus, 'DATASET_VALIDATED');
+assert.match(ups.publicTrackingUrl ?? '', /ups\.com/);
+const usps = identifyTrackingNumber('9400111202555842332669', '9400111202555842332669');
+assert.equal(usps.courierCode, 'usps');
+assert.equal(identifyTrackingNumber('NOTAREALTRACKINGNUMBER123', 'NOTAREALTRACKINGNUMBER123').lookupStatus, 'UNRECOGNIZED');
+const canonical = canonicalShippingObservationV1({
+  trackingNumber: '1Z999AA10123456784',
+  rawDecodedValue: '1Z 999 AA1 01 2345 6784',
+  symbology: 'code128',
+  courierCode: 'ups',
+  trackerName: 'UPS',
+  checksumValid: true,
+  publicTrackingUrl: ups.publicTrackingUrl,
+  stillSha256: 'a'.repeat(64),
+});
+assert.match(canonical, /^PACKPROOF_SHIPPING_OBSERVATION_V1\n/);
+assert.equal(createHash('sha256').update(canonical, 'utf8').digest('hex').length, 64);
 
 assert.equal(isStaleQueueTempFileName('qe_abc.upload'), true);
 assert.equal(isStaleQueueTempFileName('qe_abc.read.json'), true);

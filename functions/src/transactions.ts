@@ -20,6 +20,7 @@ import {
   requireUid,
 } from './helpers';
 import { evidenceReadyForWorkflow, outboundPackingEvidenceTypes, outboundSealEvidenceTypes, SHIPMENT_PRECONDITION_MESSAGES, shipmentEvidenceDecision } from './package-seal-protocol';
+import { asShippingTrackerObservation, hashShippingObservation, identifyTrackingNumber, SHIPPING_OBSERVATION_INTERPRETATION, type ShippingTrackerObservation } from './shipping-tracker';
 import { inviteCodeSchema, reportSchema, shippingSchema, transactionDraftSchema, transactionIdSchema, uploadRequestSchema } from './validation';
 
 const callOptions = { enforceAppCheck: true } as const;
@@ -313,7 +314,7 @@ export const requestEvidenceUpload = onCall(uploadCallOptions, async (request) =
   }
 
   if (input.connectSessionId && data.source?.connectSessionId !== input.connectSessionId) {
-    throw new HttpsError('permission-denied', 'PackProof Connect session mismatch.');
+    throw new HttpsError('permission-denied', 'PackProof API session mismatch.');
   }
 
   const isPhysicalFrame = input.evidenceType === 'PHYSICAL_REFERENCE_FRAME' || input.evidenceType === 'PHYSICAL_VERIFICATION_FRAME';
@@ -429,6 +430,39 @@ export const requestEvidenceUpload = onCall(uploadCallOptions, async (request) =
   const expectedTrackingNumber = normalizeTracking(
     returnPassport?.shipping?.trackingNumber ?? data.shipping?.trackingNumber ?? data.source?.trackingNumber,
   );
+  const shippingLabel = input.manifest?.shippingLabel;
+  const trackerObservation: ShippingTrackerObservation | null = scannedTrackingNumber && shippingLabel
+    ? (() => {
+      const identification = identifyTrackingNumber(
+        typeof shippingLabel.rawDecodedValue === 'string' ? shippingLabel.rawDecodedValue : scannedTrackingNumber,
+        scannedTrackingNumber,
+      );
+      const stillSha256 = typeof shippingLabel.still?.sha256 === 'string' ? shippingLabel.still.sha256 : null;
+      const observationSha256 = hashShippingObservation({
+        trackingNumber: scannedTrackingNumber,
+        rawDecodedValue: typeof shippingLabel.rawDecodedValue === 'string' ? shippingLabel.rawDecodedValue : scannedTrackingNumber,
+        symbology: typeof shippingLabel.symbology === 'string' ? shippingLabel.symbology : '',
+        courierCode: identification.courierCode,
+        trackerName: identification.trackerName,
+        checksumValid: identification.checksumValid,
+        publicTrackingUrl: identification.publicTrackingUrl,
+        stillSha256,
+      });
+      const clientObservationSha256 = typeof shippingLabel.tracker?.sha256 === 'string' ? shippingLabel.tracker.sha256 : null;
+      return asShippingTrackerObservation({
+        lookupStatus: identification.lookupStatus,
+        courierCode: identification.courierCode,
+        courierName: identification.courierName,
+        publicTrackingUrl: identification.publicTrackingUrl,
+        stillSha256,
+        stillCaptureStatus: shippingLabel.still?.captureStatus ?? null,
+        observationSha256,
+        clientObservationSha256,
+        hashMatched: clientObservationSha256 ? clientObservationSha256 === observationSha256 : null,
+        interpretation: SHIPPING_OBSERVATION_INTERPRETATION,
+      });
+    })()
+    : null;
   const carrierContext = {
     scannedTrackingNumber,
     expectedTrackingNumber,
@@ -436,6 +470,7 @@ export const requestEvidenceUpload = onCall(uploadCallOptions, async (request) =
     declaredWeightGrams: data.source?.declaredWeightGrams ?? null,
     source: returnPassport?.shipping ? 'RETURN_SHIPPING' : data.shipping ? 'TRANSACTION_SHIPPING' : data.source?.trackingNumber ? 'PACKPROOF_CONNECT' : 'NONE',
     matchStatus: !scannedTrackingNumber ? 'NOT_SCANNED' : !expectedTrackingNumber ? 'NO_EXPECTED_TRACKING' : scannedTrackingNumber === expectedTrackingNumber ? 'MATCHED' : 'MISMATCH',
+    tracker: trackerObservation,
   };
   const ingressSubnet = privacySubnet(request.rawRequest.ip);
   const ingressNetwork = {
