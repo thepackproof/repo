@@ -107,7 +107,7 @@ export function getTimeline(id: string) {
 }
 
 export function getPassport(id: string) {
-  return portalFetch<{ data: Record<string, unknown> }>(`/v1/portal/transactions/${encodeURIComponent(id)}/passport`);
+  return portalFetch<{ data: Record<string, unknown> }>(`/v1/portal/transactions/${encodeURIComponent(id)}/proof`);
 }
 
 export function getSession() {

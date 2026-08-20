@@ -67,7 +67,7 @@ function passportTransactionInput(transaction) {
     };
 }
 function passportNotReady(failures) {
-    return new errors_1.ApplicationError('FAILED_PRECONDITION', 'PASSPORT_NOT_READY', 'This transaction does not yet qualify for a PackProof Passport.', failures.map((failure) => ({ field: 'eligibility', code: failure.code, message: failure.message })));
+    return new errors_1.ApplicationError('FAILED_PRECONDITION', 'PASSPORT_NOT_READY', 'This transaction does not yet qualify for a Proof.', failures.map((failure) => ({ field: 'eligibility', code: failure.code, message: failure.message })));
 }
 function projectPassport(input) {
     return (0, passport_1.aggregatePassport)({

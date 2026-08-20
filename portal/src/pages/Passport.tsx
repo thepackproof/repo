@@ -30,15 +30,15 @@ export function PassportPage() {
     let cancelled = false;
     void getPassport(id)
       .then((result) => { if (!cancelled) setPassport(result.data as PassportView); })
-      .catch((caught: unknown) => { if (!cancelled) setError(caught instanceof Error ? caught.message : 'Passport is not available yet.'); });
+      .catch((caught: unknown) => { if (!cancelled) setError(caught instanceof Error ? caught.message : 'Proof is not available yet.'); });
     return () => { cancelled = true; };
   }, [id]);
 
   return (
     <>
-      <p className="eyebrow">PackProof Passport™</p>
-      <h1>{passport?.identity?.displayId ?? 'Passport'}</h1>
-      <p className="lede">This screen renders canonical Passport JSON. It does not assemble a Passport in the browser.</p>
+      <p className="eyebrow">Proof</p>
+      <h1>{passport?.identity?.displayId ?? 'Proof'}</h1>
+      <p className="lede">This screen renders canonical Proof JSON. It does not assemble a Proof in the browser.</p>
       {error ? <article className="card"><h2>Not available yet</h2><p>{error}</p></article> : null}
       {passport ? (
         <div className="stack">

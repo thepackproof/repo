@@ -7,7 +7,7 @@ import type { PassportFact } from './PassportFact';
 import type { PassportInventoryEntry } from './PassportInventoryEntry';
 import type { PassportProvenanceClass } from './PassportProvenanceClass';
 /**
- * Canonical PackProof Passport. Web/API JSON is the Passport. PDF is a presentation export of a frozen snapshot. It does not authenticate items, prove custody, decide fraud or fault, or guarantee a dispute outcome.
+ * Canonical Proof (Passport projection). Web/API JSON is the Proof. PDF is a presentation export of a frozen snapshot. It does not authenticate items, prove custody, decide fraud or fault, or guarantee a dispute outcome.
  */
 export type PackProofPassport = {
     object: any;

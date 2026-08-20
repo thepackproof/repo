@@ -27,7 +27,7 @@ export function SettingsPage() {
       </article>
       <article className="card">
         <h2>This browser is not a capture device</h2>
-        <p>The portal reviews PackProofs, Passports, and activity. Evidence acquisition stays on the native PackProof client in this release.</p>
+        <p>The portal reviews PackProofs, Proofs, and activity. Evidence acquisition stays on the native PackProof client in this release.</p>
       </article>
     </>
   );

@@ -18,3 +18,4 @@ Architecture decisions are immutable records. If a decision changes, add a new A
 | [0012](0012-packproof-enterprise-acquisition-surface.md) | PackProof Enterprise is another acquisition surface, not a second evidence system | Accepted |
 | [0013](0013-transaction-intake-layer.md) | Consumer transaction intake is adapters over `commerce_context`, with user-provided trust and capture freeze | Accepted |
 | [0014](0014-web-portal-presentation-surface.md) | Web portal is a browser presentation surface over the canonical core; merchant API keys stay out of the browser | Accepted |
+| [0015](0015-proof-is-the-passport.md) | Proof is the product name for the existing Passport projection; PackProof does not adjudicate | Accepted |

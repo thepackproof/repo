@@ -202,6 +202,7 @@ assert.equal(complete.humanState, 'COMPLETE');
 assert.equal(complete.headline, 'PackProof complete');
 assert.equal(complete.consumerState, 'complete');
 assert.equal(complete.primaryAction?.kind, 'OPEN_PASSPORT');
+assert.equal(complete.primaryAction?.label, 'View Proof');
 assert.equal(complete.inboxBucket, 'COMPLETED');
 assert.equal(complete.progressSteps.every((step) => step.state === 'done'), true);
 assert.match(complete.instruction, /finished record/i);

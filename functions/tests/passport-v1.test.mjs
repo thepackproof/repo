@@ -205,7 +205,7 @@ test('aggregator projects honest 1.0 gaps and authentic integrity', () => {
   assert.equal(aggregated.evidenceInventory.find((item) => item.category === 'PACKING_CAPTURE').state, 'AVAILABLE');
   assert.equal(aggregated.receiver, null);
   assert.deepEqual(aggregated.returns, []);
-  assert.equal(aggregated.identity.verificationUrl.endsWith(`/passport/${aggregated.identity.displayId}`), true);
+  assert.equal(aggregated.identity.verificationUrl.endsWith(`/proof/${aggregated.identity.displayId}`), true);
   assert.equal(JSON.stringify(aggregated).includes('"MATCH"'), false);
   assert.equal(aggregated.integrity.banner.includes('ITEM'), false);
 });

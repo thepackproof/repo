@@ -80,7 +80,7 @@ function createPortalRouter(dependencies) {
         const evidence = await dependencies.workspace.listEvidence(principal, (0, validation_1.parseAccessibleTransactionId)(req.params.transactionId));
         res.status(200).json({ data: evidence });
     }));
-    router.get('/transactions/:transactionId/passport', asyncHandler(async (req, res) => {
+    router.get(['/transactions/:transactionId/passport', '/transactions/:transactionId/proof'], asyncHandler(async (req, res) => {
         res.locals.operation = 'getPortalPassport';
         const principal = res.locals.portalPrincipal;
         await enforceRateLimitForKey(dependencies.rateLimiter, `portal:${principal.actorId}`, ratePolicies.read, res);

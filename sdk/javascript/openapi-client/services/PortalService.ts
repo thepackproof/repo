@@ -153,9 +153,9 @@ export class PortalService {
         });
     }
     /**
-     * Canonical JSON Passport
-     * Returns PackProofPassportV1. The portal renders this JSON; it does not assemble a Passport in the browser.
-     * @returns PassportResponse The live PackProof Passport aggregation. It does not authenticate items, prove custody, decide fraud or fault, or guarantee a dispute outcome.
+     * Canonical JSON Proof
+     * Returns PackProofPassportV1, the live Proof projection. Passport is the deprecated product name for the same object. The portal renders this JSON; it does not assemble a Proof in the browser.
+     * @returns PassportResponse The live Proof aggregation. It does not authenticate items, prove custody, decide fraud or fault, or guarantee a dispute outcome.
      * @throws ApiError
      */
     public getPortalPassport({
@@ -169,6 +169,35 @@ export class PortalService {
         return this.httpRequest.request({
             method: 'GET',
             url: '/v1/portal/transactions/{transactionId}/passport',
+            path: {
+                'transactionId': transactionId,
+            },
+            errors: {
+                401: `Missing or invalid authentication.`,
+                404: `The resource was not found in the authenticated organization.`,
+                409: `The request conflicts with idempotency or resource state.`,
+                429: `The operation rate limit was exceeded.`,
+                500: `An internal failure occurred without exposing implementation details.`,
+            },
+        });
+    }
+    /**
+     * Canonical JSON Proof
+     * Alias of GET /v1/portal/transactions/{transactionId}/passport. Returns the live Proof projection.
+     * @returns PassportResponse The live Proof aggregation. It does not authenticate items, prove custody, decide fraud or fault, or guarantee a dispute outcome.
+     * @throws ApiError
+     */
+    public getPortalProof({
+        transactionId,
+    }: {
+        /**
+         * A merchant transaction identifier or an accepted Connect-origin transaction identifier. Possession of the identifier does not grant access.
+         */
+        transactionId: string,
+    }): CancelablePromise<PassportResponse> {
+        return this.httpRequest.request({
+            method: 'GET',
+            url: '/v1/portal/transactions/{transactionId}/proof',
             path: {
                 'transactionId': transactionId,
             },

@@ -42,9 +42,9 @@ export function LibraryPage() {
           <h1 style={{ marginTop: 36, fontSize: 22 }}>Completed</h1>
           <section className="stack">
             {grouped.completed.map((item) => (
-              <Link key={item.id} className="card" to={`/packproofs/${item.id}/passport`} style={{ textDecoration: 'none', color: 'inherit' }}>
+              <Link key={item.id} className="card" to={`/packproofs/${item.id}/proof`} style={{ textDecoration: 'none', color: 'inherit' }}>
                 <h2>{item.title}</h2>
-                <p className="meta">View Passport</p>
+                <p className="meta">View Proof</p>
               </Link>
             ))}
           </section>

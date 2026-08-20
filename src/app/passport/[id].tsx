@@ -57,11 +57,11 @@ export default function PackProofPassportScreen() {
     <ScrollView contentContainerStyle={styles.container}>
       <Button label="Back" variant="ghost" onPress={() => router.back()} />
       {error ? <Card style={styles.card}>
-        <ScreenTitle eyebrow="PackProof Passport™" title="Not available yet" subtitle={error} />
-        <Text style={styles.body}>A live Passport is issued only after a bound transaction has a server-finalized evidence artifact with file and manifest hashes. Missing inventory never makes a Passport inauthentic.</Text>
+        <ScreenTitle eyebrow="Proof" title="Not available yet" subtitle={error} />
+        <Text style={styles.body}>A live Proof is issued only after a bound transaction has a server-finalized evidence artifact with file and manifest hashes. Missing inventory never makes a Proof inauthentic.</Text>
       </Card> : null}
       {passport ? <>
-        <ScreenTitle eyebrow="PackProof Passport" title="Your PackProof Passport is ready" subtitle={passport.identity.displayId} />
+        <ScreenTitle eyebrow="Proof" title="Your Proof is ready" subtitle={passport.identity.displayId} />
         <Card style={styles.banner}>
           <Text style={styles.bannerTitle}>{passport.integrity.banner.replaceAll('_', ' ')}</Text>
           <Text style={styles.bannerSummary}>{passport.integrity.summary}</Text>

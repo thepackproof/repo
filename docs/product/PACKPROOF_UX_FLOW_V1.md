@@ -1,6 +1,6 @@
 # PackProof consumer UX
 
-Presentation-layer contract. **Do not change** evidence, authorization, state-transition, hashing, Passport, or API semantics to implement this.
+Presentation-layer contract. **Do not change** evidence, authorization, state-transition, hashing, Proof projection, or API semantics to implement this.
 
 ## Goal
 
@@ -39,7 +39,20 @@ Identity, step, instruction, one CTA, completed context, then quiet **View detai
 
 Details hold transaction, activity, evidence, optional extras, research (flagged), and export.
 
-Completed PackProofs lead with **View Passport**. Information is useful after the operational job is gone.
+Completed PackProofs lead with **View Proof**. Information is useful after the operational job is gone.
+
+## Proof vocabulary
+
+The artifact is a **Proof** (the Passport projection). The library tab stays **PackProofs**.
+
+| Avoid | Prefer |
+|---|---|
+| View Passport | View Proof |
+| PackProof Passport is ready | Proof Ready |
+| Evidence missing | Proof Incomplete |
+| Verified / Approved / Legitimate as status | Completeness vs the recorded facts |
+
+**Time-to-Proof:** from “Where’s the Proof?” to the live Proof in one primary interaction.
 
 ## Creation
 
@@ -60,7 +73,7 @@ EVIDENCE ACQUISITION
         ↓
 INTEGRITY / MANIFEST / AUDIT
         ↓
-PACKPROOF PASSPORT
+PACKPROOF PROOF
 ```
 
 UX simplification must never mean evidentiary simplification.

@@ -27,7 +27,11 @@ test('OpenAPI v1 contract is parseable, versioned, and operation-complete', asyn
     '/v1/portal/transactions/{transactionId}/evidence',
     '/v1/portal/transactions/{transactionId}/mobile-handoff',
     '/v1/portal/transactions/{transactionId}/passport',
+    '/v1/portal/transactions/{transactionId}/proof',
     '/v1/portal/transactions/{transactionId}/timeline',
+    '/v1/proofs/{proofId}',
+    '/v1/proofs/{proofId}/snapshots/{snapshotId}',
+    '/v1/proofs/{proofId}/snapshots/{snapshotId}/exports',
     '/v1/public/integrations/{publishableKey}/handoffs',
     '/v1/ready',
     '/v1/transactions',
@@ -39,6 +43,8 @@ test('OpenAPI v1 contract is parseable, versioned, and operation-complete', asyn
     '/v1/transactions/{transactionId}/participant-invitations',
     '/v1/transactions/{transactionId}/passport',
     '/v1/transactions/{transactionId}/passport/snapshots',
+    '/v1/transactions/{transactionId}/proof',
+    '/v1/transactions/{transactionId}/proof/snapshots',
     '/v1/transactions/{transactionId}/reports',
     '/v1/transactions/{transactionId}/reports/{reportId}',
     '/v1/transactions/{transactionId}/returns',
@@ -72,6 +78,8 @@ test('OpenAPI v1 contract is parseable, versioned, and operation-complete', asyn
     'createPassportExport',
     'createPassportSnapshot',
     'createPortalMobileHandoff',
+    'createProofExport',
+    'createProofSnapshot',
     'createPublicCommerceHandoff',
     'createReturnPassport',
     'createTransaction',
@@ -86,9 +94,13 @@ test('OpenAPI v1 contract is parseable, versioned, and operation-complete', asyn
     'getPassportSnapshot',
     'getPortalHome',
     'getPortalPassport',
+    'getPortalProof',
     'getPortalSession',
     'getPortalTimeline',
     'getPortalTransaction',
+    'getProof',
+    'getProofById',
+    'getProofSnapshot',
     'getReadiness',
     'getReturn',
     'getReviewPackage',
@@ -175,6 +187,7 @@ test('OpenAPI mutation and protected operations declare security controls', asyn
   assert.equal(contract.components.schemas.PackProofPassportExport.properties.presentationOnly.const, true);
   assert.equal(contract.components.schemas.PassportComparison.properties.result.enum.includes('MATCH'), false);
   assert.deepEqual(contract.paths['/v1/transactions/{transactionId}/passport'].get.security, [{ merchantApiKey: [] }]);
+  assert.deepEqual(contract.paths['/v1/transactions/{transactionId}/proof'].get.security, [{ merchantApiKey: [] }]);
   assert.equal(contract.components.schemas.EvidenceArtifact.properties.shippingTracker.oneOf[0].$ref, '#/components/schemas/ShippingTrackerObservation');
   assert.equal(contract.components.schemas.EvidenceFinalizedCallback.properties.shippingTracker.oneOf[0].$ref, '#/components/schemas/ShippingTrackerObservation');
   assert.equal(contract.components.schemas.EvidenceArtifact.required.includes('shippingTracker'), false);

@@ -540,7 +540,7 @@ export function createApiV1App(dependencies: ApiAppDependencies): express.Expres
     res.status(200).json({ data: reviewPackage });
   }));
 
-  merchantRouter.get('/transactions/:transactionId/passport', asyncHandler(async (req, res) => {
+  merchantRouter.get(['/transactions/:transactionId/passport', '/transactions/:transactionId/proof'], asyncHandler(async (req, res) => {
     res.locals.operation = 'getPassport';
     const principal = res.locals.principal!;
     await enforcePrincipalRateLimit(dependencies.rateLimiter, principal, ratePolicies.evidenceRead, res);
@@ -552,7 +552,7 @@ export function createApiV1App(dependencies: ApiAppDependencies): express.Expres
     res.status(200).json({ data: passport });
   }));
 
-  merchantRouter.post('/transactions/:transactionId/passport/snapshots', asyncHandler(async (req, res) => {
+  merchantRouter.post(['/transactions/:transactionId/passport/snapshots', '/transactions/:transactionId/proof/snapshots'], asyncHandler(async (req, res) => {
     res.locals.operation = 'createPassportSnapshot';
     requireJson(req);
     const principal = res.locals.principal!;
@@ -569,7 +569,7 @@ export function createApiV1App(dependencies: ApiAppDependencies): express.Expres
     res.status(result.replayed ? 200 : 201).json({ data: result.snapshot });
   }));
 
-  merchantRouter.get('/passports/:passportId', asyncHandler(async (req, res) => {
+  merchantRouter.get(['/passports/:passportId', '/proofs/:passportId'], asyncHandler(async (req, res) => {
     res.locals.operation = 'getPassportById';
     const principal = res.locals.principal!;
     await enforcePrincipalRateLimit(dependencies.rateLimiter, principal, ratePolicies.evidenceRead, res);
@@ -581,7 +581,7 @@ export function createApiV1App(dependencies: ApiAppDependencies): express.Expres
     res.status(200).json({ data: passport });
   }));
 
-  merchantRouter.get('/passports/:passportId/snapshots/:snapshotId', asyncHandler(async (req, res) => {
+  merchantRouter.get(['/passports/:passportId/snapshots/:snapshotId', '/proofs/:passportId/snapshots/:snapshotId'], asyncHandler(async (req, res) => {
     res.locals.operation = 'getPassportSnapshot';
     const principal = res.locals.principal!;
     await enforcePrincipalRateLimit(dependencies.rateLimiter, principal, ratePolicies.evidenceRead, res);
@@ -593,7 +593,7 @@ export function createApiV1App(dependencies: ApiAppDependencies): express.Expres
     res.status(200).json({ data: snapshot });
   }));
 
-  merchantRouter.post('/passports/:passportId/snapshots/:snapshotId/exports', asyncHandler(async (req, res) => {
+  merchantRouter.post(['/passports/:passportId/snapshots/:snapshotId/exports', '/proofs/:passportId/snapshots/:snapshotId/exports'], asyncHandler(async (req, res) => {
     res.locals.operation = 'createPassportExport';
     requireJson(req);
     const principal = res.locals.principal!;
@@ -836,19 +836,19 @@ export function createApiV1App(dependencies: ApiAppDependencies): express.Expres
   merchantRouter.all('/transactions/:transactionId/review-package', (req, _res, next) => {
     next(new ApiError(405, 'METHOD_NOT_ALLOWED', 'This HTTP method is not supported for the resource.', [], { Allow: 'GET' }));
   });
-  merchantRouter.all('/transactions/:transactionId/passport', (req, _res, next) => {
+  merchantRouter.all(['/transactions/:transactionId/passport', '/transactions/:transactionId/proof'], (req, _res, next) => {
     next(new ApiError(405, 'METHOD_NOT_ALLOWED', 'This HTTP method is not supported for the resource.', [], { Allow: 'GET' }));
   });
-  merchantRouter.all('/transactions/:transactionId/passport/snapshots', (req, _res, next) => {
+  merchantRouter.all(['/transactions/:transactionId/passport/snapshots', '/transactions/:transactionId/proof/snapshots'], (req, _res, next) => {
     next(new ApiError(405, 'METHOD_NOT_ALLOWED', 'This HTTP method is not supported for the resource.', [], { Allow: 'POST' }));
   });
-  merchantRouter.all('/passports/:passportId', (req, _res, next) => {
+  merchantRouter.all(['/passports/:passportId', '/proofs/:passportId'], (req, _res, next) => {
     next(new ApiError(405, 'METHOD_NOT_ALLOWED', 'This HTTP method is not supported for the resource.', [], { Allow: 'GET' }));
   });
-  merchantRouter.all('/passports/:passportId/snapshots/:snapshotId', (req, _res, next) => {
+  merchantRouter.all(['/passports/:passportId/snapshots/:snapshotId', '/proofs/:passportId/snapshots/:snapshotId'], (req, _res, next) => {
     next(new ApiError(405, 'METHOD_NOT_ALLOWED', 'This HTTP method is not supported for the resource.', [], { Allow: 'GET' }));
   });
-  merchantRouter.all('/passports/:passportId/snapshots/:snapshotId/exports', (req, _res, next) => {
+  merchantRouter.all(['/passports/:passportId/snapshots/:snapshotId/exports', '/proofs/:passportId/snapshots/:snapshotId/exports'], (req, _res, next) => {
     next(new ApiError(405, 'METHOD_NOT_ALLOWED', 'This HTTP method is not supported for the resource.', [], { Allow: 'POST' }));
   });
   merchantRouter.all('/transactions/:transactionId/reports', (req, _res, next) => {

@@ -6,7 +6,7 @@ Governing decision: [ADR 0014](../adr/0014-web-portal-presentation-surface.md).
 
 ## Boundary
 
-The portal is a browser presentation surface over the existing PackProof core. Commands such as retrieve Passport, list the actor's transactions, or start native capture reach the same application services used by other transports.
+The portal is a browser presentation surface over the existing PackProof core. Commands such as retrieve Proof, list the actor's transactions, or start native capture reach the same application services used by other transports.
 
 ```text
 PORTAL COMPONENT
@@ -26,7 +26,7 @@ Forbidden: React → Firestore; React → Storage object path; React → duplica
 | `portal/` React 19 + Vite SPA | Source present; independent `npm --prefix portal run build` |
 | Firebase Hosting target `portal` | Configured in `firebase.json`; site/DNS apply is operational |
 | `PortalPrincipal` + `/v1/portal/**` | Application + HTTP tests |
-| Home / PackProofs / transaction workspace / Passport JSON renderer / native handoff | Slice A–C source |
+| Home / PackProofs / transaction workspace / Proof JSON renderer / native handoff | Slice A–C source |
 | Browser evidence acquisition | Not authorized |
 | Organization membership persistence / merchant workspace | Catalogued only; Slice G |
 | Reviewer/claims and Enterprise portal modules | Later slices |
@@ -66,7 +66,7 @@ See `.firebaserc.example`.
 
 The portal sends a Firebase ID token and App Check token. The server resolves `PORTAL_USER` / `WEB_PORTAL`, checks account status, then authorizes each resource. Functions emulator skips App Check cryptographic verification but still requires the header so clients stay honest about the production shape.
 
-A transaction ID, Passport URL, email, marketplace username, or organization ID does not grant access.
+A transaction ID, Proof URL, email, marketplace username, or organization ID does not grant access.
 
 ## First vertical slice
 
@@ -75,7 +75,7 @@ app.thepackproof.com
   -> sign in
   -> Home (What needs you?)
   -> PackProofs
-  -> Transaction workspace (Activity / Evidence metadata / Passport JSON)
+  -> Transaction workspace (Activity / Evidence metadata / Proof JSON)
   -> Continue on phone (QR + App Link)
 ```
 

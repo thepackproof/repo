@@ -1,20 +1,20 @@
 # PackProof Web Portal
 
-Authenticated browser presentation surface over the canonical PackProof core. It is not a second backend, transaction system, Passport implementation, or an Expo-web port of the native evidence engine.
+Authenticated browser presentation surface over the canonical PackProof core. It is not a second backend, transaction system, Proof implementation, or an Expo-web port of the native evidence engine.
 
 Governing decision: [ADR 0014](../docs/adr/0014-web-portal-presentation-surface.md). Product boundary: [WEB_PORTAL_V1](../docs/architecture/WEB_PORTAL_V1.md).
 
 ## What this package may do
 
 - Sign in with Firebase Authentication and App Check
-- Read Home, PackProofs, transaction workspace, timeline, evidence metadata, and Passport JSON through `/v1/portal`
+- Read Home, PackProofs, transaction workspace, timeline, evidence metadata, and Proof JSON through `/v1/portal`
 - Hand packing/unboxing capture to the native app (QR / App Link / `packproof://`)
 
 ## What this package must not do
 
 - Call Firestore or Cloud Storage from the browser
 - Embed merchant API keys or other server secrets
-- Assemble a Passport in JavaScript
+- Assemble a Proof in JavaScript
 - Treat a webcam or file upload as native PackProof capture
 - Reinterpret transaction lifecycle independently of `shared/ux`
 

@@ -35,13 +35,13 @@ export function WorkspacePage() {
       <p className="lede">{next.headline} {next.instruction}</p>
       <div className="row">
         {captureOnPhone ? <Link className="btn" to={`/packproofs/${item.id}/handoff`}>Continue on phone</Link> : null}
-        {next.passportReady ? <Link className="btn secondary" to={`/packproofs/${item.id}/passport`}>View Passport</Link> : null}
+        {next.passportReady ? <Link className="btn secondary" to={`/packproofs/${item.id}/proof`}>View Proof</Link> : null}
       </div>
       <nav className="tabs" aria-label="Workspace">
         <NavLink to={`/packproofs/${item.id}`} end>Overview</NavLink>
         <NavLink to={`/packproofs/${item.id}/activity`}>Activity</NavLink>
         <NavLink to={`/packproofs/${item.id}/evidence`}>Evidence</NavLink>
-        <NavLink to={`/packproofs/${item.id}/passport`}>Passport</NavLink>
+        <NavLink to={`/packproofs/${item.id}/proof`}>Proof</NavLink>
       </nav>
       <Outlet context={{ item, viewerId: user.uid }} />
     </>

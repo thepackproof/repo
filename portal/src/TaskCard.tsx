@@ -18,7 +18,7 @@ export function TaskCard({ item, viewerId }: { item: PortalTransaction; viewerId
       <p>{next.headline}</p>
       <div className="row" style={{ marginTop: 12 }}>
         {captureOnPhone ? <Link className="btn" to={`/packproofs/${item.id}/handoff`}>Continue on phone</Link> : null}
-        {next.passportReady ? <Link className="btn secondary" to={`/packproofs/${item.id}/passport`}>View Passport</Link> : null}
+        {next.passportReady ? <Link className="btn secondary" to={`/packproofs/${item.id}/proof`}>View Proof</Link> : null}
         <Link className="btn ghost" to={`/packproofs/${item.id}`}>Open</Link>
       </div>
     </article>

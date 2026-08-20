@@ -304,7 +304,7 @@ class FakeMerchantEvidenceService {
   passportFor(transactionId) {
     const artifacts = this.artifacts.get(transactionId) ?? [];
     if (!artifacts.some((item) => item.status === 'FINALIZED' && item.sha256 && item.manifestSha256)) {
-      throw new ApiError(409, 'PASSPORT_NOT_READY', 'This transaction does not yet qualify for a PackProof Passport.');
+      throw new ApiError(409, 'PASSPORT_NOT_READY', 'This transaction does not yet qualify for a Proof.');
     }
     const passportId = `ppt_${'a'.repeat(40)}`;
     const displayId = 'PP-AAAA-AAAA-AAAA';
@@ -316,7 +316,7 @@ class FakeMerchantEvidenceService {
         passportId, displayId, schemaVersion: 1, rendererCompatibility: 'PASSPORT_WEB_V1',
         transactionId, state: 'CURRENT', issuedAt: '2026-08-11T12:00:00.000Z', sourceUpdatedAt: '2026-08-11T12:00:00.000Z',
         merchantPlatform: 'CUSTOM', externalOrderId: 'order-1',
-        verificationUrl: `https://packproof.example/passport/${displayId}`, qrPayload: `https://packproof.example/passport/${displayId}`,
+        verificationUrl: `https://packproof.example/proof/${displayId}`, qrPayload: `https://packproof.example/proof/${displayId}`,
       },
       integrity: {
         banner: 'AUTHENTIC_PACKPROOF', summary: 'PackProof record integrity verified',
@@ -1049,6 +1049,12 @@ describe('PackProof API v1 headless Connect and claims-review routes', () => {
     const byDisplay = await jsonRequest(`/v1/passports/${passport.body.data.identity.displayId}`, { headers: { authorization: 'Bearer evidence-a' } });
     assert.equal(byDisplay.response.status, 200);
     assert.equal(byDisplay.body.data.identity.passportId, passport.body.data.identity.passportId);
+    const byProof = await jsonRequest(`/v1/proofs/${passport.body.data.identity.displayId}`, { headers: { authorization: 'Bearer evidence-a' } });
+    assert.equal(byProof.response.status, 200);
+    assert.equal(byProof.body.data.identity.passportId, passport.body.data.identity.passportId);
+    const proofAlias = await jsonRequest(`/v1/transactions/${transactionId}/proof`, { headers: { authorization: 'Bearer evidence-a' } });
+    assert.equal(proofAlias.response.status, 200);
+    assert.equal(proofAlias.body.data.identity.passportId, passport.body.data.identity.passportId);
     const snapshot = await jsonRequest(`/v1/transactions/${transactionId}/passport/snapshots`, {
       method: 'POST',
       headers: { authorization: 'Bearer evidence-a', 'content-type': 'application/json', 'idempotency-key': 'passport-snap-1' },
