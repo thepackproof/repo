@@ -20,6 +20,14 @@ test('OpenAPI v1 contract is parseable, versioned, and operation-complete', asyn
     '/v1/passports/{passportId}',
     '/v1/passports/{passportId}/snapshots/{snapshotId}',
     '/v1/passports/{passportId}/snapshots/{snapshotId}/exports',
+    '/v1/portal/home',
+    '/v1/portal/session',
+    '/v1/portal/transactions',
+    '/v1/portal/transactions/{transactionId}',
+    '/v1/portal/transactions/{transactionId}/evidence',
+    '/v1/portal/transactions/{transactionId}/mobile-handoff',
+    '/v1/portal/transactions/{transactionId}/passport',
+    '/v1/portal/transactions/{transactionId}/timeline',
     '/v1/public/integrations/{publishableKey}/handoffs',
     '/v1/ready',
     '/v1/transactions',
@@ -63,6 +71,7 @@ test('OpenAPI v1 contract is parseable, versioned, and operation-complete', asyn
     'createParticipantInvitation',
     'createPassportExport',
     'createPassportSnapshot',
+    'createPortalMobileHandoff',
     'createPublicCommerceHandoff',
     'createReturnPassport',
     'createTransaction',
@@ -75,6 +84,11 @@ test('OpenAPI v1 contract is parseable, versioned, and operation-complete', asyn
     'getPassport',
     'getPassportById',
     'getPassportSnapshot',
+    'getPortalHome',
+    'getPortalPassport',
+    'getPortalSession',
+    'getPortalTimeline',
+    'getPortalTransaction',
     'getReadiness',
     'getReturn',
     'getReviewPackage',
@@ -83,6 +97,8 @@ test('OpenAPI v1 contract is parseable, versioned, and operation-complete', asyn
     'getTransaction',
     'listConnectSessions',
     'listEvidence',
+    'listPortalEvidence',
+    'listPortalTransactions',
     'listReturns',
     'listTransactions',
     'redeemEvidenceSession',
@@ -127,6 +143,11 @@ test('OpenAPI mutation and protected operations declare security controls', asyn
   const participantSecurity = [{ firebaseUserBearer: [], firebaseAppCheck: [] }];
   assert.deepEqual(contract.paths['/v1/participant-claims'].post.security, participantSecurity);
   assert.deepEqual(contract.paths['/v1/evidence-sessions/{evidenceSessionId}/redeem'].post.security, participantSecurity);
+  assert.deepEqual(contract.paths['/v1/portal/home'].get.security, participantSecurity);
+  assert.deepEqual(contract.paths['/v1/portal/transactions/{transactionId}/mobile-handoff'].post.security, participantSecurity);
+  assert.equal(contract.components.schemas.CreatePortalMobileHandoffRequest.additionalProperties, false);
+  assert.equal(contract.components.schemas.PortalTransaction.additionalProperties, false);
+  assert.equal(contract.components.schemas.PortalMobileHandoffResponse.properties.data.properties.captureOnNativeOnly.const, true);
   assert.equal(contract.components.securitySchemes.firebaseAppCheck.name, 'X-Firebase-AppCheck');
   assert.equal(contract.components.schemas.CreateParticipantInvitationRequest.additionalProperties, false);
   assert.equal(contract.components.schemas.ClaimParticipantRequest.additionalProperties, false);

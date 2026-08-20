@@ -12,6 +12,7 @@ const {
   MerchantTransactionApplicationService,
   ParticipantCaptureApplicationService,
   PublicCommerceHandoffApplicationService,
+  PortalWorkspaceApplicationService,
   TransactionIntakeApplicationService,
   canonicalize,
   passThroughIdempotencyFence,
@@ -887,6 +888,93 @@ test('consumer intake normalizes share and email artifacts into pending commerce
   await assert.rejects(
     () => service.start({ actorId: 'attacker', plan: 'PRO', commerceContextId: imported.commerceContextId, requestId: 'request-intake-start-3' }),
     (error) => error instanceof ApplicationError && error.code === 'INTAKE_ACTOR_MISMATCH',
+  );
+});
+
+test('portal workspace authorizes participants, maps DTOs, and refuses browser capture semantics', async () => {
+  const principal = { type: 'PORTAL_USER', actorId: 'seller-1', appId: 'app-1', channel: 'WEB_PORTAL' };
+  const record = {
+    id: 'legacyTxPortal01',
+    organizationId: null,
+    integrationId: null,
+    merchantReference: '1284921',
+    title: 'Sony WH-1000XM6',
+    description: 'Headphones',
+    category: 'electronics',
+    status: 'ACTIVE',
+    consumerStatus: 'TERMS_LOCKED',
+    amount: { currency: 'USD', minorUnits: 34900 },
+    terms: { saleType: 'SHIPPED', shippingResponsibility: 'SELLER', returns: 'AS_AGREED', returnWindowDays: 14, customTerms: '' },
+    sellerId: 'seller-1',
+    buyerId: 'buyer-1',
+    participantIds: ['seller-1', 'buyer-1'],
+    confirmedBy: ['seller-1', 'buyer-1'],
+    handoffConfirmedBy: [],
+    completedBy: [],
+    identifiers: [],
+    conditionNotes: '',
+    lockedAt: null,
+    shipment: null,
+    delivery: null,
+    commerceContextId: null,
+    sourceType: 'TRANSACTION_INTAKE',
+    sourcePlatform: 'eBay',
+    externalOrderId: '1284921',
+    externalSellerId: null,
+    declaredWeightGrams: null,
+    sourceTrackingNumber: null,
+    sourceTrustLevel: 'USER_PROVIDED_COMMERCE_ARTIFACT',
+    passportId: null,
+    passportDisplayId: null,
+    passportIssuedAt: null,
+    createdAt: now,
+    updatedAt: now,
+  };
+  const repository = {
+    records: new Map([[record.id, record]]),
+    async listForParticipant(actorId) {
+      return [...this.records.values()].filter((item) => item.participantIds.includes(actorId));
+    },
+    async findForParticipant(transactionId, actorId) {
+      const item = this.records.get(transactionId);
+      return item?.participantIds.includes(actorId) ? item : null;
+    },
+    async listEvidence() { return []; },
+    async listTimeline() { return []; },
+    async listReturns() { return []; },
+    async findCommerceContext() { return null; },
+    async bindPassportIdentity(_id, identity) { return identity; },
+  };
+  const audits = [];
+  const service = new PortalWorkspaceApplicationService(
+    repository,
+    { append: async (event) => { audits.push(event); } },
+    () => 'https://packproof.link',
+    () => now,
+  );
+  const listed = await service.listTransactions(principal);
+  assert.equal(listed.length, 1);
+  assert.equal(listed[0].object, 'portal_transaction');
+  assert.equal(listed[0].status, 'TERMS_LOCKED');
+  assert.equal(listed[0].source.platform, 'eBay');
+  await assert.rejects(
+    () => service.getTransaction(principal, 'not-yours-tx'),
+    (error) => error instanceof ApplicationError && error.code === 'TRANSACTION_NOT_FOUND',
+  );
+  const outsider = { ...principal, actorId: 'stranger' };
+  await assert.rejects(
+    () => service.getTransaction(outsider, record.id),
+    (error) => error instanceof ApplicationError && error.code === 'TRANSACTION_NOT_FOUND',
+  );
+  const handoff = await service.createMobileHandoff(principal, record.id, 'START_PACKING', 'request-portal-1');
+  assert.equal(handoff.captureOnNativeOnly, true);
+  assert.equal(handoff.channel, 'WEB_PORTAL');
+  assert.match(handoff.universalLink, /\/portal\/open\?transaction=/);
+  assert.match(handoff.appLink, /^packproof:\/\//);
+  assert.equal(audits[0].metadata.channel, 'WEB_PORTAL');
+  await assert.rejects(
+    () => service.createMobileHandoff(principal, record.id, 'BROWSER_UPLOAD', 'request-portal-2'),
+    (error) => error instanceof ApplicationError && error.code === 'UNSUPPORTED_PORTAL_HANDOFF',
   );
 });
 

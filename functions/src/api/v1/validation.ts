@@ -11,6 +11,7 @@ import {
 } from './core';
 import { commercePlatforms, parseItemDescriptor } from '../../domain/v1/commerce';
 import type { PageCommerceContextInput } from '../../application/v1/public-commerce-handoff-service';
+import { nativeCaptureHandoffActions, type NativeCaptureHandoffAction } from '../../application/v1/portal-workspace-service';
 import type {
   AssociateMerchantDeliveryInput,
   AssociateMerchantReturnShipmentInput,
@@ -193,6 +194,23 @@ export function parseIdempotencyKey(value: unknown): string {
     throw new InputValidationError([{ field: 'Idempotency-Key', code: 'INVALID_IDEMPOTENCY_KEY', message: 'Idempotency-Key must contain 8-200 visible ASCII characters.' }]);
   }
   return value;
+}
+
+export function parsePortalHandoffAction(body: unknown): NativeCaptureHandoffAction {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    throw new InputValidationError([{ field: 'body', code: 'INVALID_JSON', message: 'The request body is not a JSON object.' }]);
+  }
+  const record = body as UnknownRecord;
+  rejectUnknown(record, ['action']);
+  const action = record.action;
+  if (typeof action !== 'string' || !(nativeCaptureHandoffActions as readonly string[]).includes(action)) {
+    throw new InputValidationError([{
+      field: 'action',
+      code: 'INVALID_HANDOFF_ACTION',
+      message: 'Continue this capture step on your phone. Browser capture is not available.',
+    }]);
+  }
+  return action as NativeCaptureHandoffAction;
 }
 
 function nullableString(value: unknown, field: string, min: number, max: number): string | null {

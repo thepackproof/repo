@@ -41,6 +41,10 @@
           "target": "Adopt firebase-admin/google-auth uuid >=11.1.1 without a forced incompatible override"
         }
       ]
+    },
+    "portal": {
+      "acceptedHigh": [],
+      "acceptedModerate": []
     }
   }
 }

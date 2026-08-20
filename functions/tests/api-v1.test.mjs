@@ -177,6 +177,69 @@ class FakeParticipantAuthenticator {
   }
 }
 
+class FakePortalAuthenticator {
+  async authenticate(authorization, appCheckToken) {
+    if (authorization !== 'Bearer portal-a' || appCheckToken !== 'app-check-portal') {
+      throw new ApiError(401, 'INVALID_PORTAL_AUTHENTICATION', 'A valid PackProof user session and App Check token are required.');
+    }
+    return { type: 'PORTAL_USER', actorId: 'user-a', appId: 'app-a', channel: 'WEB_PORTAL' };
+  }
+}
+
+class FakePortalWorkspaceService {
+  records = new Map();
+
+  seed(record) {
+    this.records.set(record.id, record);
+  }
+
+  async session(principal) {
+    return { actorId: principal.actorId, channel: 'WEB_PORTAL' };
+  }
+
+  async listTransactions(principal) {
+    return [...this.records.values()].filter((item) => item.participantIds.includes(principal.actorId));
+  }
+
+  async getTransaction(principal, transactionId) {
+    const record = this.records.get(transactionId);
+    if (!record || !record.participantIds.includes(principal.actorId)) {
+      throw new ApiError(404, 'TRANSACTION_NOT_FOUND', 'The requested PackProof was not found.');
+    }
+    return record;
+  }
+
+  async getTimeline(principal, transactionId) {
+    await this.getTransaction(principal, transactionId);
+    return [{ id: 'evt_1', object: 'timeline_event', schemaVersion: 1, transactionId, type: 'CREATED', summary: 'Created', occurredAt: '2026-08-19T12:00:00.000Z' }];
+  }
+
+  async listEvidence(principal, transactionId) {
+    await this.getTransaction(principal, transactionId);
+    return [];
+  }
+
+  async getPassport(principal, transactionId) {
+    await this.getTransaction(principal, transactionId);
+    return { object: 'packproof_passport', schemaVersion: 1, identity: { passportId: 'ppt_1', displayId: 'PP-TEST' } };
+  }
+
+  async createMobileHandoff(principal, transactionId, action) {
+    await this.getTransaction(principal, transactionId);
+    return {
+      object: 'portal_mobile_handoff',
+      schemaVersion: 1,
+      channel: 'WEB_PORTAL',
+      transactionId,
+      action,
+      captureOnNativeOnly: true,
+      universalLink: `https://packproof.example/portal/open?transaction=${transactionId}&action=pack`,
+      appLink: `packproof://pack/${transactionId}`,
+      storeUrl: 'https://play.google.com/store/apps/details?id=com.packproof.app',
+    };
+  }
+}
+
 class FakeMerchantEvidenceService {
   artifacts = new Map();
   timeline = new Map();
@@ -587,9 +650,12 @@ function buildApp() {
   const participantCaptureService = new FakeParticipantCaptureService();
   const merchantEvidenceService = new FakeMerchantEvidenceService();
   const merchantConnectService = new FakeMerchantConnectService();
+  const portalWorkspaceService = new FakePortalWorkspaceService();
   const app = createApiV1App({
     authenticator: new FakeAuthenticator(),
     participantAuthenticator: new FakeParticipantAuthenticator(),
+    portalAuthenticator: new FakePortalAuthenticator(),
+    portalWorkspaceService,
     rateLimiter,
     readiness: { check: async () => undefined },
     transactionService: service,
@@ -600,7 +666,7 @@ function buildApp() {
     publicHandoffReviewBaseUrl: () => 'https://packproof.example',
     participantHandoffBaseUrl: () => 'https://packproof.example',
   });
-  return { app, repository, idempotency, audit, rateLimiter, publicRepository, participantCaptureService, merchantEvidenceService, merchantConnectService };
+  return { app, repository, idempotency, audit, rateLimiter, publicRepository, participantCaptureService, merchantEvidenceService, merchantConnectService, portalWorkspaceService };
 }
 
 const harness = buildApp();
@@ -1102,6 +1168,76 @@ describe('PackProof API v1 headless Connect and claims-review routes', () => {
       method: 'POST', headers: { authorization: 'Bearer write-a', 'content-type': 'application/json' }, body: '{}',
     });
     assert.equal(method.response.status, 405);
+  });
+});
+
+describe('PackProof portal HTTP transport', () => {
+  const headers = {
+    authorization: 'Bearer portal-a',
+    'x-firebase-appcheck': 'app-check-portal',
+  };
+
+  test('rejects merchant API keys and missing App Check', async () => {
+    const merchant = await jsonRequest('/v1/portal/home', { headers: { authorization: 'Bearer write-a' } });
+    assert.equal(merchant.response.status, 401);
+    assert.equal(merchant.body.error.code, 'INVALID_PORTAL_AUTHENTICATION');
+    const missingCheck = await jsonRequest('/v1/portal/home', { headers: { authorization: 'Bearer portal-a' } });
+    assert.equal(missingCheck.response.status, 401);
+  });
+
+  test('lists only participant records and mints a native capture handoff', async () => {
+    harness.portalWorkspaceService.seed({
+      id: 'legacyTx001234567890',
+      object: 'portal_transaction',
+      schemaVersion: 1,
+      sellerId: 'user-a',
+      buyerId: 'buyer-1',
+      participantIds: ['user-a', 'buyer-1'],
+      status: 'TERMS_LOCKED',
+      title: 'Sony WH-1000XM6',
+      category: 'electronics',
+      description: '',
+      priceMinor: 34900,
+      currency: 'USD',
+      identifiers: [],
+      conditionNotes: '',
+      terms: { saleType: 'SHIPPED', shippingResponsibility: 'SELLER', returns: 'AS_AGREED', returnWindowDays: 14, customTerms: '' },
+      confirmedBy: ['user-a', 'buyer-1'],
+      handoffConfirmedBy: [],
+      completedBy: [],
+      passportId: null,
+      passportDisplayId: null,
+      source: { type: null, platform: 'eBay', externalOrderId: '1284921' },
+      protocol: {
+        hasPackingVideo: false, hasSealReference: false, hasArrivalPhoto: false, hasUnboxingVideo: false,
+        sellerReferenceComplete: false, buyerArrivalComplete: false, outboundComplete: false,
+      },
+      lockedAt: null,
+      createdAt: '2026-08-19T12:00:00.000Z',
+      updatedAt: '2026-08-19T12:00:00.000Z',
+    });
+    const home = await jsonRequest('/v1/portal/home', { headers });
+    assert.equal(home.response.status, 200);
+    assert.equal(home.body.data.viewerId, 'user-a');
+    assert.equal(home.body.data.channel, 'WEB_PORTAL');
+    assert.equal(home.body.data.transactions[0].title, 'Sony WH-1000XM6');
+    const hidden = await jsonRequest('/v1/portal/transactions/someone-elses-tx', { headers });
+    assert.equal(hidden.response.status, 404);
+    const handoff = await jsonRequest('/v1/portal/transactions/legacyTx001234567890/mobile-handoff', {
+      method: 'POST',
+      headers: { ...headers, 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'START_PACKING' }),
+    });
+    assert.equal(handoff.response.status, 200);
+    assert.equal(handoff.body.data.captureOnNativeOnly, true);
+    assert.equal(handoff.body.data.channel, 'WEB_PORTAL');
+    assert.match(handoff.body.data.universalLink, /\/portal\/open\?/);
+    const browserCapture = await jsonRequest('/v1/portal/transactions/legacyTx001234567890/mobile-handoff', {
+      method: 'POST',
+      headers: { ...headers, 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'BROWSER_UPLOAD' }),
+    });
+    assert.equal(browserCapture.response.status, 400);
   });
 });
 

@@ -1,3 +1,13 @@
 {
-  "projects": { "default": "YOUR_FIREBASE_PROJECT_ID" }
+  "projects": {
+    "default": "YOUR_FIREBASE_PROJECT_ID"
+  },
+  "targets": {
+    "YOUR_FIREBASE_PROJECT_ID": {
+      "hosting": {
+        "public": ["YOUR_DEFAULT_HOSTING_SITE"],
+        "portal": ["YOUR_PORTAL_HOSTING_SITE"]
+      }
+    }
+  }
 }

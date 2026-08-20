@@ -53,6 +53,8 @@ console.log('---');
 if (!dryRun) {
   runNpm(['run', 'build:button-sdk'], { cwd: root });
   runNpm(['--prefix', 'functions', 'run', 'build'], { cwd: root });
+  runNpm(['--prefix', 'portal', 'ci'], { cwd: root });
+  runNpm(['--prefix', 'portal', 'run', 'build'], { cwd: root });
 }
 
 if (applySecrets) {

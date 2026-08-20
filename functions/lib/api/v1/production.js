@@ -24,6 +24,8 @@ const controls_1 = require("./controls");
 const firestore_1 = require("./firestore");
 const security_1 = require("./security");
 const participant_security_1 = require("./participant-security");
+const portal_security_1 = require("./portal-security");
+const portal_workspace_service_1 = require("../../application/v1/portal-workspace-service");
 const transaction_service_1 = require("./transaction-service");
 function configuredEnvironment() {
     const value = config_1.apiEnvironment.value();
@@ -64,7 +66,8 @@ function productionApp() {
             return configuredEnvironment();
         },
     };
-    const merchantEvidenceService = new merchant_evidence_service_1.MerchantEvidenceApplicationService(new merchant_evidence_repository_1.FirestoreMerchantEvidenceRepository(config_1.db), new controls_1.FirestoreIdempotencyStore(config_1.db), new controls_1.FirestoreAuditWriter(config_1.db), new security_1.AuthorizationService(), {
+    const merchantEvidenceRepository = new merchant_evidence_repository_1.FirestoreMerchantEvidenceRepository(config_1.db);
+    const merchantEvidenceService = new merchant_evidence_service_1.MerchantEvidenceApplicationService(merchantEvidenceRepository, new controls_1.FirestoreIdempotencyStore(config_1.db), new controls_1.FirestoreAuditWriter(config_1.db), new security_1.AuthorizationService(), {
         generate(transactionId, generatedBy, options) {
             return (0, evidence_1.generateEvidencePacket)(transactionId, generatedBy, options);
         },
@@ -82,9 +85,27 @@ function productionApp() {
     });
     const connectAdapter = new merchant_evidence_repository_1.FirestoreMerchantConnectAdapter(config_1.db);
     const merchantConnectService = new merchant_connect_service_1.MerchantConnectApplicationService(new commerce_context_service_1.CommerceContextApplicationService(new commerce_context_repository_1.FirestoreCommerceContextRepository(config_1.db), new connect_session_token_issuer_1.HmacConnectSessionTokenIssuer()), connectAdapter, connectAdapter, new public_https_callback_1.DnsPublicHttpsCallbackValidator(), new security_1.AuthorizationService(), runtimeConfig, () => config_1.connectLinkBaseUrl.value());
+    const portalWorkspaceService = new portal_workspace_service_1.PortalWorkspaceApplicationService(new merchant_evidence_repository_1.FirestorePortalWorkspaceRepository(merchantEvidenceRepository), {
+        async append(event) {
+            console.info(JSON.stringify({
+                severity: 'INFO',
+                message: 'packproof_portal_audit',
+                eventId: event.eventId,
+                type: event.type,
+                actorId: event.actor.actorId,
+                channel: event.actor.channel,
+                resourceType: event.resourceType,
+                resourceId: event.resourceId,
+                requestId: event.requestId,
+                organizationId: event.organizationId,
+            }));
+        },
+    }, () => config_1.connectLinkBaseUrl.value());
     return (0, app_1.createApiV1App)({
         authenticator,
         participantAuthenticator: new participant_security_1.FirebaseParticipantAuthenticator(config_1.adminAuth, config_1.adminAppCheck, config_1.db),
+        portalAuthenticator: new portal_security_1.FirebasePortalAuthenticator(config_1.adminAuth, config_1.adminAppCheck, config_1.db),
+        portalWorkspaceService,
         rateLimiter,
         readiness,
         transactionService,

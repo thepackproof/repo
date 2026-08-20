@@ -8,6 +8,7 @@ exports.assertTransition = assertTransition;
 const runtime_1 = require("./runtime");
 exports.resourceKinds = [
     'organization',
+    'organization_membership',
     'integration',
     'api_client',
     'commerce_context',
@@ -27,6 +28,7 @@ exports.resourceKinds = [
 ];
 exports.resourceIdPrefixes = {
     organization: 'org_',
+    organization_membership: 'membership_',
     integration: 'int_',
     api_client: 'client_',
     commerce_context: 'ctx_',

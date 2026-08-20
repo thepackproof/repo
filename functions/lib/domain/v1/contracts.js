@@ -8,6 +8,12 @@ exports.resourceContracts = {
         idempotency: 'Administrator-created; organization slug/external reference uniqueness is enforced per environment.',
         auditEvents: ['ORGANIZATION_CREATED', 'ORGANIZATION_STATUS_CHANGED'], sensitiveInternalFields: ['billingProfile', 'administrativeNotes'],
     },
+    organization_membership: {
+        kind: 'organization_membership', object: 'organization_membership', schemaVersion: 1, persistencePath: 'organizationMemberships/{membershipId}', tenantBoundary: 'ORGANIZATION',
+        idempotency: 'One membership per organization and actor; role/scope changes use command IDs and expected version.',
+        auditEvents: ['ORGANIZATION_MEMBERSHIP_INVITED', 'ORGANIZATION_MEMBERSHIP_ACTIVATED', 'ORGANIZATION_MEMBERSHIP_ROLE_CHANGED', 'ORGANIZATION_MEMBERSHIP_REVOKED'],
+        sensitiveInternalFields: ['invitedByActorId', 'moderationNotes'],
+    },
     integration: {
         kind: 'integration', object: 'integration', schemaVersion: 1, persistencePath: 'integrations/{integrationId}', tenantBoundary: 'ORGANIZATION',
         idempotency: 'Installation/external-account binding is unique within an organization and platform.',
@@ -91,8 +97,8 @@ exports.resourceContracts = {
 };
 function assertResourceContractCatalogComplete() {
     const entries = Object.entries(exports.resourceContracts);
-    if (entries.length !== 17)
-        throw new Error(`Expected 17 resource contracts; received ${entries.length}.`);
+    if (entries.length !== 18)
+        throw new Error(`Expected 18 resource contracts; received ${entries.length}.`);
     for (const [key, contract] of entries) {
         if (contract.kind !== key || contract.schemaVersion !== 1 || !contract.auditEvents.length || !contract.persistencePath) {
             throw new Error(`Resource contract ${key} is incomplete.`);

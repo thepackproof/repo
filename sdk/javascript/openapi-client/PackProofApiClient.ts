@@ -13,6 +13,7 @@ import { EvidenceService } from './services/EvidenceService';
 import { EvidenceSessionsService } from './services/EvidenceSessionsService';
 import { ParticipantClaimsService } from './services/ParticipantClaimsService';
 import { PassportsService } from './services/PassportsService';
+import { PortalService } from './services/PortalService';
 import { ReportsService } from './services/ReportsService';
 import { ReturnsService } from './services/ReturnsService';
 import { ShipmentsService } from './services/ShipmentsService';
@@ -28,6 +29,7 @@ export class PackProofApiClient {
     public readonly evidenceSessions: EvidenceSessionsService;
     public readonly participantClaims: ParticipantClaimsService;
     public readonly passports: PassportsService;
+    public readonly portal: PortalService;
     public readonly reports: ReportsService;
     public readonly returns: ReturnsService;
     public readonly shipments: ShipmentsService;
@@ -54,6 +56,7 @@ export class PackProofApiClient {
         this.evidenceSessions = new EvidenceSessionsService(this.request);
         this.participantClaims = new ParticipantClaimsService(this.request);
         this.passports = new PassportsService(this.request);
+        this.portal = new PortalService(this.request);
         this.reports = new ReportsService(this.request);
         this.returns = new ReturnsService(this.request);
         this.shipments = new ShipmentsService(this.request);

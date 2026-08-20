@@ -45,6 +45,7 @@ These controls are not certification, scientific validation, a penetration test,
 - Private native evidence and manifests plus separately labeled, source-linked PDF presentation dossiers.
 - PackProof API order ingestion, idempotent handoff, exact-body webhook HMAC, and retry delivery.
 - Contract-first PackProof Merchant API v1 foundation with scoped merchant credentials, organization-isolated transaction create/read/list, idempotency, rate controls, structured errors/logs, and hash-linked audit events. See [`docs/API_ARCHITECTURE.md`](docs/API_ARCHITECTURE.md).
+- PackProof Web Portal (`portal/`) as a React 19 + Vite SPA over `/v1/portal`, Firebase Web Auth/App Check, and a dedicated Hosting target. It is not a second backend or a browser capture engine. See [`docs/adr/0014-web-portal-presentation-surface.md`](docs/adr/0014-web-portal-presentation-surface.md).
 - PackProof Enterprise™ architecture, warehouse domain, Edge protocol, simulated single-station Edge runtime, application-layer Evidence Format v2 finalization, Enterprise console projection, and simulated WMS ingest (`SOURCE_CHECKED` only). See [`docs/PACKPROOF_ENTERPRISE.md`](docs/PACKPROOF_ENTERPRISE.md).
 - Google Play / RevenueCat subscription scaffolding and policy templates.
 
@@ -80,6 +81,8 @@ npm.cmd run test:domain
 npm.cmd run test:application
 npm.cmd run test:enterprise
 npm.cmd run test:sdk
+npm.cmd run test:portal
+npm.cmd run portal:build
 npm.cmd run verify:pc
 npm.cmd run build:android:preview
 ```

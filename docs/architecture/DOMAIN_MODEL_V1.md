@@ -4,7 +4,7 @@ Status: `SOURCE_CHECKED` on 2026-08-11. The model is implemented and unit-tested
 
 ## 1. Purpose and boundary
 
-This model gives PackProof one vocabulary for mobile workflows, merchant APIs, PackProof API, commerce-platform adapters, evidence processing, reports, webhooks and audit history. It is the pure policy and contract layer required before those transports can share application services.
+This model gives PackProof one vocabulary for mobile workflows, merchant APIs, PackProof API, the web portal, commerce-platform adapters, evidence processing, reports, webhooks and audit history. It is the pure policy and contract layer required before those transports can share application services.
 
 The source is `functions/src/domain/v1`. It imports no React, React Native, Expo, Express, Firebase Functions, Firestore, Cloud Storage or commerce-platform SDK. It currently lives under the Functions TypeScript package so the deployable backend build owns one compiled copy while the migration is in progress.
 
@@ -23,7 +23,8 @@ Those integrations begin only after application services and ports are introduce
 
 ```mermaid
 flowchart LR
-  Organization["Organization"] --> Integration["Integration"]
+  Organization["Organization"] --> Membership["Organization membership"]
+  Organization --> Integration["Integration"]
   Integration --> ApiClient["API client"]
   Integration --> Context["Commerce context"]
   Context --> Draft["Passport draft"]
@@ -52,6 +53,7 @@ Every public resource has a stable `object`, `schemaVersion: 1`, kind-bound ID, 
 | Resource | Canonical ID | Intended persistence boundary | Principal role |
 |---|---|---|---|
 | Organization | `org_...` | `organizations/{organizationId}` | Tenant and environment boundary |
+| Organization membership | `membership_...` | `organizationMemberships/{membershipId}` | Human membership of an organization; not an API client or custom claim |
 | Integration | `int_...` | `integrations/{integrationId}` | Platform or custom-checkout installation |
 | API client | `client_...` | `apiClients/{apiClientId}` | Scoped server credential identity; never a browser secret |
 | Commerce context | `ctx_...` | `commerceContexts/{commerceContextId}` | Immutable, provenance-bearing listing/cart/order snapshot |
@@ -69,7 +71,7 @@ Every public resource has a stable `object`, `schemaVersion: 1`, kind-bound ID, 
 | Webhook delivery | `delivery_...` | Delivery store | At-least-once endpoint delivery, retry and replay state |
 | Audit event | `audit_...` | Organization audit subcollection | Actor/resource/request-linked, hash-chain-ready history |
 
-The executable resource catalog also declares tenant boundaries, idempotency rules, required audit event families and fields that must remain internal. Its completeness is tested against all 17 resource kinds.
+The executable resource catalog also declares tenant boundaries, idempotency rules, required audit event families and fields that must remain internal. Its completeness is tested against all 18 resource kinds. `organization_membership` is catalogued for portal organization workspace (Slice G); persistence and HTTP are not activated in the portal foundation slice.
 
 ## 4. Identifier and version policy
 
@@ -274,7 +276,7 @@ npm run test:domain
 
 The gate compiles the Functions package and tests:
 
-- all 17 resource contracts and DTO schemas;
+- all 18 resource contracts and DTO schemas;
 - rejection of unknown/publicly unsafe fields;
 - canonical and explicit legacy identifier behavior;
 - lifecycle-table completeness and illegal transition rejection;

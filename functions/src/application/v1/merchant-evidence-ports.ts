@@ -32,6 +32,12 @@ export type AccessibleMerchantTransaction = {
   sellerId: string | null;
   buyerId: string | null;
   participantIds: string[];
+  confirmedBy: string[];
+  handoffConfirmedBy: string[];
+  completedBy: string[];
+  identifiers: Array<{ label: string; value: string }>;
+  conditionNotes: string;
+  lockedAt: Date | null;
   shipment: MerchantShipmentDto | null;
   delivery: MerchantDeliveryDto | null;
   commerceContextId: string | null;

@@ -25,6 +25,7 @@ import { FirestoreCommerceContextRepository } from '../../infrastructure/firebas
 import {
   FirestoreMerchantConnectAdapter,
   FirestoreMerchantEvidenceRepository,
+  FirestorePortalWorkspaceRepository,
 } from '../../infrastructure/firebase/v1/merchant-evidence-repository';
 import { FirestorePublicCommerceHandoffRepository } from '../../infrastructure/firebase/v1/public-commerce-handoff-repository';
 import { FirestoreParticipantCaptureRepository } from '../../infrastructure/firebase/v1/participant-capture-repository';
@@ -35,6 +36,8 @@ import type { ApiEnvironment } from './core';
 import { FirestoreReadinessChecker, FirestoreTransactionRepository } from './firestore';
 import { AuthorizationService, FirestoreMerchantAuthenticator } from './security';
 import { FirebaseParticipantAuthenticator } from './participant-security';
+import { FirebasePortalAuthenticator } from './portal-security';
+import { PortalWorkspaceApplicationService } from '../../application/v1/portal-workspace-service';
 import { TransactionService } from './transaction-service';
 
 function configuredEnvironment(): ApiEnvironment {
@@ -90,8 +93,9 @@ function productionApp() {
       return configuredEnvironment();
     },
   };
+  const merchantEvidenceRepository = new FirestoreMerchantEvidenceRepository(db);
   const merchantEvidenceService = new MerchantEvidenceApplicationService(
-    new FirestoreMerchantEvidenceRepository(db),
+    merchantEvidenceRepository,
     new FirestoreIdempotencyStore(db),
     new FirestoreAuditWriter(db),
     new AuthorizationService(),
@@ -129,9 +133,31 @@ function productionApp() {
     runtimeConfig,
     () => connectLinkBaseUrl.value(),
   );
+  const portalWorkspaceService = new PortalWorkspaceApplicationService(
+    new FirestorePortalWorkspaceRepository(merchantEvidenceRepository),
+    {
+      async append(event) {
+        console.info(JSON.stringify({
+          severity: 'INFO',
+          message: 'packproof_portal_audit',
+          eventId: event.eventId,
+          type: event.type,
+          actorId: event.actor.actorId,
+          channel: event.actor.channel,
+          resourceType: event.resourceType,
+          resourceId: event.resourceId,
+          requestId: event.requestId,
+          organizationId: event.organizationId,
+        }));
+      },
+    },
+    () => connectLinkBaseUrl.value(),
+  );
   return createApiV1App({
     authenticator,
     participantAuthenticator: new FirebaseParticipantAuthenticator(adminAuth, adminAppCheck, db),
+    portalAuthenticator: new FirebasePortalAuthenticator(adminAuth, adminAppCheck, db),
+    portalWorkspaceService,
     rateLimiter,
     readiness,
     transactionService,

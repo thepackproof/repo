@@ -129,6 +129,20 @@ before(async () => {
       { environment: 'sandbox' },
       () => 'https://packproof.example',
     ),
+    portalAuthenticator: {
+      authenticate: async () => {
+        throw new ApiError(401, 'INVALID_PORTAL_AUTHENTICATION', 'A valid PackProof user session and App Check token are required.');
+      },
+    },
+    portalWorkspaceService: {
+      session: async () => ({ actorId: 'unused', channel: 'WEB_PORTAL' }),
+      listTransactions: async () => [],
+      getTransaction: async () => { throw new ApiError(404, 'TRANSACTION_NOT_FOUND', 'The requested PackProof was not found.'); },
+      getTimeline: async () => [],
+      listEvidence: async () => [],
+      getPassport: async () => { throw new ApiError(404, 'TRANSACTION_NOT_FOUND', 'The requested PackProof was not found.'); },
+      createMobileHandoff: async () => { throw new ApiError(404, 'TRANSACTION_NOT_FOUND', 'The requested PackProof was not found.'); },
+    },
     publicHandoffReviewBaseUrl: () => 'https://packproof.example',
     participantHandoffBaseUrl: () => 'https://packproof.example',
   });

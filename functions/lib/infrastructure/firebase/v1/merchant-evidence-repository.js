@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.FirestoreMerchantConnectAdapter = exports.FirestoreMerchantEvidenceRepository = void 0;
+exports.FirestorePortalWorkspaceRepository = exports.FirestoreMerchantConnectAdapter = exports.FirestoreMerchantEvidenceRepository = void 0;
 const firestore_1 = require("firebase-admin/firestore");
 const errors_1 = require("../../../application/v1/errors");
 const commerce_1 = require("../../../domain/v1/commerce");
@@ -25,6 +25,21 @@ function shipmentIdFor(transactionId) {
 }
 function deliveryIdFor(transactionId) {
     return `delivery_${(0, merchant_transaction_service_1.sha256)(transactionId).slice(0, 40)}`;
+}
+function stringArray(value) {
+    return Array.isArray(value) ? value.filter((entry) => typeof entry === 'string' && entry.length > 0) : [];
+}
+function identifiers(value) {
+    if (!Array.isArray(value))
+        return [];
+    return value.flatMap((entry) => {
+        if (!entry || typeof entry !== 'object')
+            return [];
+        const record = entry;
+        if (typeof record.label !== 'string' || typeof record.value !== 'string')
+            return [];
+        return [{ label: record.label, value: record.value }];
+    });
 }
 function matchStatus(value) {
     return value === 'MATCHED' || value === 'MISMATCH' || value === 'NOT_SCANNED' ? value : null;
@@ -126,6 +141,12 @@ function toAccessible(id, data) {
         participantIds: Array.isArray(data.participantIds)
             ? data.participantIds.filter((value) => typeof value === 'string')
             : [],
+        confirmedBy: stringArray(data.confirmedBy),
+        handoffConfirmedBy: stringArray(data.handoffConfirmedBy),
+        completedBy: stringArray(data.completedBy),
+        identifiers: identifiers(data.identifiers),
+        conditionNotes: typeof data.conditionNotes === 'string' ? data.conditionNotes : '',
+        lockedAt: data.lockedAt ? dateValue(data.lockedAt, createdAt) : null,
         shipment: toShipment(id, data.shipping, createdAt, updatedAt),
         delivery: toDelivery(id, data.delivery, createdAt, updatedAt),
         commerceContextId: optionalString(source?.commerceContextId) ?? optionalString(data.commerceContextId),
@@ -322,6 +343,20 @@ class FirestoreMerchantEvidenceRepository {
         if (!snap.exists)
             return null;
         return toAccessible(snap.id, snap.data());
+    }
+    async listTransactionsForParticipant(actorId, limit) {
+        const snap = await this.firestore.collection('transactions')
+            .where('participantIds', 'array-contains', actorId)
+            .orderBy('updatedAt', 'desc')
+            .limit(limit)
+            .get();
+        return snap.docs.map((doc) => toAccessible(doc.id, doc.data()));
+    }
+    async findTransactionForParticipant(transactionId, actorId) {
+        const transaction = await this.loadTransaction(transactionId);
+        if (!transaction || !transaction.participantIds.includes(actorId))
+            return null;
+        return transaction;
     }
     async loadTransactionByPassportIdentity(passportIdentity) {
         const field = passportIdentity.startsWith('ppt_') ? 'passportId' : 'passportDisplayId';
@@ -752,4 +787,32 @@ class FirestoreMerchantConnectAdapter {
     }
 }
 exports.FirestoreMerchantConnectAdapter = FirestoreMerchantConnectAdapter;
+class FirestorePortalWorkspaceRepository {
+    evidence;
+    constructor(evidence) {
+        this.evidence = evidence;
+    }
+    listForParticipant(actorId, limit) {
+        return this.evidence.listTransactionsForParticipant(actorId, limit);
+    }
+    findForParticipant(transactionId, actorId) {
+        return this.evidence.findTransactionForParticipant(transactionId, actorId);
+    }
+    listEvidence(transactionId) {
+        return this.evidence.listEvidence(transactionId);
+    }
+    listTimeline(transactionId) {
+        return this.evidence.listTimeline(transactionId);
+    }
+    listReturns(transactionId) {
+        return this.evidence.listReturns(transactionId);
+    }
+    findCommerceContext(commerceContextId) {
+        return this.evidence.findCommerceContext(commerceContextId);
+    }
+    bindPassportIdentity(transactionId, identity) {
+        return this.evidence.bindPassportIdentity(transactionId, identity);
+    }
+}
+exports.FirestorePortalWorkspaceRepository = FirestorePortalWorkspaceRepository;
 //# sourceMappingURL=merchant-evidence-repository.js.map

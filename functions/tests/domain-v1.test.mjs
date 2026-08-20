@@ -35,6 +35,7 @@ import {
   mapLegacyConsumerTransaction,
   mapLegacyMerchantTransaction,
   organizationDtoSchema,
+  organizationMembershipDtoSchema,
   parseResourceId,
   participantClaimDtoSchema,
   passportDraftDtoSchema,
@@ -95,6 +96,10 @@ const item = {
 const samples = {
   organization: {
     id: 'org_12345678', object: 'organization', schemaVersion: 1, name: 'Example Merchant', environment: 'sandbox', status: 'ACTIVE', createdAt: now, updatedAt: now,
+  },
+  organizationMembership: {
+    id: 'membership_12345678', object: 'organization_membership', schemaVersion: 1, organizationId: 'org_12345678',
+    actorId: 'user-actor-1', role: 'OPERATOR', scopes: ['portal:read', 'transactions:read'], status: 'ACTIVE', createdAt: now, updatedAt: now,
   },
   integration: {
     id: 'int_12345678', object: 'integration', schemaVersion: 1, name: 'Example Shopify', type: 'SHOPIFY', environment: 'sandbox', status: 'ACTIVE',
@@ -187,6 +192,7 @@ const samples = {
 
 const schemaCases = [
   ['organization', organizationDtoSchema, samples.organization],
+  ['organizationMembership', organizationMembershipDtoSchema, samples.organizationMembership],
   ['integration', integrationDtoSchema, samples.integration],
   ['apiClient', apiClientDtoSchema, samples.apiClient],
   ['commerceContext', commerceContextDtoSchema, samples.commerceContext],
@@ -207,8 +213,8 @@ const schemaCases = [
 
 test('canonical resource contract catalog is complete and declares boundaries', () => {
   assert.doesNotThrow(() => assertResourceContractCatalogComplete());
-  assert.equal(resourceKinds.length, 17);
-  assert.equal(Object.keys(resourceContracts).length, 17);
+  assert.equal(resourceKinds.length, 18);
+  assert.equal(Object.keys(resourceContracts).length, 18);
   for (const kind of resourceKinds) {
     const contract = resourceContracts[kind];
     assert.equal(contract.kind, kind);
@@ -219,7 +225,7 @@ test('canonical resource contract catalog is complete and declares boundaries', 
   }
 });
 
-test('all 17 public DTO schemas accept canonical examples and reject unknown fields', async (t) => {
+test('all 18 public DTO schemas accept canonical examples and reject unknown fields', async (t) => {
   for (const [name, runtimeSchema, sample] of schemaCases) {
     await t.test(name, () => {
       assert.deepEqual(runtimeSchema.parse(structuredClone(sample)), sample);

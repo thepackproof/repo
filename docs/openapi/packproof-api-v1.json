@@ -3,7 +3,7 @@
   "info": {
     "title": "PackProof API",
     "version": "1.0.0",
-    "description": "The contract for PackProof's versioned merchant, Connect, and claims-review API. Transaction, session, and handoff identifiers never confer merchant authority. Responses inventory evidence, hashes, and layered assurance; they do not authenticate items, prove custody, decide fraud or fault, or guarantee a dispute outcome. Internal persistence, support, secret, and forensic-only fields are excluded."
+    "description": "The contract for PackProof's versioned merchant, Connect, claims-review, and authenticated web-portal API. Transaction, session, and handoff identifiers never confer merchant or portal authority. Browser callers use Firebase Authentication and App Check as PortalPrincipal; merchant API keys are server-side secrets and must not appear in a browser bundle. Responses inventory evidence, hashes, and layered assurance; they do not authenticate items, prove custody, decide fraud or fault, or guarantee a dispute outcome. Internal persistence, support, secret, and forensic-only fields are excluded."
   },
   "servers": [
     {
@@ -13,6 +13,7 @@
   ],
   "tags": [
     { "name": "System" },
+    { "name": "Portal" },
     { "name": "Commerce Handoffs" },
     { "name": "Transactions" },
     { "name": "Participant Claims" },
@@ -57,6 +58,165 @@
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ReadinessResponse" } } }
           },
           "503": { "$ref": "#/components/responses/ServiceUnavailable" }
+        }
+      }
+    },
+    "/v1/portal/session": {
+      "get": {
+        "operationId": "getPortalSession",
+        "tags": ["Portal"],
+        "summary": "Current portal actor",
+        "description": "Returns the authenticated PackProof actor for the web portal. A Firebase ID token and App Check token are required. Merchant API keys are rejected.",
+        "security": [{ "firebaseUserBearer": [], "firebaseAppCheck": [] }],
+        "responses": {
+          "200": {
+            "description": "The portal session.",
+            "headers": { "X-Request-Id": { "$ref": "#/components/headers/XRequestId" } },
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PortalSessionResponse" } } }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/v1/portal/home": {
+      "get": {
+        "operationId": "getPortalHome",
+        "tags": ["Portal"],
+        "summary": "Portal home queue",
+        "description": "Lists PackProofs the authenticated actor participates in. The client applies the shared Next Action Engine; this endpoint does not invent browser-specific lifecycle states.",
+        "security": [{ "firebaseUserBearer": [], "firebaseAppCheck": [] }],
+        "responses": {
+          "200": {
+            "description": "Home workspace.",
+            "headers": { "X-Request-Id": { "$ref": "#/components/headers/XRequestId" } },
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PortalHomeResponse" } } }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/v1/portal/transactions": {
+      "get": {
+        "operationId": "listPortalTransactions",
+        "tags": ["Portal"],
+        "summary": "List the actor's PackProofs",
+        "security": [{ "firebaseUserBearer": [], "firebaseAppCheck": [] }],
+        "responses": {
+          "200": {
+            "description": "Participant-authorized transactions.",
+            "headers": { "X-Request-Id": { "$ref": "#/components/headers/XRequestId" } },
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PortalTransactionListResponse" } } }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/v1/portal/transactions/{transactionId}": {
+      "get": {
+        "operationId": "getPortalTransaction",
+        "tags": ["Portal"],
+        "summary": "Get a participant-authorized PackProof",
+        "security": [{ "firebaseUserBearer": [], "firebaseAppCheck": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/AccessibleTransactionId" }],
+        "responses": {
+          "200": {
+            "description": "Transaction workspace record.",
+            "headers": { "X-Request-Id": { "$ref": "#/components/headers/XRequestId" } },
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PortalTransactionResponse" } } }
+          },
+          "400": { "$ref": "#/components/responses/InvalidRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/v1/portal/transactions/{transactionId}/timeline": {
+      "get": {
+        "operationId": "getPortalTimeline",
+        "tags": ["Portal"],
+        "summary": "Transaction timeline",
+        "security": [{ "firebaseUserBearer": [], "firebaseAppCheck": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/AccessibleTransactionId" }],
+        "responses": {
+          "200": { "$ref": "#/components/responses/TimelineRetrieved" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/v1/portal/transactions/{transactionId}/evidence": {
+      "get": {
+        "operationId": "listPortalEvidence",
+        "tags": ["Portal"],
+        "summary": "Evidence metadata",
+        "description": "Returns evidence inventory metadata. Storage object paths are never included. Browser capture is not this resource.",
+        "security": [{ "firebaseUserBearer": [], "firebaseAppCheck": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/AccessibleTransactionId" }],
+        "responses": {
+          "200": { "$ref": "#/components/responses/EvidenceListRetrieved" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/v1/portal/transactions/{transactionId}/passport": {
+      "get": {
+        "operationId": "getPortalPassport",
+        "tags": ["Portal"],
+        "summary": "Canonical JSON Passport",
+        "description": "Returns PackProofPassportV1. The portal renders this JSON; it does not assemble a Passport in the browser.",
+        "security": [{ "firebaseUserBearer": [], "firebaseAppCheck": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/AccessibleTransactionId" }],
+        "responses": {
+          "200": { "$ref": "#/components/responses/PassportRetrieved" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/v1/portal/transactions/{transactionId}/mobile-handoff": {
+      "post": {
+        "operationId": "createPortalMobileHandoff",
+        "tags": ["Portal"],
+        "summary": "Issue a native capture handoff",
+        "description": "Returns App Link and custom-scheme URLs so packing or unboxing continues on the PackProof native client. Browser uploads are not native capture and are not accepted.",
+        "security": [{ "firebaseUserBearer": [], "firebaseAppCheck": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/AccessibleTransactionId" }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreatePortalMobileHandoffRequest" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "Native capture handoff.",
+            "headers": { "X-Request-Id": { "$ref": "#/components/headers/XRequestId" } },
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PortalMobileHandoffResponse" } } }
+          },
+          "400": { "$ref": "#/components/responses/InvalidRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "415": { "$ref": "#/components/responses/UnsupportedMediaType" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "500": { "$ref": "#/components/responses/InternalError" }
         }
       }
     },
@@ -1103,6 +1263,144 @@
               "service": { "const": "packproof-api" },
               "apiVersion": { "const": "v1" },
               "status": { "const": "READY" }
+            }
+          }
+        }
+      },
+      "PortalSessionResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["data"],
+        "properties": {
+          "data": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["actorId", "channel"],
+            "properties": {
+              "actorId": { "type": "string", "minLength": 1, "maxLength": 200 },
+              "channel": { "const": "WEB_PORTAL" }
+            }
+          }
+        }
+      },
+      "PortalProtocol": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["hasPackingVideo", "hasSealReference", "hasArrivalPhoto", "hasUnboxingVideo", "sellerReferenceComplete", "buyerArrivalComplete", "outboundComplete"],
+        "properties": {
+          "hasPackingVideo": { "type": "boolean" },
+          "hasSealReference": { "type": "boolean" },
+          "hasArrivalPhoto": { "type": "boolean" },
+          "hasUnboxingVideo": { "type": "boolean" },
+          "sellerReferenceComplete": { "type": "boolean" },
+          "buyerArrivalComplete": { "type": "boolean" },
+          "outboundComplete": { "type": "boolean" }
+        }
+      },
+      "PortalTransaction": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "object", "schemaVersion", "sellerId", "buyerId", "participantIds", "status", "title", "category", "description", "priceMinor", "currency", "identifiers", "conditionNotes", "terms", "confirmedBy", "handoffConfirmedBy", "completedBy", "passportId", "passportDisplayId", "source", "protocol", "lockedAt", "createdAt", "updatedAt"],
+        "properties": {
+          "id": { "type": "string", "minLength": 10, "maxLength": 128 },
+          "object": { "const": "portal_transaction" },
+          "schemaVersion": { "const": 1 },
+          "sellerId": { "type": ["string", "null"] },
+          "buyerId": { "type": ["string", "null"] },
+          "participantIds": { "type": "array", "items": { "type": "string" } },
+          "status": { "type": "string" },
+          "title": { "type": "string" },
+          "category": { "type": "string" },
+          "description": { "type": "string" },
+          "priceMinor": { "type": ["integer", "null"] },
+          "currency": { "type": ["string", "null"] },
+          "identifiers": { "type": "array", "items": { "type": "object", "additionalProperties": false, "required": ["label", "value"], "properties": { "label": { "type": "string" }, "value": { "type": "string" } } } },
+          "conditionNotes": { "type": "string" },
+          "terms": { "type": ["object", "null"] },
+          "confirmedBy": { "type": "array", "items": { "type": "string" } },
+          "handoffConfirmedBy": { "type": "array", "items": { "type": "string" } },
+          "completedBy": { "type": "array", "items": { "type": "string" } },
+          "passportId": { "type": ["string", "null"] },
+          "passportDisplayId": { "type": ["string", "null"] },
+          "source": {
+            "type": ["object", "null"],
+            "additionalProperties": false,
+            "required": ["type", "platform", "externalOrderId"],
+            "properties": {
+              "type": { "type": ["string", "null"] },
+              "platform": { "type": ["string", "null"] },
+              "externalOrderId": { "type": ["string", "null"] }
+            }
+          },
+          "protocol": { "$ref": "#/components/schemas/PortalProtocol" },
+          "lockedAt": { "type": ["string", "null"], "format": "date-time" },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "PortalHomeResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["data"],
+        "properties": {
+          "data": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["viewerId", "channel", "transactions"],
+            "properties": {
+              "viewerId": { "type": "string" },
+              "channel": { "const": "WEB_PORTAL" },
+              "transactions": { "type": "array", "items": { "$ref": "#/components/schemas/PortalTransaction" } }
+            }
+          }
+        }
+      },
+      "PortalTransactionListResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["data"],
+        "properties": {
+          "data": { "type": "array", "items": { "$ref": "#/components/schemas/PortalTransaction" } }
+        }
+      },
+      "PortalTransactionResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["data"],
+        "properties": {
+          "data": { "$ref": "#/components/schemas/PortalTransaction" }
+        }
+      },
+      "CreatePortalMobileHandoffRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["action"],
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": ["START_PACKING", "RECORD_SEAL", "RECORD_ARRIVAL", "RECORD_UNBOXING", "RECORD_RETURN_PACKING", "RECORD_RETURN_SEAL", "RECORD_RETURN_UNBOXING"]
+          }
+        }
+      },
+      "PortalMobileHandoffResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["data"],
+        "properties": {
+          "data": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["object", "schemaVersion", "channel", "transactionId", "action", "captureOnNativeOnly", "universalLink", "appLink", "storeUrl"],
+            "properties": {
+              "object": { "const": "portal_mobile_handoff" },
+              "schemaVersion": { "const": 1 },
+              "channel": { "const": "WEB_PORTAL" },
+              "transactionId": { "type": "string" },
+              "action": { "type": "string" },
+              "captureOnNativeOnly": { "const": true },
+              "universalLink": { "type": "string", "format": "uri" },
+              "appLink": { "type": "string" },
+              "storeUrl": { "type": "string", "format": "uri" }
             }
           }
         }

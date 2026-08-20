@@ -36,6 +36,62 @@ export const organizationDtoSchema = schema<OrganizationDto>((value) => {
   };
 });
 
+export const organizationMembershipRoles = ['OWNER', 'ADMIN', 'OPERATOR', 'REVIEWER', 'MEMBER'] as const;
+export type OrganizationMembershipRole = (typeof organizationMembershipRoles)[number];
+export const organizationMembershipStatuses = ['INVITED', 'ACTIVE', 'SUSPENDED', 'REVOKED'] as const;
+export type OrganizationMembershipStatus = (typeof organizationMembershipStatuses)[number];
+export const organizationMembershipScopes = [
+  'portal:read',
+  'portal:write',
+  'transactions:read',
+  'transactions:write',
+  'evidence:read',
+  'reports:read',
+  'integrations:manage',
+  'api_clients:manage',
+] as const;
+export type OrganizationMembershipScope = (typeof organizationMembershipScopes)[number];
+
+export type OrganizationMembership = OrganizationScopedResource<'organization_membership'> & {
+  actorId: string;
+  role: OrganizationMembershipRole;
+  scopes: OrganizationMembershipScope[];
+  status: OrganizationMembershipStatus;
+};
+
+export type OrganizationMembershipDto = PublicResource<'organization_membership', 'organization_membership'> & {
+  organizationId: ResourceId<'organization'>;
+  actorId: string;
+  role: OrganizationMembershipRole;
+  scopes: OrganizationMembershipScope[];
+  status: OrganizationMembershipStatus;
+};
+
+export const organizationMembershipDtoSchema = schema<OrganizationMembershipDto>((value) => {
+  const input = strictObject(value, 'organizationMembership', [
+    'id', 'object', 'schemaVersion', 'organizationId', 'actorId', 'role', 'scopes', 'status', 'createdAt', 'updatedAt',
+  ]);
+  literalValue(input.object, 'organizationMembership.object', 'organization_membership');
+  literalValue(input.schemaVersion, 'organizationMembership.schemaVersion', 1);
+  return {
+    id: parseResourceId('organization_membership', input.id, 'organizationMembership.id'),
+    object: 'organization_membership',
+    schemaVersion: 1,
+    organizationId: parseResourceId('organization', input.organizationId, 'organizationMembership.organizationId'),
+    actorId: stringValue(input.actorId, 'organizationMembership.actorId', { min: 1, max: 200 }),
+    role: enumValue(input.role, 'organizationMembership.role', organizationMembershipRoles),
+    scopes: arrayValue(input.scopes, 'organizationMembership.scopes', {
+      min: 1,
+      max: organizationMembershipScopes.length,
+      parse: (scope, path) => enumValue(scope, path, organizationMembershipScopes),
+      uniqueBy: (scope) => scope,
+    }),
+    status: enumValue(input.status, 'organizationMembership.status', organizationMembershipStatuses),
+    createdAt: isoDateTime(input.createdAt, 'organizationMembership.createdAt'),
+    updatedAt: isoDateTime(input.updatedAt, 'organizationMembership.updatedAt'),
+  };
+});
+
 export const integrationTypes = ['SHOPIFY', 'WOOCOMMERCE', 'MAGENTO', 'CUSTOM_CHECKOUT', 'MARKETPLACE', 'PACKPROOF_CONNECT'] as const;
 export type IntegrationType = (typeof integrationTypes)[number];
 export const integrationStatuses = ['ACTIVE', 'DISABLED', 'REVOKED'] as const;

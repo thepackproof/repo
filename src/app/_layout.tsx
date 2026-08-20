@@ -33,6 +33,7 @@ export default function RootLayout() {
             <Stack.Screen name="claim/participant" options={{ presentation: 'fullScreenModal' }} />
             <Stack.Screen name="evidence-session/redeem" options={{ presentation: 'fullScreenModal' }} />
             <Stack.Screen name="invite" />
+            <Stack.Screen name="portal/open" />
             <Stack.Screen name="paywall" options={{ presentation: 'modal' }} />
           </Stack>
           </OfflineEvidenceProvider>

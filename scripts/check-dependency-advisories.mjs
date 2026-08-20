@@ -75,4 +75,5 @@ function evaluate(treeName, cwd) {
 
 evaluate('root', root);
 evaluate('functions', resolve(root, 'functions'));
+evaluate('portal', resolve(root, 'portal'));
 console.log('Dependency advisory policy gate passed.');
