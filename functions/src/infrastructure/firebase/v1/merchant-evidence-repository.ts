@@ -27,6 +27,7 @@ import {
 } from '../../../domain/v1/commerce';
 import type { MerchantDeliveryDto, MerchantReturnPassportDto, MerchantShipmentDto, MerchantTimelineEventDto } from '../../../application/v1/merchant-evidence-types';
 import type { MerchantPrincipal } from '../../../application/v1/merchant-types';
+import type { PortalWorkspaceRecord, PortalWorkspaceRepository } from '../../../application/v1/portal-workspace-service';
 import { sha256 } from '../../../application/v1/merchant-transaction-service';
 import { asShippingTrackerObservation } from '../../../shipping-tracker';
 import { storedOutboxEvent } from './outbox';
@@ -51,6 +52,20 @@ function shipmentIdFor(transactionId: string): string {
 
 function deliveryIdFor(transactionId: string): string {
   return `delivery_${sha256(transactionId).slice(0, 40)}`;
+}
+
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === 'string' && entry.length > 0) : [];
+}
+
+function identifiers(value: unknown): Array<{ label: string; value: string }> {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((entry) => {
+    if (!entry || typeof entry !== 'object') return [];
+    const record = entry as { label?: unknown; value?: unknown };
+    if (typeof record.label !== 'string' || typeof record.value !== 'string') return [];
+    return [{ label: record.label, value: record.value }];
+  });
 }
 
 function matchStatus(value: unknown): 'MATCHED' | 'MISMATCH' | 'NOT_SCANNED' | null {
@@ -158,6 +173,12 @@ function toAccessible(id: string, data: DocumentData): AccessibleMerchantTransac
     participantIds: Array.isArray(data.participantIds)
       ? data.participantIds.filter((value: unknown): value is string => typeof value === 'string')
       : [],
+    confirmedBy: stringArray(data.confirmedBy),
+    handoffConfirmedBy: stringArray(data.handoffConfirmedBy),
+    completedBy: stringArray(data.completedBy),
+    identifiers: identifiers(data.identifiers),
+    conditionNotes: typeof data.conditionNotes === 'string' ? data.conditionNotes : '',
+    lockedAt: data.lockedAt ? dateValue(data.lockedAt, createdAt) : null,
     shipment: toShipment(id, data.shipping as DocumentData | undefined, createdAt, updatedAt),
     delivery: toDelivery(id, data.delivery as DocumentData | undefined, createdAt, updatedAt),
     commerceContextId: optionalString(source?.commerceContextId) ?? optionalString(data.commerceContextId),
@@ -355,6 +376,21 @@ export class FirestoreMerchantEvidenceRepository implements MerchantEvidenceRepo
     const snap = await this.firestore.collection('transactions').doc(transactionId).get();
     if (!snap.exists) return null;
     return toAccessible(snap.id, snap.data()!);
+  }
+
+  async listTransactionsForParticipant(actorId: string, limit: number): Promise<AccessibleMerchantTransaction[]> {
+    const snap = await this.firestore.collection('transactions')
+      .where('participantIds', 'array-contains', actorId)
+      .orderBy('updatedAt', 'desc')
+      .limit(limit)
+      .get();
+    return snap.docs.map((doc) => toAccessible(doc.id, doc.data()));
+  }
+
+  async findTransactionForParticipant(transactionId: string, actorId: string): Promise<AccessibleMerchantTransaction | null> {
+    const transaction = await this.loadTransaction(transactionId);
+    if (!transaction || !transaction.participantIds.includes(actorId)) return null;
+    return transaction;
   }
 
   async loadTransactionByPassportIdentity(passportIdentity: string): Promise<AccessibleMerchantTransaction | null> {
@@ -798,5 +834,37 @@ export class FirestoreMerchantConnectAdapter implements MerchantConnectIntegrati
       if (!existingOutbox.exists) tx.create(outboxRef, storedOutboxEvent(decision.event));
       return decision.session;
     });
+  }
+}
+
+export class FirestorePortalWorkspaceRepository implements PortalWorkspaceRepository {
+  constructor(private readonly evidence: FirestoreMerchantEvidenceRepository) {}
+
+  listForParticipant(actorId: string, limit: number): Promise<PortalWorkspaceRecord[]> {
+    return this.evidence.listTransactionsForParticipant(actorId, limit);
+  }
+
+  findForParticipant(transactionId: string, actorId: string): Promise<PortalWorkspaceRecord | null> {
+    return this.evidence.findTransactionForParticipant(transactionId, actorId);
+  }
+
+  listEvidence(transactionId: string) {
+    return this.evidence.listEvidence(transactionId);
+  }
+
+  listTimeline(transactionId: string) {
+    return this.evidence.listTimeline(transactionId);
+  }
+
+  listReturns(transactionId: string) {
+    return this.evidence.listReturns(transactionId);
+  }
+
+  findCommerceContext(commerceContextId: string) {
+    return this.evidence.findCommerceContext(commerceContextId);
+  }
+
+  bindPassportIdentity(transactionId: string, identity: PassportIdentityBinding) {
+    return this.evidence.bindPassportIdentity(transactionId, identity);
   }
 }

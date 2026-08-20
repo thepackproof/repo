@@ -35,12 +35,24 @@ assert.equal((participantCallableSource.match(/enforceAppCheck:\s*true/g) ?? [])
 const firebaseConfig = JSON.parse(
   await readFile(new URL('../../firebase.json', import.meta.url), 'utf8'),
 );
-const apiRewrite = firebaseConfig.hosting?.rewrites?.find(({ source }) => source === '/v1/**');
+const hostingConfigs = Array.isArray(firebaseConfig.hosting) ? firebaseConfig.hosting : [firebaseConfig.hosting];
+const publicHosting = hostingConfigs.find((item) => item.target === 'public') ?? hostingConfigs[0];
+const portalHosting = hostingConfigs.find((item) => item.target === 'portal');
+const apiRewrite = publicHosting?.rewrites?.find(({ source }) => source === '/v1/**');
 assert.deepEqual(apiRewrite?.function, {
   functionId: 'packproofApi',
   region: 'us-east1',
 });
-const sdkHeaders = firebaseConfig.hosting?.headers?.find(({ source }) => source === '/sdk/**')?.headers ?? [];
+assert.equal(portalHosting?.public, 'portal/dist');
+assert.deepEqual(portalHosting?.rewrites?.find(({ source }) => source === '/v1/**')?.function, {
+  functionId: 'packproofApi',
+  region: 'us-east1',
+});
+assert.equal(portalHosting?.rewrites?.find(({ source }) => source === '**')?.destination, '/index.html');
+const portalSecurity = portalHosting?.headers?.find(({ source }) => source === '**')?.headers ?? [];
+assert.ok(portalSecurity.some(({ key, value }) => key === 'Permissions-Policy' && value.includes('camera=()')));
+assert.ok(portalSecurity.some(({ key, value }) => key === 'Content-Security-Policy' && /firebaseappcheck\.googleapis\.com/.test(value) && /www\.google\.com/.test(value)));
+const sdkHeaders = publicHosting?.headers?.find(({ source }) => source === '/sdk/**')?.headers ?? [];
 assert.ok(sdkHeaders.some(({ key, value }) => key === 'Access-Control-Allow-Origin' && value === '*'));
 assert.ok(sdkHeaders.some(({ key, value }) => key === 'Cross-Origin-Resource-Policy' && value === 'cross-origin'));
 

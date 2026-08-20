@@ -49,6 +49,8 @@ Existing Firestore data, encrypted queue records, Connect integrations and publi
 | `docs/openapi/packproof-connect.yaml` | Legacy Connect contract | Compatibility contract layered over `/v1` services | Preserve until migration/deprecation policy is accepted |
 | `sdk/javascript/**` | Connect client and webhook verifier | Versioned TypeScript/Node SDK with Connect compatibility namespace | Add retries only where idempotency makes them safe |
 | `public/**` | Policies, deletion, invitation/Connect fallback | Public presentation over authorized APIs | No public Storage tokens or private record serialization |
+| `portal/**` | Authenticated browser SPA | Presentation adapter over `/v1/portal` | No Firestore/Storage from the browser; no merchant API keys; native capture stays native ([ADR 0014](../adr/0014-web-portal-presentation-surface.md)) |
+| `shared/ux/**` | Next Action Engine | Shared presentation-state rules | No React Native or DOM; mobile and portal consume the same engine |
 | `.github/workflows/ci.yml` | Source/API/emulator/security regression gates | Required baseline and later deploy/release pipelines | Add clean-checkout and artifact provenance gates before production delivery |
 
 ## Target service boundaries

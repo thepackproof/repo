@@ -4,6 +4,7 @@ exports.parseCreateTransaction = parseCreateTransaction;
 exports.parseListTransactions = parseListTransactions;
 exports.parseTransactionId = parseTransactionId;
 exports.parseIdempotencyKey = parseIdempotencyKey;
+exports.parsePortalHandoffAction = parsePortalHandoffAction;
 exports.parsePublishableKey = parsePublishableKey;
 exports.parseBrowserOrigin = parseBrowserOrigin;
 exports.parseCreatePublicCommerceHandoff = parseCreatePublicCommerceHandoff;
@@ -35,6 +36,7 @@ exports.parseCreateEvidenceReport = parseCreateEvidenceReport;
 exports.asApiError = asApiError;
 const core_1 = require("./core");
 const commerce_1 = require("../../domain/v1/commerce");
+const portal_workspace_service_1 = require("../../application/v1/portal-workspace-service");
 const evidence_1 = require("../../domain/v1/evidence");
 const transactions_1 = require("../../domain/v1/transactions");
 function object(value, field) {
@@ -191,6 +193,22 @@ function parseIdempotencyKey(value) {
         throw new core_1.InputValidationError([{ field: 'Idempotency-Key', code: 'INVALID_IDEMPOTENCY_KEY', message: 'Idempotency-Key must contain 8-200 visible ASCII characters.' }]);
     }
     return value;
+}
+function parsePortalHandoffAction(body) {
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+        throw new core_1.InputValidationError([{ field: 'body', code: 'INVALID_JSON', message: 'The request body is not a JSON object.' }]);
+    }
+    const record = body;
+    rejectUnknown(record, ['action']);
+    const action = record.action;
+    if (typeof action !== 'string' || !portal_workspace_service_1.nativeCaptureHandoffActions.includes(action)) {
+        throw new core_1.InputValidationError([{
+                field: 'action',
+                code: 'INVALID_HANDOFF_ACTION',
+                message: 'Continue this capture step on your phone. Browser capture is not available.',
+            }]);
+    }
+    return action;
 }
 function nullableString(value, field, min, max) {
     if (value === null || value === undefined)

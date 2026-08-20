@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.auditEventDtoSchema = exports.webhookDeliveryDtoSchema = exports.webhookDeliveryTransitions = exports.deliveryStatuses = exports.webhookEventDtoSchema = exports.webhookEndpointDtoSchema = exports.evidenceReportDtoSchema = exports.reportStatuses = exports.apiClientDtoSchema = exports.canonicalApiScopes = exports.integrationDtoSchema = exports.integrationStatuses = exports.integrationTypes = exports.organizationDtoSchema = exports.organizationStatuses = void 0;
+exports.auditEventDtoSchema = exports.webhookDeliveryDtoSchema = exports.webhookDeliveryTransitions = exports.deliveryStatuses = exports.webhookEventDtoSchema = exports.webhookEndpointDtoSchema = exports.evidenceReportDtoSchema = exports.reportStatuses = exports.apiClientDtoSchema = exports.canonicalApiScopes = exports.integrationDtoSchema = exports.integrationStatuses = exports.integrationTypes = exports.organizationMembershipDtoSchema = exports.organizationMembershipScopes = exports.organizationMembershipStatuses = exports.organizationMembershipRoles = exports.organizationDtoSchema = exports.organizationStatuses = void 0;
 const common_1 = require("./common");
 const evidence_1 = require("./evidence");
 const runtime_1 = require("./runtime");
@@ -18,6 +18,42 @@ exports.organizationDtoSchema = (0, runtime_1.schema)((value) => {
         status: (0, runtime_1.enumValue)(input.status, 'organization.status', exports.organizationStatuses),
         createdAt: (0, runtime_1.isoDateTime)(input.createdAt, 'organization.createdAt'),
         updatedAt: (0, runtime_1.isoDateTime)(input.updatedAt, 'organization.updatedAt'),
+    };
+});
+exports.organizationMembershipRoles = ['OWNER', 'ADMIN', 'OPERATOR', 'REVIEWER', 'MEMBER'];
+exports.organizationMembershipStatuses = ['INVITED', 'ACTIVE', 'SUSPENDED', 'REVOKED'];
+exports.organizationMembershipScopes = [
+    'portal:read',
+    'portal:write',
+    'transactions:read',
+    'transactions:write',
+    'evidence:read',
+    'reports:read',
+    'integrations:manage',
+    'api_clients:manage',
+];
+exports.organizationMembershipDtoSchema = (0, runtime_1.schema)((value) => {
+    const input = (0, runtime_1.strictObject)(value, 'organizationMembership', [
+        'id', 'object', 'schemaVersion', 'organizationId', 'actorId', 'role', 'scopes', 'status', 'createdAt', 'updatedAt',
+    ]);
+    (0, runtime_1.literalValue)(input.object, 'organizationMembership.object', 'organization_membership');
+    (0, runtime_1.literalValue)(input.schemaVersion, 'organizationMembership.schemaVersion', 1);
+    return {
+        id: (0, common_1.parseResourceId)('organization_membership', input.id, 'organizationMembership.id'),
+        object: 'organization_membership',
+        schemaVersion: 1,
+        organizationId: (0, common_1.parseResourceId)('organization', input.organizationId, 'organizationMembership.organizationId'),
+        actorId: (0, runtime_1.stringValue)(input.actorId, 'organizationMembership.actorId', { min: 1, max: 200 }),
+        role: (0, runtime_1.enumValue)(input.role, 'organizationMembership.role', exports.organizationMembershipRoles),
+        scopes: (0, runtime_1.arrayValue)(input.scopes, 'organizationMembership.scopes', {
+            min: 1,
+            max: exports.organizationMembershipScopes.length,
+            parse: (scope, path) => (0, runtime_1.enumValue)(scope, path, exports.organizationMembershipScopes),
+            uniqueBy: (scope) => scope,
+        }),
+        status: (0, runtime_1.enumValue)(input.status, 'organizationMembership.status', exports.organizationMembershipStatuses),
+        createdAt: (0, runtime_1.isoDateTime)(input.createdAt, 'organizationMembership.createdAt'),
+        updatedAt: (0, runtime_1.isoDateTime)(input.updatedAt, 'organizationMembership.updatedAt'),
     };
 });
 exports.integrationTypes = ['SHOPIFY', 'WOOCOMMERCE', 'MAGENTO', 'CUSTOM_CHECKOUT', 'MARKETPLACE', 'PACKPROOF_CONNECT'];

@@ -10,16 +10,19 @@ PackProof now has an application layer between transports and Firebase:
 flowchart LR
   Rest["Merchant REST v1"] --> Merchant["Merchant transaction application service"]
   Callable["Mobile Firebase callable"] --> Consumer["Consumer transaction application service"]
+  PortalHttp["Portal HTTP /v1/portal"] --> Portal["Portal workspace application service"]
   ConnectHttp["Connect order HTTP facade"] --> Context["Commerce-context application service"]
   ConnectCallable["Connect redemption callable"] --> Handoff["Connect handoff application service"]
 
   Merchant --> Domain["Canonical domain v1 and compatibility policy"]
   Consumer --> Domain
+  Portal --> Domain
   Context --> Domain
   Handoff --> Domain
 
   Merchant --> Ports["Application ports"]
   Consumer --> Ports
+  Portal --> Ports
   Context --> Ports
   Handoff --> Ports
   Ports --> Firebase["Firebase repository adapters"]
@@ -38,6 +41,7 @@ The existing `api/v1/transaction-service.ts` path remains as a compatibility exp
 | `ConsumerTransactionApplicationService` | `saveTransactionDraft` callable | Free-plan active-transaction policy, seller ownership, editable-state policy, draft construction, canonical compatibility and event request | Firebase Auth extraction, App Check, Firestore query/write encoding |
 | `CommerceContextApplicationService` | Connect order-ingestion HTTP facade | Stable idempotency identity, authoritative commerce snapshot, item-description propagation, field provenance, stable handoff token request and context event | API-key lookup, callback DNS/SSRF validation, HTTP response shape |
 | `ConnectHandoffApplicationService` | `redeemConnectSession` callable | Expiry, claimant exclusivity, one-time token policy, replay, transaction construction, canonical compatibility and event request | Firebase Auth extraction, Firestore transaction encoding, hash implementation |
+| `PortalWorkspaceApplicationService` | `/v1/portal` home, transactions, timeline, evidence metadata, Passport, native capture handoff | Participant resource authorization, portal DTO mapping, Passport projection reuse, native-only capture handoff URLs, `WEB_PORTAL` audit metadata | Firebase ID token / App Check parsing, HTTP envelope, Firestore encoding, native capture, browser upload |
 
 Every transaction created by these services is translated through the Section 2 canonical transaction DTO parser before persistence. Existing consumer and merchant Firestore shapes remain the active compatibility storage format; passing the canonical parser prevents the new service layer from creating a record that cannot be represented by the canonical model.
 
@@ -118,7 +122,8 @@ Authorization remains layered:
 - merchant environment and scope checks live in the application policy;
 - consumer identity is extracted by the callable and seller/editability checks live in the application service;
 - Connect API-key and callback allowlist/DNS validation remain at the ingestion boundary;
-- Connect claimant, expiry and token redemption policy live in the application service; and
+- Connect claimant, expiry and token redemption policy live in the application service;
+- portal identity is extracted by the `/v1/portal` authenticator and participant resource checks live in the portal application service; and
 - Firestore adapters recheck ownership/current state inside their transactions to prevent time-of-check/time-of-use bypass.
 
 ## 7. Compatibility and public-contract preservation
@@ -155,6 +160,7 @@ The migration also corrected the internal domain base type: a versioned resource
 | Outbox dispatch/retry/dead letter | Not implemented |
 | Public commerce-context REST resource | Not implemented |
 | PackProof browser/checkout button | Not implemented |
+| Portal workspace home/list/get/Passport/native handoff | Active through shared service; Hosting/DNS/live App Check not claimed |
 | Shopify/WooCommerce/Magento adapters | Not implemented |
 | Deployed Firebase validation | Not performed for Section 3 |
 | Exact Android binary/device validation | Not performed for Section 3 |

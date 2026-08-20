@@ -8,6 +8,7 @@ const node_crypto_1 = require("node:crypto");
 const express_1 = __importDefault(require("express"));
 const errors_1 = require("../../application/v1/errors");
 const core_1 = require("./core");
+const portal_routes_1 = require("./portal-routes");
 const http_security_1 = require("../../http-security");
 const validation_1 = require("./validation");
 const ratePolicies = {
@@ -119,9 +120,10 @@ function createApiV1App(dependencies) {
                 method: req.method,
                 status: res.statusCode,
                 durationMs: Number(durationMs.toFixed(3)),
-                principalType: principal?.type ?? participantPrincipal?.type ?? 'UNAUTHENTICATED',
+                principalType: principal?.type ?? participantPrincipal?.type ?? res.locals.portalPrincipal?.type ?? 'UNAUTHENTICATED',
                 organizationId: principal?.organizationId ?? null,
                 apiClientId: principal?.apiClientId ?? null,
+                actorId: participantPrincipal?.actorId ?? res.locals.portalPrincipal?.actorId ?? null,
             }));
         });
         next();
@@ -238,6 +240,11 @@ function createApiV1App(dependencies) {
         next(new core_1.ApiError(405, 'METHOD_NOT_ALLOWED', 'This HTTP method is not supported for the resource.', [], { Allow: 'POST' }));
     });
     app.use('/v1', participantRouter);
+    app.use('/v1/portal', (0, portal_routes_1.createPortalRouter)({
+        authenticator: dependencies.portalAuthenticator,
+        rateLimiter: dependencies.rateLimiter,
+        workspace: dependencies.portalWorkspaceService,
+    }));
     const merchantRouter = express_1.default.Router();
     merchantRouter.use(asyncHandler(async (req, res, next) => {
         // The hash is a rate-limit key only; raw network addresses are not persisted.

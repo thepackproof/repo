@@ -6,6 +6,10 @@ import { ParticipantCaptureApplicationService, type ParticipantActorPrincipal } 
 import { ApiError, InputValidationError, sha256, type MerchantPrincipal } from './core';
 import type { MerchantAuthenticator, RateLimitPolicy, RateLimiter, ReadinessChecker } from './ports';
 import type { ParticipantAuthenticator } from './participant-security';
+import type { PortalAuthenticator } from './portal-security';
+import type { PortalPrincipal } from './portal-principal';
+import { createPortalRouter } from './portal-routes';
+import { PortalWorkspaceApplicationService } from '../../application/v1/portal-workspace-service';
 import { MerchantConnectApplicationService } from '../../application/v1/merchant-connect-service';
 import { MerchantEvidenceApplicationService } from '../../application/v1/merchant-evidence-service';
 import { TransactionService } from './transaction-service';
@@ -50,6 +54,8 @@ type ApiAppDependencies = {
   transactionService: TransactionService;
   participantAuthenticator: ParticipantAuthenticator;
   participantCaptureService: ParticipantCaptureApplicationService;
+  portalAuthenticator: PortalAuthenticator;
+  portalWorkspaceService: PortalWorkspaceApplicationService;
   publicCommerceHandoffService: PublicCommerceHandoffApplicationService;
   merchantEvidenceService: MerchantEvidenceApplicationService;
   merchantConnectService: MerchantConnectApplicationService;
@@ -61,6 +67,7 @@ type ApiLocals = {
   requestId: string;
   principal?: MerchantPrincipal;
   participantPrincipal?: ParticipantActorPrincipal;
+  portalPrincipal?: PortalPrincipal;
   operation?: string;
   publicAuthorization?: { integration: PublicCommerceIntegration; origin: string };
   publicPublishableKey?: string;
@@ -198,9 +205,10 @@ export function createApiV1App(dependencies: ApiAppDependencies): express.Expres
         method: req.method,
         status: res.statusCode,
         durationMs: Number(durationMs.toFixed(3)),
-        principalType: principal?.type ?? participantPrincipal?.type ?? 'UNAUTHENTICATED',
+        principalType: principal?.type ?? participantPrincipal?.type ?? (res.locals as ApiLocals).portalPrincipal?.type ?? 'UNAUTHENTICATED',
         organizationId: principal?.organizationId ?? null,
         apiClientId: principal?.apiClientId ?? null,
+        actorId: participantPrincipal?.actorId ?? (res.locals as ApiLocals).portalPrincipal?.actorId ?? null,
       }));
     });
     next();
@@ -357,6 +365,12 @@ export function createApiV1App(dependencies: ApiAppDependencies): express.Expres
     next(new ApiError(405, 'METHOD_NOT_ALLOWED', 'This HTTP method is not supported for the resource.', [], { Allow: 'POST' }));
   });
   app.use('/v1', participantRouter);
+
+  app.use('/v1/portal', createPortalRouter({
+    authenticator: dependencies.portalAuthenticator,
+    rateLimiter: dependencies.rateLimiter,
+    workspace: dependencies.portalWorkspaceService,
+  }));
 
   const merchantRouter = express.Router();
   merchantRouter.use(asyncHandler(async (req, res, next) => {

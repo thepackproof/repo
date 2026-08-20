@@ -49,7 +49,9 @@ assert.deepEqual(assetLinks[0].target?.sha256_cert_fingerprints, [
 ]);
 
 const firebaseConfig = JSON.parse(readFileSync(join(process.cwd(), 'firebase.json'), 'utf8'));
-const assetLinksHeaders = firebaseConfig.hosting?.headers?.find(
+const hostingConfigs = Array.isArray(firebaseConfig.hosting) ? firebaseConfig.hosting : [firebaseConfig.hosting];
+const publicHosting = hostingConfigs.find((item) => item.target === 'public') ?? hostingConfigs[0];
+const assetLinksHeaders = publicHosting?.headers?.find(
   ({ source }) => source === '/.well-known/assetlinks.json',
 )?.headers;
 assert.deepEqual(assetLinksHeaders, [
@@ -58,5 +60,11 @@ assert.deepEqual(assetLinksHeaders, [
     value: 'public, max-age=300, must-revalidate',
   },
 ]);
+
+const appLinkPrefixes = (config.android?.intentFilters ?? [])
+  .flatMap((filter) => filter.data ?? [])
+  .map((item) => item.pathPrefix)
+  .filter(Boolean);
+assert.ok(appLinkPrefixes.includes('/portal/open'), 'Portal mobile handoff must remain an Android App Link.');
 
 console.log(`Android release configuration passed (${forbiddenReleasePermissions.length} billing/advertising permissions blocked; release App Link certificate and cache policy pinned).`);

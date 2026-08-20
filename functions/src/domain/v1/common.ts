@@ -5,6 +5,7 @@ export type ResourceId<K extends ResourceKind> = string & { readonly [resourceId
 
 export const resourceKinds = [
   'organization',
+  'organization_membership',
   'integration',
   'api_client',
   'commerce_context',
@@ -27,6 +28,7 @@ export type ResourceKind = (typeof resourceKinds)[number];
 
 export const resourceIdPrefixes: Readonly<Record<ResourceKind, string>> = {
   organization: 'org_',
+  organization_membership: 'membership_',
   integration: 'int_',
   api_client: 'client_',
   commerce_context: 'ctx_',

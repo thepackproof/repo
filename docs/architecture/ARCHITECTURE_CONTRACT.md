@@ -6,7 +6,7 @@ Status: accepted for controlled migration on 2026-08-11.
 
 PackProof will evolve incrementally from the current Android/Firebase implementation. Existing working behavior is preserved behind compatibility adapters until a replacement path has passed equivalent tests. A wholesale rewrite is not authorized by this contract.
 
-The target is one domain and application-service core serving mobile, REST, PackProof API, commerce adapters, background processing, reports and webhooks.
+The target is one domain and application-service core serving mobile, REST, PackProof API, the web portal, commerce adapters, background processing, reports and webhooks. The web portal is a presentation and transport adapter ([ADR 0014](../adr/0014-web-portal-presentation-surface.md)); it is not a second transaction, evidence, or Passport system.
 
 ## 2. Dependency direction
 
@@ -29,7 +29,7 @@ Presentation components and transport handlers must not own core state-transitio
 
 All product surfaces will converge on versioned representations of:
 
-- organizations, integrations and API clients;
+- organizations, organization memberships, integrations and API clients;
 - commerce contexts and passport drafts;
 - transactions and participant claims;
 - evidence sessions, artifacts and manifests;
@@ -42,9 +42,9 @@ Persistence records and public DTOs are separate types. A Firestore document mus
 
 ## 4. Transport rule
 
-Firebase callable functions, REST routes, scheduled jobs, Storage/Firestore triggers, PackProof API and platform adapters are transports or infrastructure. They must invoke the same application services.
+Firebase callable functions, REST routes, the web portal `/v1/portal` facade, scheduled jobs, Storage/Firestore triggers, PackProof API and platform adapters are transports or infrastructure. They must invoke the same application services.
 
-No new feature may implement one set of rules for mobile and a second set for merchants. Connect remains compatible while its behavior is migrated behind the versioned service layer.
+No new feature may implement one set of rules for mobile, a second set for merchants, and a third set for the browser. Connect remains compatible while its behavior is migrated behind the versioned service layer. Browser callers use Firebase Authentication and App Check as `PortalPrincipal`; they never use merchant API keys.
 
 ## 5. Commerce-context and provenance rule
 

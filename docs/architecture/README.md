@@ -13,11 +13,12 @@ This directory records the controlled migration of the current PackProof 0.9.5.0
 - [Baseline evidence](BASELINE_2026-08-11.md) - exact local source/emulator results and known open risks for the uncommitted 0.3.0 working tree.
 - [Migration map](MIGRATION_MAP.md) - current modules, current coupling and their target architectural destinations.
 - [Checkpoint plan](CHECKPOINT_PLAN.md) - historical disposition of the now-resolved uncommitted-baseline problem.
-- [Architecture decisions](../adr/README.md) - accepted decisions that later sections must preserve, including [ADR 0013](../adr/0013-transaction-intake-layer.md) (consumer intake over `commerce_context`).
+- [Architecture decisions](../adr/README.md) - accepted decisions that later sections must preserve, including [ADR 0013](../adr/0013-transaction-intake-layer.md) (consumer intake over `commerce_context`) and [ADR 0014](../adr/0014-web-portal-presentation-surface.md) (web portal as a presentation surface).
+- [PackProof Web Portal v1](WEB_PORTAL_V1.md) - browser SPA, `PortalPrincipal`, `/v1/portal` transport, Hosting target, and activation limits.
 
 ## Section 2 artifacts
 
-- [Canonical domain model v1](DOMAIN_MODEL_V1.md) - 17 versioned resource contracts, identifiers, DTO boundaries, state machines, trust rules, compatibility mappings and current activation limits.
+- [Canonical domain model v1](DOMAIN_MODEL_V1.md) - 18 versioned resource contracts, identifiers, DTO boundaries, state machines, trust rules, compatibility mappings and current activation limits.
 - [Section 2 completion report](SECTION_2_COMPLETION_2026-08-11.md) - delivered scope, executed gates and activation limits.
 - Executable source: `functions/src/domain/v1`.
 - Contract gate: `npm run test:domain`.
@@ -40,7 +41,7 @@ This directory records the controlled migration of the current PackProof 0.9.5.0
 
 ## PackProof Passport™
 
-- [PackProof Passport Schema v1](PACKPROOF_PASSPORT_SCHEMA_V1.md) - canonical aggregation of existing transaction, commerce-context, evidence, shipment, delivery and return records. Web/API JSON is the Passport; PDF is a presentation export. Implemented in `functions/src/domain/v1/passport.ts`, `GET /v1/transactions/{id}/passport`, snapshot/export routes, and `src/app/passport/[id].tsx`.
+- [PackProof Passport Schema v1](PACKPROOF_PASSPORT_SCHEMA_V1.md) - canonical aggregation of existing transaction, commerce-context, evidence, shipment, delivery and return records. Web/API JSON is the Passport; PDF is a presentation export. Implemented in `functions/src/domain/v1/passport.ts`, `GET /v1/transactions/{id}/passport`, `GET /v1/portal/transactions/{id}/passport`, snapshot/export routes, `src/app/passport/[id].tsx`, and `portal/src/pages/Passport.tsx`.
 
 ## Scale and integrity
 

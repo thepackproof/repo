@@ -28,6 +28,7 @@ jobs:
           cache-dependency-path: |
             package-lock.json
             functions/package-lock.json
+            portal/package-lock.json
 
       - name: Use Java 21 for Firebase emulators
         uses: actions/setup-java@v5
@@ -39,12 +40,17 @@ jobs:
         run: |
           npm ci
           npm --prefix functions ci
+          npm --prefix portal ci
 
       - name: Type and lint gates
         run: |
           npm run typecheck
           npm run lint
           npm --prefix functions run build
+          npm --prefix portal run typecheck
+          npm run test:ux-flow
+          npm --prefix portal test
+          npm --prefix portal run build
 
       - name: Android release configuration gate
         run: |
@@ -118,11 +124,13 @@ jobs:
           cache-dependency-path: |
             package-lock.json
             functions/package-lock.json
+            portal/package-lock.json
 
       - name: Install deterministic dependencies
         run: |
           npm ci
           npm --prefix functions ci
+          npm --prefix portal ci
 
       - name: Deploy Firebase functions and hosting
         env:

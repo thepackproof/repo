@@ -81,6 +81,7 @@ const config: ExpoConfig = {
         { scheme: 'https', host: value('PACKPROOF_LINK_DOMAIN', 'packproof.link'), pathPrefix: '/claim/participant' },
         { scheme: 'https', host: value('PACKPROOF_LINK_DOMAIN', 'packproof.link'), pathPrefix: '/evidence-session/redeem' },
         { scheme: 'https', host: value('PACKPROOF_LINK_DOMAIN', 'packproof.link'), pathPrefix: '/invite' },
+        { scheme: 'https', host: value('PACKPROOF_LINK_DOMAIN', 'packproof.link'), pathPrefix: '/portal/open' },
       ],
       category: ['BROWSABLE', 'DEFAULT'],
     }, {

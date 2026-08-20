@@ -21,115 +21,187 @@
   "storage": {
     "rules": "storage.rules"
   },
-  "hosting": {
-    "public": "public",
-    "ignore": [
-      "firebase.json",
-      "**/node_modules/**"
-    ],
-    "headers": [
-      {
-        "source": "/.well-known/assetlinks.json",
-        "headers": [
-          {
-            "key": "Cache-Control",
-            "value": "public, max-age=300, must-revalidate"
+  "hosting": [
+    {
+      "target": "public",
+      "public": "public",
+      "ignore": [
+        "firebase.json",
+        "**/node_modules/**"
+      ],
+      "headers": [
+        {
+          "source": "/.well-known/assetlinks.json",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "public, max-age=300, must-revalidate"
+            }
+          ]
+        },
+        {
+          "source": "/sdk/**",
+          "headers": [
+            {
+              "key": "Access-Control-Allow-Origin",
+              "value": "*"
+            },
+            {
+              "key": "Cross-Origin-Resource-Policy",
+              "value": "cross-origin"
+            },
+            {
+              "key": "Cache-Control",
+              "value": "public, max-age=3600"
+            }
+          ]
+        },
+        {
+          "source": "**",
+          "headers": [
+            {
+              "key": "X-Content-Type-Options",
+              "value": "nosniff"
+            },
+            {
+              "key": "Referrer-Policy",
+              "value": "strict-origin-when-cross-origin"
+            },
+            {
+              "key": "X-Frame-Options",
+              "value": "DENY"
+            },
+            {
+              "key": "Permissions-Policy",
+              "value": "camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()"
+            },
+            {
+              "key": "Cross-Origin-Opener-Policy",
+              "value": "same-origin"
+            },
+            {
+              "key": "Cross-Origin-Resource-Policy",
+              "value": "same-origin"
+            },
+            {
+              "key": "Strict-Transport-Security",
+              "value": "max-age=31536000; includeSubDomains"
+            },
+            {
+              "key": "Content-Security-Policy",
+              "value": "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; img-src 'self' data:; font-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'self'; object-src 'none'; upgrade-insecure-requests"
+            }
+          ]
+        }
+      ],
+      "rewrites": [
+        {
+          "source": "/v1/**",
+          "function": {
+            "functionId": "packproofApi",
+            "region": "us-east1"
           }
-        ]
-      },
-      {
-        "source": "/sdk/**",
-        "headers": [
-          {
-            "key": "Access-Control-Allow-Origin",
-            "value": "*"
-          },
-          {
-            "key": "Cross-Origin-Resource-Policy",
-            "value": "cross-origin"
-          },
-          {
-            "key": "Cache-Control",
-            "value": "public, max-age=3600"
+        },
+        {
+          "source": "/api/request-deletion",
+          "function": {
+            "functionId": "webDeletionRequest",
+            "region": "us-east1"
           }
-        ]
-      },
-      {
-        "source": "**",
-        "headers": [
-          {
-            "key": "X-Content-Type-Options",
-            "value": "nosniff"
-          },
-          {
-            "key": "Referrer-Policy",
-            "value": "strict-origin-when-cross-origin"
-          },
-          {
-            "key": "X-Frame-Options",
-            "value": "DENY"
-          },
-          {
-            "key": "Permissions-Policy",
-            "value": "camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()"
-          },
-          {
-            "key": "Cross-Origin-Opener-Policy",
-            "value": "same-origin"
-          },
-          {
-            "key": "Cross-Origin-Resource-Policy",
-            "value": "same-origin"
-          },
-          {
-            "key": "Strict-Transport-Security",
-            "value": "max-age=31536000; includeSubDomains"
-          },
-          {
-            "key": "Content-Security-Policy",
-            "value": "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; img-src 'self' data:; font-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'self'; object-src 'none'; upgrade-insecure-requests"
+        },
+        {
+          "source": "/api/confirm-deletion",
+          "function": {
+            "functionId": "confirmWebDeletion",
+            "region": "us-east1"
           }
-        ]
-      }
-    ],
-    "rewrites": [
-      {
-        "source": "/v1/**",
-        "function": {
-          "functionId": "packproofApi",
-          "region": "us-east1"
+        },
+        {
+          "source": "/api/tiktok-deletion",
+          "function": {
+            "functionId": "webTikTokDeletionStart",
+            "region": "us-east1"
+          }
+        },
+        {
+          "source": "/api/connect/orders",
+          "function": {
+            "functionId": "handleMarketplaceOrder",
+            "region": "us-east1"
+          }
         }
-      },
-      {
-        "source": "/api/request-deletion",
-        "function": {
-          "functionId": "webDeletionRequest",
-          "region": "us-east1"
+      ]
+    },
+    {
+      "target": "portal",
+      "public": "portal/dist",
+      "ignore": [
+        "firebase.json",
+        "**/node_modules/**"
+      ],
+      "headers": [
+        {
+          "source": "/index.html",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "no-store"
+            }
+          ]
+        },
+        {
+          "source": "**",
+          "headers": [
+            {
+              "key": "X-Content-Type-Options",
+              "value": "nosniff"
+            },
+            {
+              "key": "Referrer-Policy",
+              "value": "strict-origin-when-cross-origin"
+            },
+            {
+              "key": "X-Frame-Options",
+              "value": "DENY"
+            },
+            {
+              "key": "Permissions-Policy",
+              "value": "camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()"
+            },
+            {
+              "key": "Cross-Origin-Opener-Policy",
+              "value": "same-origin"
+            },
+            {
+              "key": "Cross-Origin-Resource-Policy",
+              "value": "same-origin"
+            },
+            {
+              "key": "Strict-Transport-Security",
+              "value": "max-age=31536000; includeSubDomains"
+            },
+            {
+              "key": "Content-Security-Policy",
+              "value": "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' https://www.google.com https://www.gstatic.com https://www.recaptcha.net https://apis.google.com; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com https://*.cloudfunctions.net https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firebaseappcheck.googleapis.com https://www.googleapis.com https://apis.google.com https://www.google.com https://www.gstatic.com https://www.recaptcha.net wss://*.firebaseio.com http://127.0.0.1:* http://localhost:*; img-src 'self' data: blob: https://*.googleusercontent.com; font-src 'self'; frame-src 'self' https://*.firebaseapp.com https://accounts.google.com https://www.google.com https://www.recaptcha.net; form-action 'self'; frame-ancestors 'none'; base-uri 'self'; object-src 'none'; upgrade-insecure-requests"
+            }
+          ]
         }
-      },
-      {
-        "source": "/api/confirm-deletion",
-        "function": {
-          "functionId": "confirmWebDeletion",
-          "region": "us-east1"
+      ],
+      "rewrites": [
+        {
+          "source": "/v1/**",
+          "function": {
+            "functionId": "packproofApi",
+            "region": "us-east1"
+          }
+        },
+        {
+          "source": "**",
+          "destination": "/index.html"
         }
-      },
-      {
-        "source": "/api/tiktok-deletion",
-        "function": {
-          "functionId": "webTikTokDeletionStart",
-          "region": "us-east1"
-        }
-      },
-      {
-        "source": "/api/connect/orders",
-        "function": {
-          "functionId": "handleMarketplaceOrder",
-          "region": "us-east1"
-        }
-      }
-    ]
-  },
+      ]
+    }
+  ],
   "emulators": {
     "auth": {
       "port": 9099
