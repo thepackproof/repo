@@ -113,6 +113,9 @@ export type AssertionSource = (typeof assertionSources)[number];
 
 export type AssertionConfidence = 'ASSERTED' | 'OBSERVED' | 'DERIVED';
 
+export const extractionQualities = ['EXACT_LABELED', 'FORMAT_MATCH', 'HEURISTIC'] as const;
+export type ExtractionQuality = (typeof extractionQualities)[number];
+
 export type FieldProvenance = {
   source: AssertionSource;
   confidence: AssertionConfidence;
@@ -120,6 +123,7 @@ export type FieldProvenance = {
   sourceReference: string | null;
   extractionMethod: string | null;
   sourceArtifactSha256: string | null;
+  extractionQuality: ExtractionQuality | null;
 };
 
 export type FieldProvenanceDto = Omit<FieldProvenance, 'importedAt'> & { importedAt: string };

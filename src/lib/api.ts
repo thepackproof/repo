@@ -216,6 +216,7 @@ export type PendingIntakeRecord = {
   platformIdentifier: string | null;
   importedAt: string;
   missingFields: string[];
+  heuristicFields: string[];
 };
 
 export type IntakePreview = {
@@ -228,6 +229,7 @@ export type IntakePreview = {
   orderNumber: string | null;
   sku: string | null;
   missingFields: string[];
+  heuristicFields: string[];
 };
 
 export type IntakeConfirmedFields = {
@@ -260,6 +262,7 @@ export function subscribePendingIntakes(uid: string, callback: (items: PendingIn
         platformIdentifier: typeof data.platformIdentifier === 'string' ? data.platformIdentifier : null,
         importedAt: typeof data.importedAt === 'string' ? data.importedAt : '',
         missingFields: Array.isArray(data.missingFields) ? data.missingFields.filter((value): value is string => typeof value === 'string') : [],
+        heuristicFields: Array.isArray(data.heuristicFields) ? data.heuristicFields.filter((value): value is string => typeof value === 'string') : [],
       };
     }));
   }, onError);

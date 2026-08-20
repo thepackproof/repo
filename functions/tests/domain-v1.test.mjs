@@ -118,7 +118,7 @@ const samples = {
     },
     item,
     fieldProvenance: {
-      'item.title': { source: 'PLATFORM_API', confidence: 'ASSERTED', importedAt: now, sourceReference: 'product-1', extractionMethod: null, sourceArtifactSha256: null },
+      'item.title': { source: 'PLATFORM_API', confidence: 'ASSERTED', importedAt: now, sourceReference: 'product-1', extractionMethod: null, sourceArtifactSha256: null, extractionQuality: null },
     },
     canonicalPayloadSha256: sha, status: 'ORDER_BOUND', supersedesCommerceContextId: null, expiresAt: null, createdAt: now, updatedAt: now,
   },
@@ -417,6 +417,11 @@ test('versioned commerce parsers extract order metadata from eBay, Etsy, Shopify
   assert.equal(ebay.externalOrderId, '12-34567-89012');
   assert.equal(ebay.item.selectedOptions[0]?.value, 'Mario Kart World Bundle');
   assert.equal(ebay.missingFields.includes('title'), false);
+  assert.equal(ebay.extractionQuality.platform, 'FORMAT_MATCH');
+  assert.equal(ebay.extractionQuality.title, 'EXACT_LABELED');
+  assert.equal(ebay.extractionQuality.price, 'EXACT_LABELED');
+  assert.equal(ebay.extractionQuality.orderNumber, 'EXACT_LABELED');
+  assert.deepEqual(ebay.heuristicFields, []);
 
   const etsy = parseCommerceArtifact(readFileSync(join(fixtureDir, 'etsy-sold.txt'), 'utf8'), 'EMAIL_RECEIPT');
   assert.equal(etsy.parserVersion, ETSY_EMAIL_PARSER_V1);
@@ -436,6 +441,16 @@ test('versioned commerce parsers extract order metadata from eBay, Etsy, Shopify
   assert.equal(generic.externalOrderId, 'A-998877');
   assert.equal(generic.item.amount?.minorUnits, 129900);
   assert.equal(generic.item.sku, 'A7-BODY');
+  assert.equal(generic.extractionQuality.title, 'HEURISTIC');
+  assert.equal(generic.extractionQuality.price, 'EXACT_LABELED');
+  assert.ok(generic.heuristicFields.includes('title'));
+
+  const heuristicMoney = parseCommerceArtifact('Thanks for buying.\nShipping $8.00\nItem: Widget', 'SHARE_SHEET');
+  assert.equal(heuristicMoney.item.title, 'Widget');
+  assert.equal(heuristicMoney.extractionQuality.title, 'EXACT_LABELED');
+  assert.equal(heuristicMoney.extractionQuality.price, 'HEURISTIC');
+  assert.equal(heuristicMoney.item.amount?.minorUnits, 800);
+  assert.ok(heuristicMoney.heuristicFields.includes('price'));
 
   const screenshot = parseCommerceArtifact(null, 'SCREENSHOT_IMPORT');
   assert.deepEqual(screenshot.missingFields, ['title', 'price', 'variant', 'orderNumber']);

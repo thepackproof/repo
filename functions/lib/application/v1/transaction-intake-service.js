@@ -59,6 +59,41 @@ function mergeOption(options, option) {
     next.push(option);
     return next;
 }
+function provenanceQuality(field, extraction) {
+    if (field === 'item.title')
+        return extraction.title ?? null;
+    if (field === 'item.amount')
+        return extraction.price ?? null;
+    if (field === 'item.selectedOptions')
+        return extraction.variant ?? null;
+    if (field === 'source.externalOrderId')
+        return extraction.orderNumber ?? null;
+    if (field === 'source.platformIdentifier')
+        return extraction.platform ?? null;
+    return null;
+}
+function extractionAfterConfirm(parsed, confirmed) {
+    const next = { ...parsed };
+    if (confirmed?.title?.trim())
+        delete next.title;
+    if (confirmed?.priceMinor != null)
+        delete next.price;
+    if (confirmed?.variant?.trim())
+        delete next.variant;
+    if (confirmed?.orderNumber?.trim())
+        delete next.orderNumber;
+    return next;
+}
+function heuristicFieldsFromProvenance(fieldProvenance) {
+    const mapping = [
+        ['item.title', 'title'],
+        ['item.amount', 'price'],
+        ['item.selectedOptions', 'variant'],
+        ['source.externalOrderId', 'orderNumber'],
+        ['source.platformIdentifier', 'platform'],
+    ];
+    return mapping.filter(([key]) => fieldProvenance[key]?.extractionQuality === 'HEURISTIC').map(([, field]) => field);
+}
 function overlayIntakeItem(base, confirmed) {
     if (!confirmed)
         return base;
@@ -117,6 +152,7 @@ function pendingIntakeFromContext(commerceContext, passportDraftId) {
         platformIdentifier: commerceContext.source.platformIdentifier,
         importedAt: commerceContext.source.capturedAt,
         missingFields: (0, transaction_intake_parsers_1.missingIntakeFields)(commerceContext.item, commerceContext.source.externalOrderId),
+        heuristicFields: heuristicFieldsFromProvenance(commerceContext.fieldProvenance),
     };
 }
 class TransactionIntakeApplicationService {
@@ -174,6 +210,7 @@ class TransactionIntakeApplicationService {
             externalOrderId,
             externalListingId: parsed.externalListingId,
             productUrl: parsed.productUrl,
+            extractionQuality: extractionAfterConfirm(parsed.extractionQuality, command.confirmed),
         });
     }
     async ingest(command) {
@@ -198,13 +235,20 @@ class TransactionIntakeApplicationService {
             productUrl: command.productUrl,
         }));
         const assertionSource = (0, commerce_1.assertionSourceForIntakeSource)(command.intakeSourceType);
-        const fieldProvenance = Object.fromEntries(populatedItemFields(command.item).map((field) => [field, {
+        const extraction = command.extractionQuality ?? {};
+        const provenanceFields = [
+            ...populatedItemFields(command.item),
+            ...(command.externalOrderId ? ['source.externalOrderId'] : []),
+            ...(command.platformIdentifier ? ['source.platformIdentifier'] : []),
+        ];
+        const fieldProvenance = Object.fromEntries(provenanceFields.map((field) => [field, {
                 source: assertionSource,
                 confidence: 'ASSERTED',
                 importedAt,
                 sourceReference: command.externalOrderId ?? command.productUrl,
                 extractionMethod: command.parserVersion,
                 sourceArtifactSha256: command.originalArtifactSha256,
+                extractionQuality: provenanceQuality(field, extraction),
             }]));
         let context;
         let draft;

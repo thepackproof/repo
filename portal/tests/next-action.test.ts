@@ -65,3 +65,24 @@ test('home groups records that need the viewer', () => {
   assert.equal(grouped.needsAttention.length, 1);
   assert.equal(grouped.waiting.length, 0);
 });
+
+test('View Proof is shown only when the backend says the Proof is retrievable', () => {
+  const packed = resolveNextRequiredAction({
+    transaction: transaction({ status: 'PACKED' }),
+    viewerId: 'seller',
+    protocol,
+  });
+  assert.equal(packed.proofReady, false);
+  assert.equal(packed.passportReady, false);
+  assert.notEqual(packed.primaryAction?.kind, 'OPEN_PASSPORT');
+
+  const ready = resolveNextRequiredAction({
+    transaction: transaction({ status: 'PACKED' }),
+    viewerId: 'seller',
+    protocol,
+    proofReady: true,
+  });
+  assert.equal(ready.proofReady, true);
+  assert.equal(ready.passportReady, true);
+  assert.equal(ready.secondaryAction?.kind, 'OPEN_PASSPORT');
+});

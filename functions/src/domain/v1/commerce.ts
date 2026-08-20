@@ -1,5 +1,5 @@
 import type { FieldProvenance, FieldProvenanceDto, Money, OrganizationScopedResource, PublicResource, ResourceId, VersionedResource } from './common';
-import { assertionSources, parseMoney, parseResourceId } from './common';
+import { assertionSources, extractionQualities, parseMoney, parseResourceId } from './common';
 import {
   arrayValue,
   DomainValidationError,
@@ -198,7 +198,9 @@ export function parseItemDescriptor(value: unknown, path: string): ItemDescripto
 const assertionConfidences = ['ASSERTED', 'OBSERVED', 'DERIVED'] as const;
 
 function parseFieldProvenance(value: unknown, path: string): FieldProvenanceDto {
-  const input = strictObject(value, path, ['source', 'confidence', 'importedAt', 'sourceReference', 'extractionMethod', 'sourceArtifactSha256']);
+  const input = strictObject(value, path, [
+    'source', 'confidence', 'importedAt', 'sourceReference', 'extractionMethod', 'sourceArtifactSha256', 'extractionQuality',
+  ]);
   return {
     source: enumValue(input.source, `${path}.source`, assertionSources),
     confidence: enumValue(input.confidence, `${path}.confidence`, assertionConfidences),
@@ -206,6 +208,9 @@ function parseFieldProvenance(value: unknown, path: string): FieldProvenanceDto 
     sourceReference: optionalString(input.sourceReference, `${path}.sourceReference`, { min: 1, max: 500 }),
     extractionMethod: optionalString(input.extractionMethod, `${path}.extractionMethod`, { min: 1, max: 80, pattern: /^[A-Z0-9][A-Z0-9._-]{0,79}$/ }),
     sourceArtifactSha256: optionalSha256(input.sourceArtifactSha256, `${path}.sourceArtifactSha256`),
+    extractionQuality: input.extractionQuality === undefined || input.extractionQuality === null
+      ? null
+      : enumValue(input.extractionQuality, `${path}.extractionQuality`, extractionQualities),
   };
 }
 

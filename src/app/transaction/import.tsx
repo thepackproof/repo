@@ -9,7 +9,7 @@ import { colors } from '@/constants/brand';
 import { featureFlags } from '@/constants/features';
 import { ingestTransactionIntake, previewTransactionIntake, startPackProofFromIntake, type ConsumerIntakeSourceType, type IntakePreview } from '@/lib/api';
 import { readableError } from '@/lib/format';
-import { confirmedFromPreview, hashFileArtifact, intakeSourceForShare, readTextArtifact, sha256Utf8 } from '@/lib/transaction-intake';
+import { confirmedFromPreview, fieldNeedsReview, hashFileArtifact, intakeSourceForShare, readTextArtifact, sha256Utf8 } from '@/lib/transaction-intake';
 import { useAuth } from '@/providers/auth-provider';
 
 export default function ImportPurchaseScreen() {
@@ -33,6 +33,7 @@ export default function ImportPurchaseScreen() {
 
   const parsedReady = Boolean(preview || title.trim().length > 2 || binaryHash);
   const missing = preview?.missingFields ?? (title.trim() ? [] : ['title']);
+  const review = preview ?? { missingFields: missing, heuristicFields: [] as string[] };
   const valid = useMemo(() => title.trim().length > 2 || Boolean(preview?.title), [preview?.title, title]);
 
   const applyPreview = (next: IntakePreview) => {
@@ -133,6 +134,7 @@ export default function ImportPurchaseScreen() {
         orderNumber: orderNumber.trim() || null,
         sku: null,
         missingFields: [],
+        heuristicFields: [],
       }, { title, variant, price, orderNumber });
       const ingested = await ingestTransactionIntake({
         operationKey: originalArtifactSha256,
@@ -182,10 +184,10 @@ export default function ImportPurchaseScreen() {
       {binaryHash ? <Text style={styles.note}>Screenshot or PDF attached. Add the item name if PackProof could not read it.</Text> : null}
       {parsedReady ? (
         <>
-          <Field label="Item name" value={title} onChangeText={setTitle} placeholder="Sony A7 Camera" autoCapitalize="sentences" />
-          {missing.includes('variant') || variant ? <Field label="Variant" value={variant} onChangeText={setVariant} placeholder="Size, color, bundle…" /> : null}
-          {missing.includes('price') || price ? <Field label="Price" value={price} onChangeText={setPrice} placeholder="1299.00" keyboardType="decimal-pad" /> : null}
-          {missing.includes('orderNumber') || orderNumber ? <Field label="Order number" value={orderNumber} onChangeText={setOrderNumber} placeholder="Optional" autoCapitalize="characters" /> : null}
+          <Field label={fieldNeedsReview(review, 'title') ? 'Item name (please confirm)' : 'Item name'} value={title} onChangeText={setTitle} placeholder="Sony A7 Camera" autoCapitalize="sentences" />
+          {fieldNeedsReview(review, 'variant') || variant ? <Field label={fieldNeedsReview(review, 'variant') ? 'Variant (please confirm)' : 'Variant'} value={variant} onChangeText={setVariant} placeholder="Size, color, bundle…" /> : null}
+          {fieldNeedsReview(review, 'price') || price ? <Field label={fieldNeedsReview(review, 'price') ? 'Price (please confirm)' : 'Price'} value={price} onChangeText={setPrice} placeholder="1299.00" keyboardType="decimal-pad" /> : null}
+          {fieldNeedsReview(review, 'orderNumber') || orderNumber ? <Field label={fieldNeedsReview(review, 'orderNumber') ? 'Order number (please confirm)' : 'Order number'} value={orderNumber} onChangeText={setOrderNumber} placeholder="Optional" autoCapitalize="characters" /> : null}
         </>
       ) : null}
     </TaskSession>

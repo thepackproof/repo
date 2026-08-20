@@ -1,4 +1,4 @@
-import type { Money } from './common';
+import type { ExtractionQuality, Money } from './common';
 import type { ConsumerIntakeSourceType, ItemDescriptor } from './commerce';
 import { DomainValidationError } from './runtime';
 
@@ -13,6 +13,11 @@ export const CONFIRMED_FIELDS_V1 = 'CONFIRMED_FIELDS_V1';
 
 export const intakeMissingFieldNames = ['title', 'price', 'variant', 'orderNumber'] as const;
 export type IntakeMissingField = (typeof intakeMissingFieldNames)[number];
+export const intakeExtractedFieldNames = ['title', 'price', 'variant', 'orderNumber', 'platform'] as const;
+export type IntakeExtractedField = (typeof intakeExtractedFieldNames)[number];
+export const confirmableHeuristicFields = ['title', 'price', 'variant', 'orderNumber'] as const;
+
+export type ExtractionQualityMap = Partial<Record<IntakeExtractedField, ExtractionQuality>>;
 
 export type ExtractedCommerceMessage = {
   from: string;
@@ -28,6 +33,8 @@ export type CommerceArtifactParseResult = {
   externalListingId: string | null;
   productUrl: string | null;
   missingFields: IntakeMissingField[];
+  extractionQuality: ExtractionQualityMap;
+  heuristicFields: IntakeExtractedField[];
 };
 
 const EBAY_SENDER = /@(?:ebay\.com|ebay\.[a-z]{2,3})\b/i;
@@ -98,7 +105,7 @@ export function parseCommerceArtifact(
     const parserVersion = intakeSourceType === 'PDF_IMPORT' ? PDF_IMPORT_V1
       : intakeSourceType === 'SCREENSHOT_IMPORT' ? SCREENSHOT_IMPORT_V1
         : CONFIRMED_FIELDS_V1;
-    return resultOf(parserVersion, null, item, null, null, null);
+    return resultOf(parserVersion, null, item, null, null, null, {});
   }
   const message = extractCommerceMessage(artifactText);
   const combined = `${message.subject}\n${message.body}`;
@@ -111,6 +118,17 @@ export function parseCommerceArtifact(
   return parseGenericCommerceText(message, combined);
 }
 
+export function heuristicFieldsOf(extraction: ExtractionQualityMap): IntakeExtractedField[] {
+  return intakeExtractedFieldNames.filter((field) => extraction[field] === 'HEURISTIC');
+}
+
+export function confirmableHeuristicFieldsOf(extraction: ExtractionQualityMap | IntakeExtractedField[]): IntakeExtractedField[] {
+  const heuristic = Array.isArray(extraction) ? extraction : heuristicFieldsOf(extraction);
+  return heuristic.filter((field): field is (typeof confirmableHeuristicFields)[number] => (
+    (confirmableHeuristicFields as readonly string[]).includes(field)
+  ));
+}
+
 function resultOf(
   parserVersion: string,
   platformIdentifier: string | null,
@@ -118,6 +136,7 @@ function resultOf(
   externalOrderId: string | null,
   externalListingId: string | null,
   productUrl: string | null,
+  extraction: ExtractionQualityMap,
 ): CommerceArtifactParseResult {
   return {
     parserVersion,
@@ -127,66 +146,93 @@ function resultOf(
     externalListingId,
     productUrl,
     missingFields: missingIntakeFields(item, externalOrderId),
+    extractionQuality: extraction,
+    heuristicFields: heuristicFieldsOf(extraction),
   };
 }
 
 function parseEbaySoldMessage(message: ExtractedCommerceMessage, combined: string): CommerceArtifactParseResult | null {
-  if (!EBAY_SENDER.test(message.from) && !EBAY_BODY.test(combined)) return null;
-  const orderNumber = firstMatch(combined, [
-    /order(?:\s*(?:number|id|#))[:\s]+(\d{2}-\d{5}-\d{5})/i,
-    /order(?:\s*(?:number|id|#))[:\s]+(\d{10,20})/i,
+  const sender = EBAY_SENDER.test(message.from);
+  if (!sender && !EBAY_BODY.test(combined)) return null;
+  const order = extractOrderNumber(combined, ['order number', 'order id', 'order #', 'order'], [
     /\b(\d{2}-\d{5}-\d{5})\b/,
+    /\b(\d{10,20})\b/,
   ]);
   const listingId = firstMatch(combined, [/listing(?:\s*(?:id|number|#))[:\s]+(\d{8,20})/i]);
+  const title = extractTitle(combined, message.subject, ['item', 'item title'], /you sold\s+(.+)$/i);
+  const amount = parseListedMoney(combined, ['sold for', 'sale price', 'price', 'total']);
   const item = itemFromText(combined, {
-    title: labeledValue(combined, ['item', 'item title']) ?? titleFromSubject(message.subject, /you sold\s+(.+)$/i),
+    title: title?.value ?? null,
     quantity: labeledInteger(combined, ['quantity', 'qty']),
-    amount: parseListedMoney(combined, ['sold for', 'sale price', 'price', 'total']),
+    amount: amount?.value ?? null,
   });
-  return resultOf(EBAY_EMAIL_PARSER_V1, 'EBAY', item, orderNumber, listingId, firstHttpsUrl(combined));
+  return resultOf(EBAY_EMAIL_PARSER_V1, 'EBAY', item, order?.value ?? null, listingId, firstHttpsUrl(combined), {
+    platform: sender ? 'FORMAT_MATCH' : 'HEURISTIC',
+    ...(title ? { title: title.confidence } : {}),
+    ...(amount ? { price: amount.confidence } : {}),
+    ...(item.selectedOptions.length ? { variant: 'EXACT_LABELED' } : {}),
+    ...(order ? { orderNumber: order.confidence } : {}),
+  });
 }
 
 function parseEtsySoldMessage(message: ExtractedCommerceMessage, combined: string): CommerceArtifactParseResult | null {
-  if (!ETSY_SENDER.test(message.from) && !ETSY_BODY.test(combined)) return null;
-  const orderNumber = firstMatch(combined, [
-    /order\s*#\s*(\d{6,20})/i,
-    /order(?:\s*(?:number|id))[:\s]+(\d{6,20})/i,
-  ]);
+  const sender = ETSY_SENDER.test(message.from);
+  if (!sender && !ETSY_BODY.test(combined)) return null;
+  const order = extractOrderNumber(combined, ['order number', 'order id', 'order #', 'order'], [/\b(\d{6,20})\b/]);
+  const title = extractTitle(combined, message.subject, ['item', 'listing'], /you made a sale(?: on etsy)?[:\s]+(.+)$/i);
+  const amount = parseListedMoney(combined, ['order total', 'total', 'price', 'sold for']);
   const item = itemFromText(combined, {
-    title: labeledValue(combined, ['item', 'listing']) ?? titleFromSubject(message.subject, /you made a sale(?: on etsy)?[:\s]+(.+)$/i),
+    title: title?.value ?? null,
     quantity: labeledInteger(combined, ['quantity', 'qty']),
-    amount: parseListedMoney(combined, ['order total', 'total', 'price', 'sold for']),
+    amount: amount?.value ?? null,
   });
-  return resultOf(ETSY_EMAIL_PARSER_V1, 'ETSY', item, orderNumber, null, firstHttpsUrl(combined));
+  return resultOf(ETSY_EMAIL_PARSER_V1, 'ETSY', item, order?.value ?? null, null, firstHttpsUrl(combined), {
+    platform: sender ? 'FORMAT_MATCH' : 'HEURISTIC',
+    ...(title ? { title: title.confidence } : {}),
+    ...(amount ? { price: amount.confidence } : {}),
+    ...(item.selectedOptions.length ? { variant: 'EXACT_LABELED' } : {}),
+    ...(order ? { orderNumber: order.confidence } : {}),
+  });
 }
 
 function parseShopifyOrderMessage(message: ExtractedCommerceMessage, combined: string): CommerceArtifactParseResult | null {
-  const shopifyShaped = SHOPIFY_SENDER.test(message.from) || SHOPIFY_BODY.test(combined) || /via shopify/i.test(combined);
-  if (!shopifyShaped) return null;
-  const orderNumber = firstMatch(combined, [
-    /order\s*#\s*(\d{3,12})/i,
-    /order(?:\s*(?:number|id))[:\s]+#?(\d{3,12})/i,
-  ]);
-  if (!SHOPIFY_SENDER.test(message.from) && !SHOPIFY_BODY.test(combined) && !orderNumber) return null;
+  const sender = SHOPIFY_SENDER.test(message.from);
+  const body = SHOPIFY_BODY.test(combined);
+  const viaShopify = /via shopify/i.test(combined);
+  if (!sender && !body && !viaShopify) return null;
+  const order = extractOrderNumber(combined, ['order number', 'order id', 'order #', 'order'], [/\b(\d{3,12})\b/]);
+  if (!sender && !body && !order) return null;
+  const title = extractTitle(combined, message.subject, ['item', 'product'], null);
+  const amount = parseListedMoney(combined, ['total', 'subtotal', 'price']);
   const item = itemFromText(combined, {
-    title: labeledValue(combined, ['item', 'product']) ?? firstItemLine(combined),
+    title: title?.value ?? null,
     quantity: labeledInteger(combined, ['quantity', 'qty']),
-    amount: parseListedMoney(combined, ['total', 'subtotal', 'price']),
+    amount: amount?.value ?? null,
   });
-  return resultOf(SHOPIFY_EMAIL_PARSER_V1, 'SHOPIFY', item, orderNumber, null, firstHttpsUrl(combined));
+  return resultOf(SHOPIFY_EMAIL_PARSER_V1, 'SHOPIFY', item, order?.value ?? null, null, firstHttpsUrl(combined), {
+    platform: sender ? 'FORMAT_MATCH' : 'HEURISTIC',
+    ...(title ? { title: title.confidence } : {}),
+    ...(amount ? { price: amount.confidence } : {}),
+    ...(item.selectedOptions.length ? { variant: 'EXACT_LABELED' } : {}),
+    ...(order ? { orderNumber: order.confidence } : {}),
+  });
 }
 
 function parseGenericCommerceText(message: ExtractedCommerceMessage, combined: string): CommerceArtifactParseResult {
-  const orderNumber = firstMatch(combined, [
-    /order(?:\s*(?:number|id|#))[:\s]+([A-Z0-9][A-Z0-9-]{4,30})/i,
-    /\b([A-Z]{1,4}-\d{5,20})\b/,
-  ]);
+  const order = extractOrderNumber(combined, ['order number', 'order id', 'order #', 'order'], [/\b([A-Z]{1,4}-\d{5,20})\b/]);
+  const title = extractTitle(combined, message.subject, ['item', 'item title', 'product'], /(?:sold|order|receipt)[:\s]+(.+)$/i);
+  const amount = parseListedMoney(combined, ['sold for', 'total', 'price', 'amount']);
   const item = itemFromText(combined, {
-    title: labeledValue(combined, ['item', 'item title', 'product']) ?? titleFromSubject(message.subject, /(?:sold|order|receipt)[:\s]+(.+)$/i) ?? firstItemLine(combined),
+    title: title?.value ?? null,
     quantity: labeledInteger(combined, ['quantity', 'qty']),
-    amount: parseListedMoney(combined, ['sold for', 'total', 'price', 'amount']),
+    amount: amount?.value ?? null,
   });
-  return resultOf(GENERIC_COMMERCE_TEXT_PARSER_V1, null, item, orderNumber, null, firstHttpsUrl(combined));
+  return resultOf(GENERIC_COMMERCE_TEXT_PARSER_V1, null, item, order?.value ?? null, null, firstHttpsUrl(combined), {
+    ...(title ? { title: title.confidence } : {}),
+    ...(amount ? { price: amount.confidence } : {}),
+    ...(item.selectedOptions.length ? { variant: 'EXACT_LABELED' } : {}),
+    ...(order ? { orderNumber: order.confidence } : {}),
+  });
 }
 
 function itemFromText(
@@ -227,13 +273,43 @@ function labeledInteger(text: string, labels: string[]): number | null {
   return match ? Number.parseInt(match[1]!, 10) : null;
 }
 
-function parseListedMoney(text: string, labels: string[]): Money | null {
-  for (const label of labels) {
-    const labeled = labeledValue(text, [label]);
-    const parsed = labeled ? parseMoneyToken(labeled) : null;
-    if (parsed) return parsed;
+function extractTitle(
+  text: string,
+  subject: string,
+  labels: string[],
+  subjectPattern: RegExp | null,
+): { value: string; confidence: ExtractionQuality } | null {
+  const labeled = labeledValue(text, labels);
+  if (labeled) return { value: labeled, confidence: 'EXACT_LABELED' };
+  const fromSubject = subjectPattern ? titleFromSubject(subject, subjectPattern) : null;
+  if (fromSubject) return { value: fromSubject, confidence: 'FORMAT_MATCH' };
+  const line = firstItemLine(text);
+  return line ? { value: line, confidence: 'HEURISTIC' } : null;
+}
+
+function extractOrderNumber(
+  text: string,
+  labels: string[],
+  unlabeledPatterns: RegExp[],
+): { value: string; confidence: ExtractionQuality } | null {
+  const labeled = labeledValue(text, labels);
+  if (labeled) {
+    const cleaned = labeled.replace(/^#/, '').trim().split(/\s/)[0] ?? '';
+    if (cleaned) return { value: cleaned.slice(0, 40), confidence: 'EXACT_LABELED' };
   }
-  return parseMoneyToken(text);
+  const formatted = firstMatch(text, unlabeledPatterns);
+  return formatted ? { value: formatted, confidence: 'FORMAT_MATCH' } : null;
+}
+
+function parseListedMoney(text: string, labels: string[]): { value: Money; confidence: ExtractionQuality } | null {
+  for (const label of labels) {
+    const match = new RegExp(`(?:^|\\n)\\s*${escapeRegExp(label)}\\s*[:\\-–]?\\s*(.+)$`, 'im').exec(text);
+    const labeled = match?.[1]?.trim().split('\n')[0]?.trim() ?? null;
+    const parsed = labeled ? parseMoneyToken(labeled) : null;
+    if (parsed) return { value: parsed, confidence: 'EXACT_LABELED' };
+  }
+  const fallback = parseMoneyToken(text);
+  return fallback ? { value: fallback, confidence: 'HEURISTIC' } : null;
 }
 
 function parseMoneyToken(value: string): Money | null {

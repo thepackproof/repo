@@ -71,6 +71,8 @@ export const previewTransactionIntake = onCall(callOptions, async (request) => {
       orderNumber: parsed.externalOrderId,
       sku: parsed.item.sku,
       missingFields: parsed.missingFields,
+      heuristicFields: parsed.heuristicFields,
+      extractionQuality: parsed.extractionQuality,
     };
   } catch (error) {
     return throwCallableError(error);

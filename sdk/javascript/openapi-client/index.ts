@@ -96,7 +96,7 @@ export type { PortalHomeResponse as PortalHomeResponseModel } from './models/Por
 export type { PortalMobileHandoffResponse as PortalMobileHandoffResponseModel } from './models/PortalMobileHandoffResponse';
 export type { PortalProtocol as PortalProtocolModel } from './models/PortalProtocol';
 export type { PortalSessionResponse as PortalSessionResponseModel } from './models/PortalSessionResponse';
-export type { PortalTransaction as PortalTransactionModel } from './models/PortalTransaction';
+export { PortalTransaction as PortalTransactionModel } from './models/PortalTransaction';
 export type { PortalTransactionListResponse as PortalTransactionListResponseModel } from './models/PortalTransactionListResponse';
 export type { PortalTransactionResponse as PortalTransactionResponseModel } from './models/PortalTransactionResponse';
 export type { ProofId as ProofIdModel } from './models/ProofId';

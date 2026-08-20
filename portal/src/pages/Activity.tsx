@@ -1,11 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { resolveNextRequiredAction } from '@packproof/ux';
-import { listTransactions, toUxTransaction, type PortalTransaction } from '../api';
-import { useAuth } from '../auth';
+import { listTransactions, toUxFlowInput, type PortalTransaction } from '../api';
 
 export function ActivityPage() {
-  const { user } = useAuth();
   const [items, setItems] = useState<PortalTransaction[]>([]);
   const [error, setError] = useState<string | null>(null);
 
@@ -25,15 +23,11 @@ export function ActivityPage() {
       {error ? <p className="error">{error}</p> : null}
       <section className="stack">
         {items.map((item) => {
-          const next = user ? resolveNextRequiredAction({
-            transaction: toUxTransaction(item),
-            viewerId: user.uid,
-            protocol: item.protocol,
-          }) : null;
+          const next = resolveNextRequiredAction(toUxFlowInput(item));
           return (
             <Link key={item.id} className="card" to={`/packproofs/${item.id}/activity`} style={{ textDecoration: 'none', color: 'inherit' }}>
               <h2>{item.title}</h2>
-              <p className="meta">{next?.headline ?? item.status.replaceAll('_', ' ')}</p>
+              <p className="meta">{next.headline}</p>
               <p className="meta">Updated {item.updatedAt}</p>
             </Link>
           );

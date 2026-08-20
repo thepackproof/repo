@@ -14,6 +14,12 @@ function dateValue(value, fallback) {
         return new Date(value);
     return fallback;
 }
+function chunks(items, size) {
+    const out = [];
+    for (let i = 0; i < items.length; i += size)
+        out.push(items.slice(i, i + size));
+    return out;
+}
 function optionalString(value) {
     return typeof value === 'string' && value ? value : null;
 }
@@ -405,6 +411,21 @@ class FirestoreMerchantEvidenceRepository {
             return null;
         return toCommerce(snap.id, snap.data());
     }
+    async findCommerceContexts(commerceContextIds) {
+        const unique = [...new Set(commerceContextIds.filter(Boolean))];
+        const found = new Map();
+        if (!unique.length)
+            return found;
+        for (const chunk of chunks(unique, 100)) {
+            const snaps = await this.firestore.getAll(...chunk.map((id) => this.firestore.collection('commerceContexts').doc(id)));
+            for (const snap of snaps) {
+                if (!snap.exists)
+                    continue;
+                found.set(snap.id, toCommerce(snap.id, snap.data()));
+            }
+        }
+        return found;
+    }
     async listPassportSnapshots(transactionId) {
         const snap = await this.firestore.collection('transactions').doc(transactionId).collection('passportSnapshots').orderBy('snapshotVersion', 'asc').get();
         return snap.docs.map((doc) => toPassportSnapshot(doc.id, doc.data())).filter((item) => item !== null);
@@ -457,6 +478,31 @@ class FirestoreMerchantEvidenceRepository {
     async listEvidence(transactionId) {
         const snap = await this.firestore.collection('transactions').doc(transactionId).collection('evidence').orderBy('createdAt', 'asc').get();
         return snap.docs.map((doc) => toEvidence(transactionId, doc.id, doc.data()));
+    }
+    async listEvidenceForTransactions(transactionIds) {
+        const grouped = new Map();
+        for (const id of transactionIds) {
+            if (!grouped.has(id))
+                grouped.set(id, []);
+        }
+        const unique = [...grouped.keys()].filter(Boolean);
+        if (!unique.length)
+            return grouped;
+        for (const chunk of chunks(unique, 30)) {
+            const snap = await this.firestore.collectionGroup('evidence').where('transactionId', 'in', chunk).get();
+            for (const doc of snap.docs) {
+                const parentId = doc.ref.parent.parent?.id;
+                const transactionId = optionalString(doc.data().transactionId) ?? parentId ?? '';
+                const list = grouped.get(transactionId);
+                if (!list)
+                    continue;
+                list.push(toEvidence(transactionId, doc.id, doc.data()));
+            }
+        }
+        for (const list of grouped.values()) {
+            list.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+        }
+        return grouped;
     }
     async findEvidence(transactionId, artifactId) {
         const snap = await this.firestore.collection('transactions').doc(transactionId).collection('evidence').doc(artifactId).get();
@@ -801,6 +847,9 @@ class FirestorePortalWorkspaceRepository {
     listEvidence(transactionId) {
         return this.evidence.listEvidence(transactionId);
     }
+    listEvidenceForTransactions(transactionIds) {
+        return this.evidence.listEvidenceForTransactions(transactionIds);
+    }
     listTimeline(transactionId) {
         return this.evidence.listTimeline(transactionId);
     }
@@ -809,6 +858,9 @@ class FirestorePortalWorkspaceRepository {
     }
     findCommerceContext(commerceContextId) {
         return this.evidence.findCommerceContext(commerceContextId);
+    }
+    findCommerceContexts(commerceContextIds) {
+        return this.evidence.findCommerceContexts(commerceContextIds);
     }
     bindPassportIdentity(transactionId, identity) {
         return this.evidence.bindPassportIdentity(transactionId, identity);

@@ -75,5 +75,5 @@ Mailbox push (Gmail `users.watch`, Microsoft Graph mail subscriptions) is a late
 - Domain and Passport tests must reject `ORDER_BOUND` for user-provided artifacts, including those that carry an extracted order number.
 - User-provided contexts may satisfy Passport issuance as an identified commerce source without becoming merchant- or platform-attested.
 - Capture redeem must persist intake freeze fields. Application intake creates `CREATED` contexts and `READY_FOR_REVIEW` drafts; it does not create transactions.
-- Field provenance may record `extractionMethod` and `sourceArtifactSha256` without rewriting existing required keys.
+- Field provenance may record `extractionMethod`, `extractionQuality`, and `sourceArtifactSha256` without rewriting existing required keys. `extractionQuality` is parser extraction quality (`EXACT_LABELED`, `FORMAT_MATCH`, `HEURISTIC`), not evidentiary truth. High-confidence fields may autofill; heuristic fields get one lightweight confirmation. Do not make users confirm every field.
 - Multi-item `items[]` on the context remains a later additive schema change; v1 keeps the current singular `ItemDescriptor`.

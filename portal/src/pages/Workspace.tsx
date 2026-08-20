@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, NavLink, Outlet, useOutletContext, useParams } from 'react-router-dom';
 import { CAPTURE_PRIMARY_ACTIONS, resolveNextRequiredAction } from '@packproof/ux';
-import { getTimeline, getTransaction, listEvidence, toUxTransaction, type PortalTransaction } from '../api';
+import { getTimeline, getTransaction, listEvidence, toUxFlowInput, type PortalTransaction } from '../api';
 import { useAuth } from '../auth';
 
 export function WorkspacePage() {
@@ -21,11 +21,7 @@ export function WorkspacePage() {
   if (error) return <p className="error">{error}</p>;
   if (!item || !user) return <p className="meta">Loading…</p>;
 
-  const next = resolveNextRequiredAction({
-    transaction: toUxTransaction(item),
-    viewerId: user.uid,
-    protocol: item.protocol,
-  });
+  const next = resolveNextRequiredAction(toUxFlowInput(item));
   const captureOnPhone = Boolean(next.primaryAction && CAPTURE_PRIMARY_ACTIONS.has(next.primaryAction.kind));
 
   return (
@@ -35,7 +31,7 @@ export function WorkspacePage() {
       <p className="lede">{next.headline} {next.instruction}</p>
       <div className="row">
         {captureOnPhone ? <Link className="btn" to={`/packproofs/${item.id}/handoff`}>Continue on phone</Link> : null}
-        {next.passportReady ? <Link className="btn secondary" to={`/packproofs/${item.id}/proof`}>View Proof</Link> : null}
+        {next.proofReady ? <Link className="btn secondary" to={`/packproofs/${item.id}/proof`}>View Proof</Link> : null}
       </div>
       <nav className="tabs" aria-label="Workspace">
         <NavLink to={`/packproofs/${item.id}`} end>Overview</NavLink>
@@ -43,14 +39,14 @@ export function WorkspacePage() {
         <NavLink to={`/packproofs/${item.id}/evidence`}>Evidence</NavLink>
         <NavLink to={`/packproofs/${item.id}/proof`}>Proof</NavLink>
       </nav>
-      <Outlet context={{ item, viewerId: user.uid }} />
+      <Outlet context={{ item }} />
     </>
   );
 }
 
 export function WorkspaceOverview() {
-  const { item, viewerId } = useOutletContext<{ item: PortalTransaction; viewerId: string }>();
-  const next = resolveNextRequiredAction({ transaction: toUxTransaction(item), viewerId, protocol: item.protocol });
+  const { item } = useOutletContext<{ item: PortalTransaction }>();
+  const next = resolveNextRequiredAction(toUxFlowInput(item));
   return (
     <div className="stack">
       <article className="card">

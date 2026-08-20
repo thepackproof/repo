@@ -140,13 +140,13 @@ export function projectPassport(input: {
   });
 }
 
-export function assertPassportEligible(
+export function evaluateStoredPassportEligibility(
   transaction: AccessibleMerchantTransaction,
   artifacts: readonly StoredEvidenceRecord[],
   commerce: PassportAggregatorInput['commerce'] = null,
-): void {
+): { ok: true } | { ok: false; failures: Array<{ code: string; message: string }> } {
   const transactionInput = passportTransactionInput(transaction);
-  const result = evaluatePassportEligibility({
+  return evaluatePassportEligibility({
     transactionExists: true,
     merchantReference: transaction.merchantReference,
     commerceContextId: transaction.commerceContextId,
@@ -156,6 +156,22 @@ export function assertPassportEligible(
     artifacts: artifacts.map(passportArtifactInput),
     displayedUnattributedFacts: countDisplayedUnattributedCommercialFacts(transactionInput, commerce),
   });
+}
+
+export function isPassportEligible(
+  transaction: AccessibleMerchantTransaction,
+  artifacts: readonly StoredEvidenceRecord[],
+  commerce: PassportAggregatorInput['commerce'] = null,
+): boolean {
+  return evaluateStoredPassportEligibility(transaction, artifacts, commerce).ok;
+}
+
+export function assertPassportEligible(
+  transaction: AccessibleMerchantTransaction,
+  artifacts: readonly StoredEvidenceRecord[],
+  commerce: PassportAggregatorInput['commerce'] = null,
+): void {
+  const result = evaluateStoredPassportEligibility(transaction, artifacts, commerce);
   if (!result.ok) throw passportNotReady(result.failures);
 }
 

@@ -38,6 +38,12 @@ function dateValue(value: unknown, fallback: Date): Date {
   return fallback;
 }
 
+function chunks<T>(items: readonly T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size) as T[]);
+  return out;
+}
+
 function optionalString(value: unknown): string | null {
   return typeof value === 'string' && value ? value : null;
 }
@@ -440,6 +446,20 @@ export class FirestoreMerchantEvidenceRepository implements MerchantEvidenceRepo
     return toCommerce(snap.id, snap.data()!);
   }
 
+  async findCommerceContexts(commerceContextIds: readonly string[]): Promise<Map<string, PassportCommerceInput>> {
+    const unique = [...new Set(commerceContextIds.filter(Boolean))];
+    const found = new Map<string, PassportCommerceInput>();
+    if (!unique.length) return found;
+    for (const chunk of chunks(unique, 100)) {
+      const snaps = await this.firestore.getAll(...chunk.map((id) => this.firestore.collection('commerceContexts').doc(id)));
+      for (const snap of snaps) {
+        if (!snap.exists) continue;
+        found.set(snap.id, toCommerce(snap.id, snap.data()!));
+      }
+    }
+    return found;
+  }
+
   async listPassportSnapshots(transactionId: string): Promise<StoredPassportSnapshot[]> {
     const snap = await this.firestore.collection('transactions').doc(transactionId).collection('passportSnapshots').orderBy('snapshotVersion', 'asc').get();
     return snap.docs.map((doc) => toPassportSnapshot(doc.id, doc.data())).filter((item): item is StoredPassportSnapshot => item !== null);
@@ -498,6 +518,29 @@ export class FirestoreMerchantEvidenceRepository implements MerchantEvidenceRepo
   async listEvidence(transactionId: string): Promise<StoredEvidenceRecord[]> {
     const snap = await this.firestore.collection('transactions').doc(transactionId).collection('evidence').orderBy('createdAt', 'asc').get();
     return snap.docs.map((doc) => toEvidence(transactionId, doc.id, doc.data()));
+  }
+
+  async listEvidenceForTransactions(transactionIds: readonly string[]): Promise<Map<string, StoredEvidenceRecord[]>> {
+    const grouped = new Map<string, StoredEvidenceRecord[]>();
+    for (const id of transactionIds) {
+      if (!grouped.has(id)) grouped.set(id, []);
+    }
+    const unique = [...grouped.keys()].filter(Boolean);
+    if (!unique.length) return grouped;
+    for (const chunk of chunks(unique, 30)) {
+      const snap = await this.firestore.collectionGroup('evidence').where('transactionId', 'in', chunk).get();
+      for (const doc of snap.docs) {
+        const parentId = doc.ref.parent.parent?.id;
+        const transactionId = optionalString(doc.data().transactionId) ?? parentId ?? '';
+        const list = grouped.get(transactionId);
+        if (!list) continue;
+        list.push(toEvidence(transactionId, doc.id, doc.data()));
+      }
+    }
+    for (const list of grouped.values()) {
+      list.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+    }
+    return grouped;
   }
 
   async findEvidence(transactionId: string, artifactId: string): Promise<StoredEvidenceRecord | null> {
@@ -852,6 +895,10 @@ export class FirestorePortalWorkspaceRepository implements PortalWorkspaceReposi
     return this.evidence.listEvidence(transactionId);
   }
 
+  listEvidenceForTransactions(transactionIds: readonly string[]) {
+    return this.evidence.listEvidenceForTransactions(transactionIds);
+  }
+
   listTimeline(transactionId: string) {
     return this.evidence.listTimeline(transactionId);
   }
@@ -862,6 +909,10 @@ export class FirestorePortalWorkspaceRepository implements PortalWorkspaceReposi
 
   findCommerceContext(commerceContextId: string) {
     return this.evidence.findCommerceContext(commerceContextId);
+  }
+
+  findCommerceContexts(commerceContextIds: readonly string[]) {
+    return this.evidence.findCommerceContexts(commerceContextIds);
   }
 
   bindPassportIdentity(transactionId: string, identity: PassportIdentityBinding) {

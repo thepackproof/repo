@@ -49,3 +49,7 @@ Changing the discriminator or field names to `packproof_proof` / `proofId` requi
 - ADR 0009’s non-adjudication boundary applies to the Proof by name, not only to SISV.
 - Proof Policy, webhook `proof.*` type names, schema v2 field rename, and Proof Analytics remain later work.
 - Do not treat this as authority to rename `transaction`, to persist a `proofs` collection, or to make the portal assemble a Proof in JavaScript.
+
+### Schema v2 follow-up (not now)
+
+Schema v1 keeps `object: packproof_passport`, `identity.passportId`, `ppt_...`, `PP-...`, `PASSPORT_NOT_READY`, and `/passport` routes. A later ADR may introduce `schemaVersion: 2` that makes `PackProofPassportV1`, `passportId`, and legacy `/passport` paths deprecated aliases rather than permanent naming. Do not start that migration while v1 consumers exist. Preserve v1 exactly as this decision records.

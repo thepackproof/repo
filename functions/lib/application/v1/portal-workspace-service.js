@@ -17,15 +17,6 @@ exports.nativeCaptureHandoffActions = [
     'RECORD_RETURN_SEAL',
     'RECORD_RETURN_UNBOXING',
 ];
-const EMPTY_PROTOCOL = {
-    hasPackingVideo: false,
-    hasSealReference: false,
-    hasArrivalPhoto: false,
-    hasUnboxingVideo: false,
-    sellerReferenceComplete: false,
-    buyerArrivalComplete: false,
-    outboundComplete: false,
-};
 function notFound() {
     return new errors_1.ApplicationError('NOT_FOUND', 'TRANSACTION_NOT_FOUND', 'The requested PackProof was not found.');
 }
@@ -52,14 +43,25 @@ function protocolFromEvidence(records) {
         outboundComplete: hasPackingVideo && hasSealReference && hasArrivalPhoto && hasUnboxingVideo,
     };
 }
-function toPortalTransactionDto(record, protocol = EMPTY_PROTOCOL) {
+function includesActor(ids, actorId) {
+    return Boolean(actorId && ids?.includes(actorId));
+}
+function viewerRoleOf(record, actorId) {
+    return record.sellerId === actorId ? 'SELLER' : 'BUYER';
+}
+function toPortalTransactionDto(record, viewerId, protocol, proofReady) {
     return {
         id: record.id,
         object: 'portal_transaction',
         schemaVersion: 1,
-        sellerId: record.sellerId,
-        buyerId: record.buyerId,
-        participantIds: record.participantIds,
+        viewerRole: viewerRoleOf(record, viewerId),
+        hasBuyer: Boolean(record.buyerId),
+        viewerConfirmed: includesActor(record.confirmedBy, viewerId),
+        viewerHandoffConfirmed: includesActor(record.handoffConfirmedBy, viewerId),
+        viewerCompleted: includesActor(record.completedBy, viewerId),
+        counterpartyConfirmed: record.confirmedBy.some((id) => id !== viewerId),
+        counterpartyHandoffConfirmed: record.handoffConfirmedBy.some((id) => id !== viewerId),
+        counterpartyCompleted: record.completedBy.some((id) => id !== viewerId),
         status: record.consumerStatus || record.status,
         title: record.title,
         category: record.category ?? '',
@@ -69,11 +71,9 @@ function toPortalTransactionDto(record, protocol = EMPTY_PROTOCOL) {
         identifiers: record.identifiers,
         conditionNotes: record.conditionNotes,
         terms: record.terms,
-        confirmedBy: record.confirmedBy,
-        handoffConfirmedBy: record.handoffConfirmedBy,
-        completedBy: record.completedBy,
         passportId: record.passportId,
         passportDisplayId: record.passportDisplayId,
+        proofReady,
         source: record.sourceType || record.sourcePlatform || record.externalOrderId
             ? { type: record.sourceType, platform: record.sourcePlatform, externalOrderId: record.externalOrderId }
             : null,
@@ -117,12 +117,21 @@ class PortalWorkspaceApplicationService {
     }
     async listTransactions(principal, limit = 50) {
         const records = await this.repository.listForParticipant(principal.actorId, Math.min(Math.max(limit, 1), 50));
-        return records.map((record) => toPortalTransactionDto(record));
+        const [evidenceByTransaction, commerceById] = await Promise.all([
+            this.repository.listEvidenceForTransactions(records.map((record) => record.id)),
+            this.repository.findCommerceContexts(records.flatMap((record) => record.commerceContextId ? [record.commerceContextId] : [])),
+        ]);
+        return records.map((record) => this.toAuthorizedDto(principal.actorId, record, evidenceByTransaction.get(record.id) ?? [], record.commerceContextId
+            ? commerceById.get(record.commerceContextId) ?? null
+            : null));
     }
     async getTransaction(principal, transactionId) {
         const record = await this.requireParticipant(principal, transactionId);
-        const evidence = await this.repository.listEvidence(record.id);
-        return toPortalTransactionDto(record, protocolFromEvidence(evidence));
+        const [evidence, commerce] = await Promise.all([
+            this.repository.listEvidence(record.id),
+            record.commerceContextId ? this.repository.findCommerceContext(record.commerceContextId) : Promise.resolve(null),
+        ]);
+        return this.toAuthorizedDto(principal.actorId, record, evidence, commerce);
     }
     async getTimeline(principal, transactionId) {
         const record = await this.requireParticipant(principal, transactionId);
@@ -219,6 +228,9 @@ class PortalWorkspaceApplicationService {
     }
     verificationBaseUrl() {
         return this.linkBaseUrl().replace(/\/$/, '') || 'https://packproof.link';
+    }
+    toAuthorizedDto(viewerId, record, evidence, commerce) {
+        return toPortalTransactionDto(record, viewerId, protocolFromEvidence(evidence), (0, passport_projection_1.isPassportEligible)(record, evidence, commerce));
     }
     async requireParticipant(principal, transactionId) {
         const record = await this.repository.findForParticipant(transactionId, principal.actorId);

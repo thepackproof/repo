@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.assertionSources = exports.resourceIdPrefixes = exports.resourceKinds = void 0;
+exports.extractionQualities = exports.assertionSources = exports.resourceIdPrefixes = exports.resourceKinds = void 0;
 exports.parseResourceId = parseResourceId;
 exports.parseMoney = parseMoney;
 exports.canTransition = canTransition;
@@ -86,4 +86,5 @@ exports.assertionSources = [
     'SCREENSHOT_IMPORT',
     'PDF_IMPORT',
 ];
+exports.extractionQualities = ['EXACT_LABELED', 'FORMAT_MATCH', 'HEURISTIC'];
 //# sourceMappingURL=common.js.map

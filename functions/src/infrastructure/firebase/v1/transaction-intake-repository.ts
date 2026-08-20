@@ -94,6 +94,9 @@ function pendingRecord(data: DocumentData): PendingIntakeRecord {
     platformIdentifier: optionalString(data.platformIdentifier),
     importedAt: typeof data.importedAt === 'string' ? data.importedAt : timestamp(data.createdAt, 'createdAt').toISOString(),
     missingFields: Array.isArray(data.missingFields) ? data.missingFields.filter((value): value is string => typeof value === 'string') : [],
+    heuristicFields: Array.isArray(data.heuristicFields)
+      ? data.heuristicFields.filter((value): value is PendingIntakeRecord['heuristicFields'][number] => typeof value === 'string')
+      : [],
   };
 }
 

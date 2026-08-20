@@ -48,9 +48,14 @@ export type PortalTransaction = {
   id: string;
   object: 'portal_transaction';
   schemaVersion: 1;
-  sellerId: string | null;
-  buyerId: string | null;
-  participantIds: string[];
+  viewerRole: 'SELLER' | 'BUYER';
+  hasBuyer: boolean;
+  viewerConfirmed: boolean;
+  viewerHandoffConfirmed: boolean;
+  viewerCompleted: boolean;
+  counterpartyConfirmed: boolean;
+  counterpartyHandoffConfirmed: boolean;
+  counterpartyCompleted: boolean;
   status: string;
   title: string;
   category: string;
@@ -66,11 +71,9 @@ export type PortalTransaction = {
     returnWindowDays: number;
     customTerms: string;
   } | null;
-  confirmedBy: string[];
-  handoffConfirmedBy: string[];
-  completedBy: string[];
   passportId: string | null;
   passportDisplayId: string | null;
+  proofReady: boolean;
   source: { type: string | null; platform: string | null; externalOrderId: string | null } | null;
   protocol: PortalProtocol;
   lockedAt: string | null;
@@ -132,12 +135,23 @@ export function createMobileHandoff(id: string, action: string) {
   });
 }
 
+export const PORTAL_VIEWER_ID = 'portal:viewer';
+const PORTAL_COUNTERPARTY_ID = 'portal:counterparty';
+
 export function toUxTransaction(item: PortalTransaction) {
+  const sellerId = item.viewerRole === 'SELLER' ? PORTAL_VIEWER_ID : PORTAL_COUNTERPARTY_ID;
+  const buyerId = item.hasBuyer
+    ? (item.viewerRole === 'BUYER' ? PORTAL_VIEWER_ID : PORTAL_COUNTERPARTY_ID)
+    : null;
+  const confirmedBy = [
+    ...(item.viewerConfirmed ? [PORTAL_VIEWER_ID] : []),
+    ...(item.counterpartyConfirmed ? [PORTAL_COUNTERPARTY_ID] : []),
+  ];
   return {
     id: item.id,
-    sellerId: item.sellerId ?? '',
-    buyerId: item.buyerId,
-    participantIds: item.participantIds,
+    sellerId,
+    buyerId,
+    participantIds: buyerId ? [sellerId, buyerId] : [sellerId],
     status: item.status as import('@packproof/ux').TransactionStatus,
     title: item.title,
     category: item.category,
@@ -153,9 +167,15 @@ export function toUxTransaction(item: PortalTransaction) {
       returnWindowDays: 0,
       customTerms: '',
     },
-    confirmedBy: item.confirmedBy,
-    handoffConfirmedBy: item.handoffConfirmedBy,
-    completedBy: item.completedBy,
+    confirmedBy,
+    handoffConfirmedBy: [
+      ...(item.viewerHandoffConfirmed ? [PORTAL_VIEWER_ID] : []),
+      ...(item.counterpartyHandoffConfirmed ? [PORTAL_COUNTERPARTY_ID] : []),
+    ],
+    completedBy: [
+      ...(item.viewerCompleted ? [PORTAL_VIEWER_ID] : []),
+      ...(item.counterpartyCompleted ? [PORTAL_COUNTERPARTY_ID] : []),
+    ],
     createdAt: item.createdAt,
     updatedAt: item.updatedAt,
     lockedAt: item.lockedAt,
@@ -168,5 +188,14 @@ export function toUxTransaction(item: PortalTransaction) {
           externalOrderId: item.source.externalOrderId ?? undefined,
         }
       : null,
+  };
+}
+
+export function toUxFlowInput(item: PortalTransaction) {
+  return {
+    transaction: toUxTransaction(item),
+    viewerId: PORTAL_VIEWER_ID,
+    protocol: item.protocol,
+    proofReady: item.proofReady,
   };
 }

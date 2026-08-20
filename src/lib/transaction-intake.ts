@@ -37,8 +37,13 @@ export function confirmedFromPreview(preview: IntakePreview, extras: { title: st
   };
 }
 
-export function pendingNeedsConfirmation(item: Pick<PendingIntakeRecord, 'missingFields' | 'title' | 'amount'>): boolean {
-  return !item.title.trim() || item.missingFields.includes('title') || item.missingFields.includes('price');
+export function pendingNeedsConfirmation(item: Pick<PendingIntakeRecord, 'missingFields' | 'heuristicFields' | 'title' | 'amount'>): boolean {
+  if (!item.title.trim() || item.missingFields.includes('title') || item.missingFields.includes('price')) return true;
+  return item.heuristicFields.some((field) => field === 'title' || field === 'price' || field === 'variant' || field === 'orderNumber');
+}
+
+export function fieldNeedsReview(item: Pick<PendingIntakeRecord | IntakePreview, 'missingFields' | 'heuristicFields'>, field: 'title' | 'price' | 'variant' | 'orderNumber'): boolean {
+  return item.missingFields.includes(field) || item.heuristicFields.includes(field);
 }
 
 export function formatIntakeSource(value: string | null): string {

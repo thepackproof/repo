@@ -11,6 +11,7 @@ import { sha256 } from './merchant-transaction-service';
 import {
   assertPassportEligible,
   boundOrIssuedIdentity,
+  isPassportEligible,
   projectPassport,
 } from './passport-projection';
 import type { PackProofPassportV1, PassportCommerceInput } from '../../domain/v1/passport';
@@ -33,13 +34,20 @@ export type PortalProtocolPresence = {
   outboundComplete: boolean;
 };
 
+export type PortalViewerRole = 'SELLER' | 'BUYER';
+
 export type PortalTransactionDto = {
   id: string;
   object: 'portal_transaction';
   schemaVersion: 1;
-  sellerId: string | null;
-  buyerId: string | null;
-  participantIds: string[];
+  viewerRole: PortalViewerRole;
+  hasBuyer: boolean;
+  viewerConfirmed: boolean;
+  viewerHandoffConfirmed: boolean;
+  viewerCompleted: boolean;
+  counterpartyConfirmed: boolean;
+  counterpartyHandoffConfirmed: boolean;
+  counterpartyCompleted: boolean;
   status: string;
   title: string;
   category: string;
@@ -49,11 +57,9 @@ export type PortalTransactionDto = {
   identifiers: Array<{ label: string; value: string }>;
   conditionNotes: string;
   terms: AccessibleMerchantTransaction['terms'];
-  confirmedBy: string[];
-  handoffConfirmedBy: string[];
-  completedBy: string[];
   passportId: string | null;
   passportDisplayId: string | null;
+  proofReady: boolean;
   source: { type: string | null; platform: string | null; externalOrderId: string | null } | null;
   protocol: PortalProtocolPresence;
   lockedAt: string | null;
@@ -98,9 +104,11 @@ export interface PortalWorkspaceRepository {
   listForParticipant(actorId: string, limit: number): Promise<PortalWorkspaceRecord[]>;
   findForParticipant(transactionId: string, actorId: string): Promise<PortalWorkspaceRecord | null>;
   listEvidence(transactionId: string): Promise<StoredEvidenceRecord[]>;
+  listEvidenceForTransactions(transactionIds: readonly string[]): Promise<Map<string, StoredEvidenceRecord[]>>;
   listTimeline(transactionId: string): Promise<MerchantTimelineEventDto[]>;
   listReturns(transactionId: string): Promise<MerchantReturnPassportDto[]>;
   findCommerceContext(commerceContextId: string): Promise<PassportCommerceInput | null>;
+  findCommerceContexts(commerceContextIds: readonly string[]): Promise<Map<string, PassportCommerceInput>>;
   bindPassportIdentity(transactionId: string, identity: PassportIdentityBinding): Promise<PassportIdentityBinding>;
 }
 
@@ -116,16 +124,6 @@ export interface PortalAuditWriter {
     metadata: Record<string, string | number | boolean | null>;
   }): Promise<void>;
 }
-
-const EMPTY_PROTOCOL: PortalProtocolPresence = {
-  hasPackingVideo: false,
-  hasSealReference: false,
-  hasArrivalPhoto: false,
-  hasUnboxingVideo: false,
-  sellerReferenceComplete: false,
-  buyerArrivalComplete: false,
-  outboundComplete: false,
-};
 
 function notFound(): ApplicationError {
   return new ApplicationError('NOT_FOUND', 'TRANSACTION_NOT_FOUND', 'The requested PackProof was not found.');
@@ -156,17 +154,32 @@ export function protocolFromEvidence(records: readonly StoredEvidenceRecord[]): 
   };
 }
 
+function includesActor(ids: readonly string[] | undefined, actorId: string): boolean {
+  return Boolean(actorId && ids?.includes(actorId));
+}
+
+function viewerRoleOf(record: PortalWorkspaceRecord, actorId: string): PortalViewerRole {
+  return record.sellerId === actorId ? 'SELLER' : 'BUYER';
+}
+
 export function toPortalTransactionDto(
   record: PortalWorkspaceRecord,
-  protocol: PortalProtocolPresence = EMPTY_PROTOCOL,
+  viewerId: string,
+  protocol: PortalProtocolPresence,
+  proofReady: boolean,
 ): PortalTransactionDto {
   return {
     id: record.id,
     object: 'portal_transaction',
     schemaVersion: 1,
-    sellerId: record.sellerId,
-    buyerId: record.buyerId,
-    participantIds: record.participantIds,
+    viewerRole: viewerRoleOf(record, viewerId),
+    hasBuyer: Boolean(record.buyerId),
+    viewerConfirmed: includesActor(record.confirmedBy, viewerId),
+    viewerHandoffConfirmed: includesActor(record.handoffConfirmedBy, viewerId),
+    viewerCompleted: includesActor(record.completedBy, viewerId),
+    counterpartyConfirmed: record.confirmedBy.some((id) => id !== viewerId),
+    counterpartyHandoffConfirmed: record.handoffConfirmedBy.some((id) => id !== viewerId),
+    counterpartyCompleted: record.completedBy.some((id) => id !== viewerId),
     status: record.consumerStatus || record.status,
     title: record.title,
     category: record.category ?? '',
@@ -176,11 +189,9 @@ export function toPortalTransactionDto(
     identifiers: record.identifiers,
     conditionNotes: record.conditionNotes,
     terms: record.terms,
-    confirmedBy: record.confirmedBy,
-    handoffConfirmedBy: record.handoffConfirmedBy,
-    completedBy: record.completedBy,
     passportId: record.passportId,
     passportDisplayId: record.passportDisplayId,
+    proofReady,
     source: record.sourceType || record.sourcePlatform || record.externalOrderId
       ? { type: record.sourceType, platform: record.sourcePlatform, externalOrderId: record.externalOrderId }
       : null,
@@ -224,13 +235,22 @@ export class PortalWorkspaceApplicationService {
 
   async listTransactions(principal: PortalPrincipal, limit = 50): Promise<PortalTransactionDto[]> {
     const records = await this.repository.listForParticipant(principal.actorId, Math.min(Math.max(limit, 1), 50));
-    return records.map((record) => toPortalTransactionDto(record));
+    const [evidenceByTransaction, commerceById] = await Promise.all([
+      this.repository.listEvidenceForTransactions(records.map((record) => record.id)),
+      this.repository.findCommerceContexts(records.flatMap((record) => record.commerceContextId ? [record.commerceContextId] : [])),
+    ]);
+    return records.map((record) => this.toAuthorizedDto(principal.actorId, record, evidenceByTransaction.get(record.id) ?? [], record.commerceContextId
+      ? commerceById.get(record.commerceContextId) ?? null
+      : null));
   }
 
   async getTransaction(principal: PortalPrincipal, transactionId: string): Promise<PortalTransactionDto> {
     const record = await this.requireParticipant(principal, transactionId);
-    const evidence = await this.repository.listEvidence(record.id);
-    return toPortalTransactionDto(record, protocolFromEvidence(evidence));
+    const [evidence, commerce] = await Promise.all([
+      this.repository.listEvidence(record.id),
+      record.commerceContextId ? this.repository.findCommerceContext(record.commerceContextId) : Promise.resolve(null),
+    ]);
+    return this.toAuthorizedDto(principal.actorId, record, evidence, commerce);
   }
 
   async getTimeline(principal: PortalPrincipal, transactionId: string): Promise<MerchantTimelineEventDto[]> {
@@ -337,6 +357,20 @@ export class PortalWorkspaceApplicationService {
 
   private verificationBaseUrl(): string {
     return this.linkBaseUrl().replace(/\/$/, '') || 'https://packproof.link';
+  }
+
+  private toAuthorizedDto(
+    viewerId: string,
+    record: PortalWorkspaceRecord,
+    evidence: readonly StoredEvidenceRecord[],
+    commerce: PassportCommerceInput | null,
+  ): PortalTransactionDto {
+    return toPortalTransactionDto(
+      record,
+      viewerId,
+      protocolFromEvidence(evidence),
+      isPassportEligible(record, evidence, commerce),
+    );
   }
 
   private async requireParticipant(principal: PortalPrincipal, transactionId: string): Promise<PortalWorkspaceRecord> {

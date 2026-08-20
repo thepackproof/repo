@@ -1,4 +1,4 @@
-import type { Money } from '../../domain/v1/common';
+import type { ExtractionQuality, Money } from '../../domain/v1/common';
 import {
   assertionSourceForIntakeSource,
   commerceContextDtoSchema,
@@ -17,7 +17,7 @@ import {
 } from '../../domain/v1/commerce';
 import { mapLegacyConsumerTransaction } from '../../domain/v1/compatibility';
 import { assertTransition } from '../../domain/v1/common';
-import { missingIntakeFields, parseCommerceArtifact } from '../../domain/v1/transaction-intake-parsers';
+import { missingIntakeFields, parseCommerceArtifact, type ExtractionQualityMap, type IntakeExtractedField } from '../../domain/v1/transaction-intake-parsers';
 import { DomainValidationError } from '../../domain/v1/runtime';
 import { transactionDtoSchema, type TransactionTerms } from '../../domain/v1/transactions';
 import { activeConsumerTransactionStatuses } from './consumer-transaction-service';
@@ -41,6 +41,7 @@ export type TransactionIntakeCommand = {
   externalOrderId: string | null;
   externalListingId: string | null;
   productUrl: string | null;
+  extractionQuality?: ExtractionQualityMap;
 };
 
 export type IntakeConfirmedFields = {
@@ -92,6 +93,7 @@ export type PendingIntakeRecord = {
   platformIdentifier: string | null;
   importedAt: string;
   missingFields: string[];
+  heuristicFields: IntakeExtractedField[];
 };
 
 export type TransactionIntakeResult = {
@@ -204,6 +206,35 @@ function mergeOption(options: ItemDescriptor['selectedOptions'], option: { name:
   return next;
 }
 
+function provenanceQuality(field: string, extraction: ExtractionQualityMap): ExtractionQuality | null {
+  if (field === 'item.title') return extraction.title ?? null;
+  if (field === 'item.amount') return extraction.price ?? null;
+  if (field === 'item.selectedOptions') return extraction.variant ?? null;
+  if (field === 'source.externalOrderId') return extraction.orderNumber ?? null;
+  if (field === 'source.platformIdentifier') return extraction.platform ?? null;
+  return null;
+}
+
+function extractionAfterConfirm(parsed: ExtractionQualityMap, confirmed: IntakeConfirmedFields | null | undefined): ExtractionQualityMap {
+  const next = { ...parsed };
+  if (confirmed?.title?.trim()) delete next.title;
+  if (confirmed?.priceMinor != null) delete next.price;
+  if (confirmed?.variant?.trim()) delete next.variant;
+  if (confirmed?.orderNumber?.trim()) delete next.orderNumber;
+  return next;
+}
+
+function heuristicFieldsFromProvenance(fieldProvenance: CommerceContextDto['fieldProvenance']): IntakeExtractedField[] {
+  const mapping: Array<[string, IntakeExtractedField]> = [
+    ['item.title', 'title'],
+    ['item.amount', 'price'],
+    ['item.selectedOptions', 'variant'],
+    ['source.externalOrderId', 'orderNumber'],
+    ['source.platformIdentifier', 'platform'],
+  ];
+  return mapping.filter(([key]) => fieldProvenance[key]?.extractionQuality === 'HEURISTIC').map(([, field]) => field);
+}
+
 export function overlayIntakeItem(base: ItemDescriptor, confirmed: IntakeConfirmedFields | null | undefined): ItemDescriptor {
   if (!confirmed) return base;
   const variant = confirmed.variant?.trim();
@@ -265,6 +296,7 @@ export function pendingIntakeFromContext(
     platformIdentifier: commerceContext.source.platformIdentifier,
     importedAt: commerceContext.source.capturedAt,
     missingFields: missingIntakeFields(commerceContext.item, commerceContext.source.externalOrderId),
+    heuristicFields: heuristicFieldsFromProvenance(commerceContext.fieldProvenance),
   };
 }
 
@@ -321,6 +353,7 @@ export class TransactionIntakeApplicationService {
       externalOrderId,
       externalListingId: parsed.externalListingId,
       productUrl: parsed.productUrl,
+      extractionQuality: extractionAfterConfirm(parsed.extractionQuality, command.confirmed),
     });
   }
 
@@ -346,13 +379,20 @@ export class TransactionIntakeApplicationService {
       productUrl: command.productUrl,
     }));
     const assertionSource = assertionSourceForIntakeSource(command.intakeSourceType);
-    const fieldProvenance = Object.fromEntries(populatedItemFields(command.item).map((field) => [field, {
+    const extraction = command.extractionQuality ?? {};
+    const provenanceFields = [
+      ...populatedItemFields(command.item),
+      ...(command.externalOrderId ? ['source.externalOrderId'] : []),
+      ...(command.platformIdentifier ? ['source.platformIdentifier'] : []),
+    ];
+    const fieldProvenance = Object.fromEntries(provenanceFields.map((field) => [field, {
       source: assertionSource,
       confidence: 'ASSERTED' as const,
       importedAt,
       sourceReference: command.externalOrderId ?? command.productUrl,
       extractionMethod: command.parserVersion,
       sourceArtifactSha256: command.originalArtifactSha256,
+      extractionQuality: provenanceQuality(field, extraction),
     }]));
     let context;
     let draft;

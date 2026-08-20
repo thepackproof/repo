@@ -1,11 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { groupLibrary, resolveNextRequiredAction } from '@packproof/ux';
-import { listTransactions, toUxTransaction, type PortalTransaction } from '../api';
-import { useAuth } from '../auth';
+import { listTransactions, toUxFlowInput, type PortalTransaction } from '../api';
 
 export function LibraryPage() {
-  const { user } = useAuth();
   const [items, setItems] = useState<PortalTransaction[]>([]);
   const [error, setError] = useState<string | null>(null);
 
@@ -17,11 +15,7 @@ export function LibraryPage() {
     return () => { cancelled = true; };
   }, []);
 
-  const grouped = user ? groupLibrary(items, (item) => resolveNextRequiredAction({
-    transaction: toUxTransaction(item),
-    viewerId: user.uid,
-    protocol: item.protocol,
-  })) : { active: [], completed: [] };
+  const grouped = groupLibrary(items, (item) => resolveNextRequiredAction(toUxFlowInput(item)));
 
   return (
     <>
@@ -42,9 +36,14 @@ export function LibraryPage() {
           <h1 style={{ marginTop: 36, fontSize: 22 }}>Completed</h1>
           <section className="stack">
             {grouped.completed.map((item) => (
-              <Link key={item.id} className="card" to={`/packproofs/${item.id}/proof`} style={{ textDecoration: 'none', color: 'inherit' }}>
+              <Link
+                key={item.id}
+                className="card"
+                to={item.proofReady ? `/packproofs/${item.id}/proof` : `/packproofs/${item.id}`}
+                style={{ textDecoration: 'none', color: 'inherit' }}
+              >
                 <h2>{item.title}</h2>
-                <p className="meta">View Proof</p>
+                <p className="meta">{item.proofReady ? 'View Proof' : 'Completed'}</p>
               </Link>
             ))}
           </section>

@@ -112,7 +112,9 @@ function parseItemDescriptor(value, path) {
 }
 const assertionConfidences = ['ASSERTED', 'OBSERVED', 'DERIVED'];
 function parseFieldProvenance(value, path) {
-    const input = (0, runtime_1.strictObject)(value, path, ['source', 'confidence', 'importedAt', 'sourceReference', 'extractionMethod', 'sourceArtifactSha256']);
+    const input = (0, runtime_1.strictObject)(value, path, [
+        'source', 'confidence', 'importedAt', 'sourceReference', 'extractionMethod', 'sourceArtifactSha256', 'extractionQuality',
+    ]);
     return {
         source: (0, runtime_1.enumValue)(input.source, `${path}.source`, common_1.assertionSources),
         confidence: (0, runtime_1.enumValue)(input.confidence, `${path}.confidence`, assertionConfidences),
@@ -120,6 +122,9 @@ function parseFieldProvenance(value, path) {
         sourceReference: (0, runtime_1.optionalString)(input.sourceReference, `${path}.sourceReference`, { min: 1, max: 500 }),
         extractionMethod: (0, runtime_1.optionalString)(input.extractionMethod, `${path}.extractionMethod`, { min: 1, max: 80, pattern: /^[A-Z0-9][A-Z0-9._-]{0,79}$/ }),
         sourceArtifactSha256: (0, runtime_1.optionalSha256)(input.sourceArtifactSha256, `${path}.sourceArtifactSha256`),
+        extractionQuality: input.extractionQuality === undefined || input.extractionQuality === null
+            ? null
+            : (0, runtime_1.enumValue)(input.extractionQuality, `${path}.extractionQuality`, common_1.extractionQualities),
     };
 }
 exports.commerceContextDtoSchema = (0, runtime_1.schema)((value) => {

@@ -26,7 +26,7 @@ Forbidden: React → Firestore; React → Storage object path; React → duplica
 | `portal/` React 19 + Vite SPA | Source present; independent `npm --prefix portal run build` |
 | Firebase Hosting target `portal` | Configured in `firebase.json`; site/DNS apply is operational |
 | `PortalPrincipal` + `/v1/portal/**` | Application + HTTP tests |
-| Home / PackProofs / transaction workspace / Proof JSON renderer / native handoff | Slice A–C source |
+| Home / PackProofs / transaction workspace / Proof JSON renderer / native handoff | Slice A–C source; list/home project protocol presence and `proofReady` from evidence |
 | Browser evidence acquisition | Not authorized |
 | Organization membership persistence / merchant workspace | Catalogued only; Slice G |
 | Reviewer/claims and Enterprise portal modules | Later slices |
@@ -80,6 +80,8 @@ app.thepackproof.com
 ```
 
 After native capture finalizes, the portal refetches the same PackProof record. Browser capture is not authorized in this slice.
+
+`GET /v1/portal/home` and `GET /v1/portal/transactions` batch-load evidence for the listed records and return `protocol` plus canonical `proofReady` (`evaluatePassportEligibility`). They must not default protocol to empty presence. The Next Action Engine consumes those fields; it does not infer Proof readiness from lifecycle status. Portal transaction DTOs are role-relative and do not expose counterpart Firebase user IDs.
 
 Portal mutations record `channel: WEB_PORTAL` with actor, request ID, resource, organization where applicable, server time, and event.
 

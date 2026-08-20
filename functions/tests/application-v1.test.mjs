@@ -735,6 +735,7 @@ test('consumer intake normalizes share and email artifacts into pending commerce
         platformIdentifier: entry.commerceContext.source.platformIdentifier,
         importedAt: entry.commerceContext.source.capturedAt,
         missingFields: entry.pending.missingFields,
+        heuristicFields: entry.pending.heuristicFields ?? [],
       }));
     },
     async hasActiveTransactionForSeller() {
@@ -857,6 +858,7 @@ test('consumer intake normalizes share and email artifacts into pending commerce
   });
   assert.equal(imported.pending.orderNumber, '12-34567-89012');
   assert.equal(imported.pending.missingFields.includes('title'), false);
+  assert.deepEqual(imported.pending.heuristicFields, []);
   await assert.rejects(
     () => service.ingestArtifact({
       actorId: 'seller-1',
@@ -930,8 +932,39 @@ test('portal workspace authorizes participants, maps DTOs, and refuses browser c
     createdAt: now,
     updatedAt: now,
   };
+  const packing = {
+    id: 'art_packingvideo01',
+    transactionId: record.id,
+    type: 'PACKING_VIDEO',
+    role: 'SELLER',
+    contentType: 'video/mp4',
+    sizeBytes: 2048,
+    sha256: 'a'.repeat(64),
+    manifestSha256: 'b'.repeat(64),
+    evidenceBundleSha256: 'c'.repeat(64),
+    manifestAuthenticationScope: 'PACKPROOF_SERVICE',
+    returnPassportId: null,
+    serverFinalized: true,
+    serverVerified: true,
+    clientHashMatched: true,
+    clientSizeMatched: true,
+    contentTypeMatched: true,
+    assurance: null,
+    carrierTrackingMatchStatus: null,
+    scannedTrackingNumber: null,
+    shippingTracker: null,
+    captureSessionId: null,
+    clientCreatedAt: now.toISOString(),
+    acquisitionClass: 'PACKPROOF_CAPTURE',
+    bundleBindingProfile: 'BUNDLE_V1',
+    manifestAuthentication: { type: 'SERVICE_MAC', algorithm: 'HMAC-SHA256', keyId: 'k1', verificationScope: 'PACKPROOF_SERVICE' },
+    createdAt: now,
+    updatedAt: now,
+    finalizedAt: now,
+  };
   const repository = {
     records: new Map([[record.id, record]]),
+    evidence: new Map([[record.id, [packing]]]),
     async listForParticipant(actorId) {
       return [...this.records.values()].filter((item) => item.participantIds.includes(actorId));
     },
@@ -939,10 +972,14 @@ test('portal workspace authorizes participants, maps DTOs, and refuses browser c
       const item = this.records.get(transactionId);
       return item?.participantIds.includes(actorId) ? item : null;
     },
-    async listEvidence() { return []; },
+    async listEvidence() { return this.evidence.get(arguments[0]) ?? []; },
+    async listEvidenceForTransactions(ids) {
+      return new Map(ids.map((id) => [id, this.evidence.get(id) ?? []]));
+    },
     async listTimeline() { return []; },
     async listReturns() { return []; },
     async findCommerceContext() { return null; },
+    async findCommerceContexts() { return new Map(); },
     async bindPassportIdentity(_id, identity) { return identity; },
   };
   const audits = [];
@@ -957,6 +994,15 @@ test('portal workspace authorizes participants, maps DTOs, and refuses browser c
   assert.equal(listed[0].object, 'portal_transaction');
   assert.equal(listed[0].status, 'TERMS_LOCKED');
   assert.equal(listed[0].source.platform, 'eBay');
+  assert.equal(listed[0].viewerRole, 'SELLER');
+  assert.equal(listed[0].hasBuyer, true);
+  assert.equal(listed[0].sellerId, undefined);
+  assert.equal(listed[0].protocol.hasPackingVideo, true);
+  assert.equal(listed[0].protocol.hasSealReference, false);
+  assert.equal(listed[0].proofReady, true);
+  const workspace = await service.getTransaction(principal, record.id);
+  assert.equal(workspace.protocol.hasPackingVideo, true);
+  assert.equal(workspace.proofReady, true);
   await assert.rejects(
     () => service.getTransaction(principal, 'not-yours-tx'),
     (error) => error instanceof ApplicationError && error.code === 'TRANSACTION_NOT_FOUND',

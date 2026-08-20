@@ -74,6 +74,8 @@ exports.previewTransactionIntake = (0, https_1.onCall)(callOptions, async (reque
             orderNumber: parsed.externalOrderId,
             sku: parsed.item.sku,
             missingFields: parsed.missingFields,
+            heuristicFields: parsed.heuristicFields,
+            extractionQuality: parsed.extractionQuality,
         };
     }
     catch (error) {

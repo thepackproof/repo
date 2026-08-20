@@ -7,9 +7,14 @@ export type PortalTransaction = {
     id: string;
     object: any;
     schemaVersion: any;
-    sellerId: string | null;
-    buyerId: string | null;
-    participantIds: Array<string>;
+    viewerRole: PortalTransaction.viewerRole;
+    hasBuyer: boolean;
+    viewerConfirmed: boolean;
+    viewerHandoffConfirmed: boolean;
+    viewerCompleted: boolean;
+    counterpartyConfirmed: boolean;
+    counterpartyHandoffConfirmed: boolean;
+    counterpartyCompleted: boolean;
     status: string;
     title: string;
     category: string;
@@ -22,15 +27,22 @@ export type PortalTransaction = {
     }>;
     conditionNotes: string;
     terms: any | null;
-    confirmedBy: Array<string>;
-    handoffConfirmedBy: Array<string>;
-    completedBy: Array<string>;
     passportId: string | null;
     passportDisplayId: string | null;
+    /**
+     * Canonical Proof retrievability from evaluatePassportEligibility. Presentation surfaces must not infer this from lifecycle status.
+     */
+    proofReady: boolean;
     source: any | null;
     protocol: PortalProtocol;
     lockedAt: string | null;
     createdAt: string;
     updatedAt: string;
 };
+export namespace PortalTransaction {
+    export enum viewerRole {
+        SELLER = 'SELLER',
+        BUYER = 'BUYER',
+    }
+}
 
