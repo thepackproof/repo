@@ -26,7 +26,8 @@
     { "name": "Connect Sessions" },
     { "name": "Connect Callbacks" },
     { "name": "Claims Review" },
-    { "name": "Passports" }
+    { "name": "Passports" },
+    { "name": "Proofs" }
   ],
   "paths": {
     "/v1/health": {
@@ -179,8 +180,26 @@
       "get": {
         "operationId": "getPortalPassport",
         "tags": ["Portal"],
-        "summary": "Canonical JSON Passport",
-        "description": "Returns PackProofPassportV1. The portal renders this JSON; it does not assemble a Passport in the browser.",
+        "summary": "Canonical JSON Proof",
+        "description": "Returns PackProofPassportV1, the live Proof projection. Passport is the deprecated product name for the same object. The portal renders this JSON; it does not assemble a Proof in the browser.",
+        "security": [{ "firebaseUserBearer": [], "firebaseAppCheck": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/AccessibleTransactionId" }],
+        "responses": {
+          "200": { "$ref": "#/components/responses/PassportRetrieved" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/v1/portal/transactions/{transactionId}/proof": {
+      "get": {
+        "operationId": "getPortalProof",
+        "tags": ["Portal", "Proofs"],
+        "summary": "Canonical JSON Proof",
+        "description": "Alias of GET /v1/portal/transactions/{transactionId}/passport. Returns the live Proof projection.",
         "security": [{ "firebaseUserBearer": [], "firebaseAppCheck": [] }],
         "parameters": [{ "$ref": "#/components/parameters/AccessibleTransactionId" }],
         "responses": {
@@ -606,8 +625,8 @@
       "get": {
         "operationId": "getPassport",
         "tags": ["Passports"],
-        "summary": "Retrieve the live PackProof Passport",
-        "description": "Returns the canonical PackProof Passport aggregation for a transaction and binds a stable Passport identity the first time eligibility passes. The Passport inventories source-attributed records and integrity bindings. It does not authenticate items, prove custody, decide fraud or fault, or guarantee a dispute outcome. Absence of evidence does not make a Passport inauthentic. Returns 409 PASSPORT_NOT_READY when eligibility fails.",
+        "summary": "Retrieve the live Proof",
+        "description": "Returns the canonical Proof aggregation for a transaction and binds a stable Proof identity the first time eligibility passes. Proof is the product name for the Passport projection. The Proof inventories source-attributed records and integrity bindings. It does not authenticate items, prove custody, decide fraud or fault, or guarantee a dispute outcome. Absence of evidence does not make a Proof inauthentic. Returns 409 PASSPORT_NOT_READY when eligibility fails. GET /v1/transactions/{transactionId}/proof is the preferred path alias.",
         "security": [{ "merchantApiKey": [] }],
         "parameters": [
           { "$ref": "#/components/parameters/AccessibleTransactionId" },
@@ -630,8 +649,8 @@
       "post": {
         "operationId": "createPassportSnapshot",
         "tags": ["Passports"],
-        "summary": "Freeze a PackProof Passport snapshot",
-        "description": "Stores an immutable canonical JSON snapshot of the live Passport for later PDF export. Native evidence remains the source.",
+        "summary": "Freeze a Proof snapshot",
+        "description": "Stores an immutable canonical JSON snapshot of the live Proof for later PDF export. Native evidence remains the source. Passport is the deprecated product name for this object.",
         "security": [{ "merchantApiKey": [] }],
         "parameters": [
           { "$ref": "#/components/parameters/AccessibleTransactionId" },
@@ -660,8 +679,8 @@
       "get": {
         "operationId": "getPassportById",
         "tags": ["Passports"],
-        "summary": "Retrieve a live PackProof Passport by Passport id",
-        "description": "Accepts a ppt_ resource id or a PP-XXXX-XXXX-XXXX display id. Authorization is still required. The QR or verification URL does not grant access.",
+        "summary": "Retrieve a live Proof by id",
+        "description": "Accepts a ppt_ resource id or a PP-XXXX-XXXX-XXXX display id. Authorization is still required. The QR or verification URL does not grant access. GET /v1/proofs/{proofId} is the preferred path alias.",
         "security": [{ "merchantApiKey": [] }],
         "parameters": [
           { "$ref": "#/components/parameters/PassportId" },
@@ -684,7 +703,7 @@
       "get": {
         "operationId": "getPassportSnapshot",
         "tags": ["Passports"],
-        "summary": "Retrieve an immutable Passport snapshot",
+        "summary": "Retrieve an immutable Proof snapshot",
         "security": [{ "merchantApiKey": [] }],
         "parameters": [
           { "$ref": "#/components/parameters/PassportId" },
@@ -705,11 +724,142 @@
       "post": {
         "operationId": "createPassportExport",
         "tags": ["Passports"],
-        "summary": "Create a presentation-only Passport PDF export",
+        "summary": "Create a presentation-only Proof PDF export",
         "description": "Renders a frozen snapshot to PDF. presentationOnly remains true. Native artifacts and manifests remain the source records. HMAC-SHA256 service authentication is not a digital signature.",
         "security": [{ "merchantApiKey": [] }],
         "parameters": [
           { "$ref": "#/components/parameters/PassportId" },
+          { "$ref": "#/components/parameters/PassportSnapshotId" },
+          { "$ref": "#/components/parameters/IdempotencyKey" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreatePassportExportRequest" } } }
+        },
+        "responses": {
+          "201": { "$ref": "#/components/responses/PassportExportCreated" },
+          "200": { "$ref": "#/components/responses/PassportExportReplayed" },
+          "400": { "$ref": "#/components/responses/InvalidRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "413": { "$ref": "#/components/responses/RequestTooLarge" },
+          "415": { "$ref": "#/components/responses/UnsupportedMediaType" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/v1/transactions/{transactionId}/proof": {
+      "get": {
+        "operationId": "getProof",
+        "tags": ["Proofs"],
+        "summary": "Retrieve the live Proof",
+        "description": "Preferred alias of GET /v1/transactions/{transactionId}/passport. Returns the canonical Proof aggregation.",
+        "security": [{ "merchantApiKey": [] }],
+        "parameters": [
+          { "$ref": "#/components/parameters/AccessibleTransactionId" },
+          { "$ref": "#/components/parameters/PassportFrameworkQuery" },
+          { "$ref": "#/components/parameters/PassportCategoryQuery" }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/PassportRetrieved" },
+          "400": { "$ref": "#/components/responses/InvalidRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/v1/transactions/{transactionId}/proof/snapshots": {
+      "post": {
+        "operationId": "createProofSnapshot",
+        "tags": ["Proofs"],
+        "summary": "Freeze a Proof snapshot",
+        "description": "Preferred alias of POST /v1/transactions/{transactionId}/passport/snapshots.",
+        "security": [{ "merchantApiKey": [] }],
+        "parameters": [
+          { "$ref": "#/components/parameters/AccessibleTransactionId" },
+          { "$ref": "#/components/parameters/IdempotencyKey" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreatePassportSnapshotRequest" } } }
+        },
+        "responses": {
+          "201": { "$ref": "#/components/responses/PassportSnapshotCreated" },
+          "200": { "$ref": "#/components/responses/PassportSnapshotReplayed" },
+          "400": { "$ref": "#/components/responses/InvalidRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "413": { "$ref": "#/components/responses/RequestTooLarge" },
+          "415": { "$ref": "#/components/responses/UnsupportedMediaType" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/v1/proofs/{proofId}": {
+      "get": {
+        "operationId": "getProofById",
+        "tags": ["Proofs"],
+        "summary": "Retrieve a live Proof by id",
+        "description": "Preferred alias of GET /v1/passports/{passportId}. Accepts a ppt_ resource id or a PP-XXXX-XXXX-XXXX display id.",
+        "security": [{ "merchantApiKey": [] }],
+        "parameters": [
+          { "$ref": "#/components/parameters/ProofId" },
+          { "$ref": "#/components/parameters/PassportFrameworkQuery" },
+          { "$ref": "#/components/parameters/PassportCategoryQuery" }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/PassportRetrieved" },
+          "400": { "$ref": "#/components/responses/InvalidRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/v1/proofs/{proofId}/snapshots/{snapshotId}": {
+      "get": {
+        "operationId": "getProofSnapshot",
+        "tags": ["Proofs"],
+        "summary": "Retrieve an immutable Proof snapshot",
+        "description": "Preferred alias of GET /v1/passports/{passportId}/snapshots/{snapshotId}.",
+        "security": [{ "merchantApiKey": [] }],
+        "parameters": [
+          { "$ref": "#/components/parameters/ProofId" },
+          { "$ref": "#/components/parameters/PassportSnapshotId" }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/PassportSnapshotRetrieved" },
+          "400": { "$ref": "#/components/responses/InvalidRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/v1/proofs/{proofId}/snapshots/{snapshotId}/exports": {
+      "post": {
+        "operationId": "createProofExport",
+        "tags": ["Proofs"],
+        "summary": "Create a presentation-only Proof PDF export",
+        "description": "Preferred alias of POST /v1/passports/{passportId}/snapshots/{snapshotId}/exports.",
+        "security": [{ "merchantApiKey": [] }],
+        "parameters": [
+          { "$ref": "#/components/parameters/ProofId" },
           { "$ref": "#/components/parameters/PassportSnapshotId" },
           { "$ref": "#/components/parameters/IdempotencyKey" }
         ],
@@ -1200,7 +1350,14 @@
         "name": "passportId",
         "in": "path",
         "required": true,
-        "description": "A PackProof Passport resource id (ppt_) or display id (PP-XXXX-XXXX-XXXX). Possession of the identifier does not grant access.",
+        "description": "A Proof resource id (ppt_) or display id (PP-XXXX-XXXX-XXXX). Passport is the deprecated product name for the same identifier. Possession of the identifier does not grant access.",
+        "schema": { "type": "string", "pattern": "^(ppt_[a-f0-9]{40}|PP-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4})$" }
+      },
+      "ProofId": {
+        "name": "proofId",
+        "in": "path",
+        "required": true,
+        "description": "A Proof resource id (ppt_) or display id (PP-XXXX-XXXX-XXXX). Possession of the identifier does not grant access.",
         "schema": { "type": "string", "pattern": "^(ppt_[a-f0-9]{40}|PP-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4})$" }
       },
       "PassportSnapshotId": {
@@ -2072,7 +2229,7 @@
         "type": "object",
         "additionalProperties": false,
         "required": ["object", "schemaVersion", "identity", "integrity", "transaction", "items", "fulfillment", "shipment", "delivery", "receiver", "returns", "evidenceInventory", "artifacts", "timeline", "reviewContext", "provenance", "limitations", "createdAt", "updatedAt"],
-        "description": "Canonical PackProof Passport. Web/API JSON is the Passport. PDF is a presentation export of a frozen snapshot. It does not authenticate items, prove custody, decide fraud or fault, or guarantee a dispute outcome.",
+        "description": "Canonical Proof (Passport projection). Web/API JSON is the Proof. PDF is a presentation export of a frozen snapshot. It does not authenticate items, prove custody, decide fraud or fault, or guarantee a dispute outcome.",
         "properties": {
           "object": { "const": "packproof_passport" },
           "schemaVersion": { "const": 1 },
@@ -2764,7 +2921,7 @@
         "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ReviewPackageResponse" } } }
       },
       "PassportRetrieved": {
-        "description": "The live PackProof Passport aggregation. It does not authenticate items, prove custody, decide fraud or fault, or guarantee a dispute outcome.",
+        "description": "The live Proof aggregation. It does not authenticate items, prove custody, decide fraud or fault, or guarantee a dispute outcome.",
         "headers": { "X-Request-Id": { "$ref": "#/components/headers/XRequestId" }, "RateLimit-Limit": { "$ref": "#/components/headers/RateLimitLimit" }, "RateLimit-Remaining": { "$ref": "#/components/headers/RateLimitRemaining" }, "RateLimit-Reset": { "$ref": "#/components/headers/RateLimitReset" } },
         "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PassportResponse" } } }
       },

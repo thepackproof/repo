@@ -189,8 +189,8 @@ export async function renderPassportPdf(
   for (const pageId of pages) {
     writer.startPage(pageId === 'APPENDIX');
     if (pageId === 'COVER') {
-      writer.line('PackProof Passport™', { bold: true, size: 18, color: writer.teal, gap: 2, widthChars: 46 });
-      writer.line(passport.identity.displayId, { bold: true, size: 14, gap: 2, widthChars: 46 });
+      writer.line('PACKPROOF', { bold: true, size: 12, color: writer.teal, gap: 2, widthChars: 46 });
+      writer.line(`Proof ${passport.identity.displayId}`, { bold: true, size: 18, gap: 2, widthChars: 46 });
       writer.line(passport.identity.verificationUrl, { size: 7, color: writer.muted, gap: 6, widthChars: 52 });
       writer.drawQr(passport.identity.qrPayload, 454, 616, 110);
       writer.y = Math.min(writer.y, 604);
@@ -318,7 +318,7 @@ export async function renderPassportPdf(
     } else {
       writer.line('Cryptographic appendix', { bold: true, size: 14, color: writer.teal, gap: 6 });
       writer.line('This appendix is presentation-only. Native evidence records remain the source.', { size: 8, color: writer.muted, gap: 8 });
-      writer.line(`Passport ID: ${passport.identity.passportId}`);
+      writer.line(`Proof ID: ${passport.identity.passportId}`);
       writer.line(`Transaction: ${passport.identity.transactionId}`);
       writer.line(`Canonicalization: ${passport.integrity.canonicalizationProfile}; bundle: ${passport.integrity.bundleBindingProfile}`);
       writer.line(`Manifest authentication: ${passport.integrity.manifestAuthentication.type} ${passport.integrity.manifestAuthentication.algorithm ?? ''} key ${passport.integrity.manifestAuthentication.keyId ?? 'not recorded'}`);
@@ -342,8 +342,8 @@ export async function renderPassportPdf(
     }
   }
 
-  pdf.setTitle(`PackProof Passport ${passport.identity.displayId}`);
-  pdf.setSubject('PackProof Passport presentation export. Native evidence records remain the source.');
+  pdf.setTitle(`PackProof Proof ${passport.identity.displayId}`);
+  pdf.setSubject('PackProof Proof presentation export. Native evidence records remain the source.');
   pdf.setCreator('PackProof');
   pdf.setKeywords(pages);
   return pdf.save();

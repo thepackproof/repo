@@ -786,10 +786,10 @@ export class MerchantEvidenceApplicationService {
     this.authorization.requireScope(principal, 'evidence:read');
     this.authorization.requireEnvironment(principal, this.config.environment);
     if (!looksLikePassportIdentity(passportIdentity)) {
-      throw new ApplicationError('INVALID_ARGUMENT', 'INVALID_PASSPORT_ID', 'passportId is not a valid PackProof Passport identifier.');
+      throw new ApplicationError('INVALID_ARGUMENT', 'INVALID_PASSPORT_ID', 'This is not a valid Proof identifier.');
     }
     const transaction = await this.repository.findAccessibleTransactionByPassportIdentity(passportIdentity, principal);
-    if (!transaction) throw notFound('PASSPORT_NOT_FOUND', 'The requested PackProof Passport was not found.');
+    if (!transaction) throw notFound('PASSPORT_NOT_FOUND', 'The requested Proof was not found.');
     return this.assemblePassport(principal, transaction, reviewQuery);
   }
 
@@ -826,7 +826,7 @@ export class MerchantEvidenceApplicationService {
     this.authorization.requireScope(principal, 'evidence:read');
     this.authorization.requireEnvironment(principal, this.config.environment);
     const transaction = await this.repository.findAccessibleTransactionByPassportIdentity(passportIdentity, principal);
-    if (!transaction) throw notFound('PASSPORT_NOT_FOUND', 'The requested PackProof Passport was not found.');
+    if (!transaction) throw notFound('PASSPORT_NOT_FOUND', 'The requested Proof was not found.');
     const record = await this.repository.findPassportSnapshot(transaction.id, snapshotId);
     if (!record) throw notFound('PASSPORT_SNAPSHOT_NOT_FOUND', 'The requested Passport snapshot was not found.');
     return snapshotDto(record);
@@ -836,7 +836,7 @@ export class MerchantEvidenceApplicationService {
     this.authorization.requireScope(principal, 'evidence:read');
     this.authorization.requireEnvironment(principal, this.config.environment);
     const transaction = await this.repository.findAccessibleTransactionByPassportIdentity(passportIdentity, principal);
-    if (!transaction) throw notFound('PASSPORT_NOT_FOUND', 'The requested PackProof Passport was not found.');
+    if (!transaction) throw notFound('PASSPORT_NOT_FOUND', 'The requested Proof was not found.');
     const snapshot = await this.repository.findPassportSnapshot(transaction.id, snapshotId);
     if (!snapshot) throw notFound('PASSPORT_SNAPSHOT_NOT_FOUND', 'The requested Passport snapshot was not found.');
     const execution = await this.idempotency.execute(

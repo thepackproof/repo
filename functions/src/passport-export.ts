@@ -52,7 +52,7 @@ export async function generatePassportPdfExport(input: {
   await db.collection('transactions').doc(input.transactionId).collection('events').add({
     actorId: 'packproof-service',
     type: 'PASSPORT_EXPORT_GENERATED',
-    summary: 'A presentation-only PackProof Passport PDF was generated from a frozen snapshot.',
+    summary: 'A presentation-only Proof PDF was generated from a frozen snapshot.',
     metadata: { snapshotId: input.snapshotId, sha256: digest, presentationOnly: true, rendererVersion: PASSPORT_PDF_RENDERER_VERSION },
     createdAt: FieldValue.serverTimestamp(),
   });

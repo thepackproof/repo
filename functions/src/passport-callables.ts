@@ -18,7 +18,7 @@ export const getPackProofPassport = onCall(callOptions, async (request) => {
     : isPassportResourceId(passportId) || isPassportDisplayId(passportId)
       ? await repository.loadTransactionByPassportIdentity(passportId)
       : await repository.loadTransaction(passportId);
-  if (!transaction) throw new HttpsError('not-found', 'This PackProof Passport was not found.');
+  if (!transaction) throw new HttpsError('not-found', 'This Proof was not found.');
   if (!transaction.participantIds.includes(uid)) {
     throw new HttpsError('permission-denied', 'You are not a participant in this transaction.');
   }
@@ -30,7 +30,7 @@ export const getPackProofPassport = onCall(callOptions, async (request) => {
   try {
     assertPassportEligible(transaction, records);
   } catch (error) {
-    throw new HttpsError('failed-precondition', error instanceof Error ? error.message : 'This transaction does not yet qualify for a PackProof Passport.');
+    throw new HttpsError('failed-precondition', error instanceof Error ? error.message : 'This transaction does not yet qualify for a Proof.');
   }
   const issuedAt = new Date();
   const identity = boundOrIssuedIdentity(transaction, issuedAt);

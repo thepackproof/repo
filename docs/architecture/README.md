@@ -39,9 +39,9 @@ This directory records the controlled migration of the current PackProof 0.9.5.0
 - Executable source: `functions/src/application/v1/public-commerce-handoff-service.ts`, `functions/src/infrastructure/firebase/v1/public-commerce-handoff-repository.ts`, `functions/src/api/v1`, `sdk/javascript/browser.js`, and `src/app/handoff/review.tsx`.
 - Gates: `npm run test:application`, `npm run test:application:firestore`, `npm run test:api`, `npm run test:api:firestore`, `npm run test:sdk`, and `npm run test:rules`.
 
-## PackProof Passport™
+## Proof (Passport projection)
 
-- [PackProof Passport Schema v1](PACKPROOF_PASSPORT_SCHEMA_V1.md) - canonical aggregation of existing transaction, commerce-context, evidence, shipment, delivery and return records. Web/API JSON is the Passport; PDF is a presentation export. Implemented in `functions/src/domain/v1/passport.ts`, `GET /v1/transactions/{id}/passport`, `GET /v1/portal/transactions/{id}/passport`, snapshot/export routes, `src/app/passport/[id].tsx`, and `portal/src/pages/Passport.tsx`.
+- [PackProof Passport Schema v1](PACKPROOF_PASSPORT_SCHEMA_V1.md) - canonical aggregation of existing transaction, commerce-context, evidence, shipment, delivery and return records. Product name is Proof; technical `object` remains `packproof_passport` in schema v1. Web/API JSON is the Proof; PDF is a presentation export. Implemented in `functions/src/domain/v1/passport.ts`, `GET /v1/transactions/{id}/proof` (Passport path alias remains), `GET /v1/portal/transactions/{id}/proof`, snapshot/export routes, `src/app/passport/[id].tsx`, and `portal/src/pages/Passport.tsx`. See [ADR 0015](../adr/0015-proof-is-the-passport.md).
 
 ## Scale and integrity
 

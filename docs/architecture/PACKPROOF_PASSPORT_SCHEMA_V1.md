@@ -1,19 +1,19 @@
 # PackProof Passport Schema v1
 
-Status: `IMPLEMENTED` in source. Live issuance still requires a deployed functions revision and a transaction that passes Passport 1.0 eligibility.
+Status: `IMPLEMENTED` in source. Live issuance still requires a deployed functions revision and a transaction that passes Proof (Passport) 1.0 eligibility.
 
-Product name: **PackProof Passport™**. Technical `object` discriminator: `packproof_passport`.
+Product name: **Proof**. Technical synonym: Passport. Technical `object` discriminator remains `packproof_passport` until schemaVersion 2. See [ADR 0015](../adr/0015-proof-is-the-passport.md).
 
 ## 0. Governing decision
 
-The Passport is **not** another evidence record, video, manifest, claims report, or PDF.
+The Proof is **not** another evidence record, video, manifest, claims report, or PDF.
 
-> The Passport is the canonical, human- and machine-readable aggregation of the transaction’s existing PackProof records.
+> The Proof is the canonical, human- and machine-readable aggregation of the transaction’s existing PackProof records. Passport is the deprecated product name for the same projection.
 
 | Surface | Role |
 |---|---|
-| `GET` JSON Passport | Canonical representation |
-| Web Passport | Interactive rendering of that JSON |
+| `GET` JSON Proof (`/passport` and `/proof`) | Canonical representation |
+| Web Proof | Interactive rendering of that JSON |
 | Claims / network projection | Filtered view of the same JSON |
 | PDF / `evidence_report` | Presentation export of a frozen snapshot |
 
@@ -23,21 +23,21 @@ Do not overload these identities:
 
 | Identity | Prefix / form | Meaning |
 |---|---|---|
-| Passport ID (display) | `PP-XXXX-XXXX-XXXX` | Human-facing Passport identifier |
-| Passport resource ID | `ppt_...` | Canonical API identifier |
-| Passport snapshot ID | `pps_...` | Frozen projection used for PDF and dispute packets |
+| Proof display ID | `PP-XXXX-XXXX-XXXX` | Human-facing Proof identifier |
+| Proof resource ID | `ppt_...` | Canonical API identifier (`identity.passportId` in schema v1) |
+| Proof snapshot ID | `pps_...` | Frozen projection used for PDF and dispute packets |
 | PackProof transaction ID | `txn_...` | Agreed item, terms, participants, workflow |
 | Source / order ID | platform-native | Merchant or marketplace order reference |
 | Commerce context ID | `ctx_...` | Immutable imported order/listing snapshot |
 | Passport draft ID | `draft_...` | Prefill before order binding — **not** this Passport |
 | Return Passport ID | `return_...` | Reverse-logistics workflow resource |
 
-`passport_draft` stays the pre-binding draft. PackProof Passport™ is issued only after a bound transaction has server-finalized evidence.
+`passport_draft` stays the pre-binding draft. A Proof is issued only after a bound transaction has server-finalized evidence.
 
 ## 1. Resource graph (projection, not a new store)
 
 ```text
-PackProof Passport
+Proof (Passport projection)
   reads → transaction
   reads → commerce context (if bound)
   reads → evidence artifacts + manifests
@@ -573,7 +573,7 @@ Compatibility: Connect `packproof.evidence.finalized` stays an evidence-artifact
 
 Order is mandatory:
 
-1. PackProof Passport™ + display ID + QR
+1. PACKPROOF + Proof display ID + QR
 2. AUTHENTIC PACKPROOF banner + meaning sentence
 3. Transaction (platform, order, amount, date, expected item one-liner)
 4. Expected ↔ observed (SAME / DIFFERENT / NOT COMPARED only)
@@ -629,7 +629,7 @@ Claims workers should understand the transaction in 10–20 seconds. Cryptograph
 - Product authenticity, custody, or SNAD adjudication.
 - Live UPS/FedEx/USPS custody APIs.
 - Scoring Passports or hiding incomplete ones.
-- Treating `passport_draft` as PackProof Passport™.
+- Treating `passport_draft` as a Proof.
 - Publicly verifiable asymmetric signatures (HMAC remains service-only).
 - Embedding video in PDF.
 - Storing destination PII on the Passport by default.

@@ -84,7 +84,7 @@ export function humanActivitySentence(event: Pick<TimelineEvent, 'actorId' | 'ty
       return actor === 'You' ? 'You cancelled this PackProof.' : `${actor} cancelled this PackProof.`;
     case 'PASSPORT_ISSUED':
     case 'PASSPORT_UPDATED':
-      return 'Your PackProof Passport is ready.';
+      return 'Your Proof is ready.';
     default:
       return event.summary || 'Something happened on this PackProof.';
   }

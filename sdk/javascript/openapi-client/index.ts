@@ -99,6 +99,7 @@ export type { PortalSessionResponse as PortalSessionResponseModel } from './mode
 export type { PortalTransaction as PortalTransactionModel } from './models/PortalTransaction';
 export type { PortalTransactionListResponse as PortalTransactionListResponseModel } from './models/PortalTransactionListResponse';
 export type { PortalTransactionResponse as PortalTransactionResponseModel } from './models/PortalTransactionResponse';
+export type { ProofId as ProofIdModel } from './models/ProofId';
 export type { PublicCommerceHandoff as PublicCommerceHandoffModel } from './models/PublicCommerceHandoff';
 export type { PublicCommerceHandoffResponse as PublicCommerceHandoffResponseModel } from './models/PublicCommerceHandoffResponse';
 export { PublicCommerceSource as PublicCommerceSourceModel } from './models/PublicCommerceSource';
@@ -130,6 +131,7 @@ export { EvidenceSessionsService } from './services/EvidenceSessionsService';
 export { ParticipantClaimsService } from './services/ParticipantClaimsService';
 export { PassportsService } from './services/PassportsService';
 export { PortalService } from './services/PortalService';
+export { ProofsService } from './services/ProofsService';
 export { ReportsService } from './services/ReportsService';
 export { ReturnsService } from './services/ReturnsService';
 export { ShipmentsService } from './services/ShipmentsService';

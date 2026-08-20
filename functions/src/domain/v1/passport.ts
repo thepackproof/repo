@@ -10,15 +10,15 @@ export const PASSPORT_OBJECT = 'packproof_passport' as const;
 export const PASSPORT_SNAPSHOT_OBJECT = 'packproof_passport_snapshot' as const;
 export const PASSPORT_EXPORT_OBJECT = 'packproof_passport_export' as const;
 export const PASSPORT_SCHEMA_VERSION = 1 as const;
-export const PASSPORT_PDF_RENDERER_VERSION = 'packproof-passport-pdf@1.1.0' as const;
+export const PASSPORT_PDF_RENDERER_VERSION = 'packproof-passport-pdf@1.2.0' as const;
 export const PASSPORT_ID_HASH_PREFIX = 'packproof-passport-id-v1\n';
 export const PASSPORT_DISPLAY_HASH_PREFIX = 'packproof-passport-display-v1\n';
 export const PASSPORT_COMPARISON_FOOTNOTE = 'RELATIONSHIP_ONLY' as const;
 export const PASSPORT_REVIEW_FOOTNOTE = 'CONFIGURATION_ONLY' as const;
 export const INTEGRITY_MEANING_VERIFIED =
-  "PackProof's evidence records and integrity bindings associated with this Passport successfully verify.";
+  "PackProof's evidence records and integrity bindings associated with this Proof matched.";
 export const INTEGRITY_MEANING_LIMITED =
-  "PackProof's evidence records and integrity bindings associated with this Passport successfully verify, with recorded limitations.";
+  "PackProof's evidence records and integrity bindings associated with this Proof matched, with recorded limitations.";
 export const PASSPORT_PAGE_ONE_FOOTER =
   'Review the evidence and provenance on the following pages. PackProof does not determine fraud, fault, or liability.';
 export const COMPARISON_FOOTNOTE_COPY =
@@ -1257,7 +1257,7 @@ export function aggregatePassport(input: PassportAggregatorInput): PackProofPass
     input.delivery?.receivedAt,
     ...input.returns.map((item) => item.createdAt),
   ]);
-  const verificationUrl = `${input.identity.verificationBaseUrl.replace(/\/$/, '')}/passport/${input.identity.displayId}`;
+  const verificationUrl = verificationUrlFor(input.identity.displayId, input.identity.verificationBaseUrl);
   const provenance: PassportProvenanceFact[] = [];
   const pushProv = (field: string, item: PassportFact<string | number | boolean | null>) => {
     provenance.push({ field, ...item });
@@ -1386,5 +1386,5 @@ export function aggregatePassport(input: PassportAggregatorInput): PackProofPass
 }
 
 export function verificationUrlFor(displayId: string, baseUrl: string): string {
-  return `${baseUrl.replace(/\/$/, '')}/passport/${displayId}`;
+  return `${baseUrl.replace(/\/$/, '')}/proof/${displayId}`;
 }

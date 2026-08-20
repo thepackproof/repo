@@ -448,11 +448,11 @@ function parsePassportId(value) {
     if (typeof value === 'string' && /^PP-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$/i.test(value)) {
         return value.toUpperCase();
     }
-    throw new core_1.InputValidationError([{ field: 'passportId', code: 'INVALID_ID', message: 'passportId is not a valid PackProof Passport identifier.' }]);
+    throw new core_1.InputValidationError([{ field: 'passportId', code: 'INVALID_ID', message: 'This is not a valid Proof identifier.' }]);
 }
 function parsePassportSnapshotId(value) {
     if (typeof value !== 'string' || !/^pps_[a-f0-9]{40}$/.test(value)) {
-        throw new core_1.InputValidationError([{ field: 'snapshotId', code: 'INVALID_ID', message: 'snapshotId is not a valid PackProof Passport snapshot identifier.' }]);
+        throw new core_1.InputValidationError([{ field: 'snapshotId', code: 'INVALID_ID', message: 'This is not a valid Proof snapshot identifier.' }]);
     }
     return value;
 }

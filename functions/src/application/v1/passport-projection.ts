@@ -82,7 +82,7 @@ export function passportNotReady(failures: Array<{ code: string; message: string
   return new ApplicationError(
     'FAILED_PRECONDITION',
     'PASSPORT_NOT_READY',
-    'This transaction does not yet qualify for a PackProof Passport.',
+    'This transaction does not yet qualify for a Proof.',
     failures.map((failure) => ({ field: 'eligibility', code: failure.code, message: failure.message })),
   );
 }

@@ -32,13 +32,13 @@ exports.PASSPORT_OBJECT = 'packproof_passport';
 exports.PASSPORT_SNAPSHOT_OBJECT = 'packproof_passport_snapshot';
 exports.PASSPORT_EXPORT_OBJECT = 'packproof_passport_export';
 exports.PASSPORT_SCHEMA_VERSION = 1;
-exports.PASSPORT_PDF_RENDERER_VERSION = 'packproof-passport-pdf@1.1.0';
+exports.PASSPORT_PDF_RENDERER_VERSION = 'packproof-passport-pdf@1.2.0';
 exports.PASSPORT_ID_HASH_PREFIX = 'packproof-passport-id-v1\n';
 exports.PASSPORT_DISPLAY_HASH_PREFIX = 'packproof-passport-display-v1\n';
 exports.PASSPORT_COMPARISON_FOOTNOTE = 'RELATIONSHIP_ONLY';
 exports.PASSPORT_REVIEW_FOOTNOTE = 'CONFIGURATION_ONLY';
-exports.INTEGRITY_MEANING_VERIFIED = "PackProof's evidence records and integrity bindings associated with this Passport successfully verify.";
-exports.INTEGRITY_MEANING_LIMITED = "PackProof's evidence records and integrity bindings associated with this Passport successfully verify, with recorded limitations.";
+exports.INTEGRITY_MEANING_VERIFIED = "PackProof's evidence records and integrity bindings associated with this Proof matched.";
+exports.INTEGRITY_MEANING_LIMITED = "PackProof's evidence records and integrity bindings associated with this Proof matched, with recorded limitations.";
 exports.PASSPORT_PAGE_ONE_FOOTER = 'Review the evidence and provenance on the following pages. PackProof does not determine fraud, fault, or liability.';
 exports.COMPARISON_FOOTNOTE_COPY = 'Comparisons report relationships between recorded data. They do not establish product authenticity, legal ownership, custody or liability.';
 exports.REVIEW_CONTEXT_FOOTNOTE_COPY = 'Relevance categories reflect the configured receiving-party workflow. PackProof does not determine evidentiary weight or dispute outcome.';
@@ -735,7 +735,7 @@ function aggregatePassport(input) {
         input.delivery?.receivedAt,
         ...input.returns.map((item) => item.createdAt),
     ]);
-    const verificationUrl = `${input.identity.verificationBaseUrl.replace(/\/$/, '')}/passport/${input.identity.displayId}`;
+    const verificationUrl = verificationUrlFor(input.identity.displayId, input.identity.verificationBaseUrl);
     const provenance = [];
     const pushProv = (field, item) => {
         provenance.push({ field, ...item });
@@ -861,6 +861,6 @@ function aggregatePassport(input) {
     };
 }
 function verificationUrlFor(displayId, baseUrl) {
-    return `${baseUrl.replace(/\/$/, '')}/passport/${displayId}`;
+    return `${baseUrl.replace(/\/$/, '')}/proof/${displayId}`;
 }
 //# sourceMappingURL=passport.js.map

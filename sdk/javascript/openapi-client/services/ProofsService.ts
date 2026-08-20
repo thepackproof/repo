@@ -9,15 +9,44 @@ import type { PassportResponse } from '../models/PassportResponse';
 import type { PassportSnapshotResponse } from '../models/PassportSnapshotResponse';
 import type { CancelablePromise } from '../core/CancelablePromise';
 import type { BaseHttpRequest } from '../core/BaseHttpRequest';
-export class PassportsService {
+export class ProofsService {
     constructor(public readonly httpRequest: BaseHttpRequest) {}
     /**
-     * Retrieve the live Proof
-     * Returns the canonical Proof aggregation for a transaction and binds a stable Proof identity the first time eligibility passes. Proof is the product name for the Passport projection. The Proof inventories source-attributed records and integrity bindings. It does not authenticate items, prove custody, decide fraud or fault, or guarantee a dispute outcome. Absence of evidence does not make a Proof inauthentic. Returns 409 PASSPORT_NOT_READY when eligibility fails. GET /v1/transactions/{transactionId}/proof is the preferred path alias.
+     * Canonical JSON Proof
+     * Alias of GET /v1/portal/transactions/{transactionId}/passport. Returns the live Proof projection.
      * @returns PassportResponse The live Proof aggregation. It does not authenticate items, prove custody, decide fraud or fault, or guarantee a dispute outcome.
      * @throws ApiError
      */
-    public getPassport({
+    public getPortalProof({
+        transactionId,
+    }: {
+        /**
+         * A merchant transaction identifier or an accepted Connect-origin transaction identifier. Possession of the identifier does not grant access.
+         */
+        transactionId: string,
+    }): CancelablePromise<PassportResponse> {
+        return this.httpRequest.request({
+            method: 'GET',
+            url: '/v1/portal/transactions/{transactionId}/proof',
+            path: {
+                'transactionId': transactionId,
+            },
+            errors: {
+                401: `Missing or invalid authentication.`,
+                404: `The resource was not found in the authenticated organization.`,
+                409: `The request conflicts with idempotency or resource state.`,
+                429: `The operation rate limit was exceeded.`,
+                500: `An internal failure occurred without exposing implementation details.`,
+            },
+        });
+    }
+    /**
+     * Retrieve the live Proof
+     * Preferred alias of GET /v1/transactions/{transactionId}/passport. Returns the canonical Proof aggregation.
+     * @returns PassportResponse The live Proof aggregation. It does not authenticate items, prove custody, decide fraud or fault, or guarantee a dispute outcome.
+     * @throws ApiError
+     */
+    public getProof({
         transactionId,
         framework,
         category,
@@ -37,7 +66,7 @@ export class PassportsService {
     }): CancelablePromise<PassportResponse> {
         return this.httpRequest.request({
             method: 'GET',
-            url: '/v1/transactions/{transactionId}/passport',
+            url: '/v1/transactions/{transactionId}/proof',
             path: {
                 'transactionId': transactionId,
             },
@@ -58,11 +87,11 @@ export class PassportsService {
     }
     /**
      * Freeze a Proof snapshot
-     * Stores an immutable canonical JSON snapshot of the live Proof for later PDF export. Native evidence remains the source. Passport is the deprecated product name for this object.
+     * Preferred alias of POST /v1/transactions/{transactionId}/passport/snapshots.
      * @returns PassportSnapshotResponse The original Passport snapshot for an exact idempotent retry.
      * @throws ApiError
      */
-    public createPassportSnapshot({
+    public createProofSnapshot({
         transactionId,
         idempotencyKey,
         requestBody,
@@ -79,7 +108,7 @@ export class PassportsService {
     }): CancelablePromise<PassportSnapshotResponse> {
         return this.httpRequest.request({
             method: 'POST',
-            url: '/v1/transactions/{transactionId}/passport/snapshots',
+            url: '/v1/transactions/{transactionId}/proof/snapshots',
             path: {
                 'transactionId': transactionId,
             },
@@ -103,19 +132,19 @@ export class PassportsService {
     }
     /**
      * Retrieve a live Proof by id
-     * Accepts a ppt_ resource id or a PP-XXXX-XXXX-XXXX display id. Authorization is still required. The QR or verification URL does not grant access. GET /v1/proofs/{proofId} is the preferred path alias.
+     * Preferred alias of GET /v1/passports/{passportId}. Accepts a ppt_ resource id or a PP-XXXX-XXXX-XXXX display id.
      * @returns PassportResponse The live Proof aggregation. It does not authenticate items, prove custody, decide fraud or fault, or guarantee a dispute outcome.
      * @throws ApiError
      */
-    public getPassportById({
-        passportId,
+    public getProofById({
+        proofId,
         framework,
         category,
     }: {
         /**
-         * A Proof resource id (ppt_) or display id (PP-XXXX-XXXX-XXXX). Passport is the deprecated product name for the same identifier. Possession of the identifier does not grant access.
+         * A Proof resource id (ppt_) or display id (PP-XXXX-XXXX-XXXX). Possession of the identifier does not grant access.
          */
-        passportId: string,
+        proofId: string,
         /**
          * Optional receiving-party workflow identifier used only to fill reviewContext. Not stored on Passport identity.
          */
@@ -127,9 +156,9 @@ export class PassportsService {
     }): CancelablePromise<PassportResponse> {
         return this.httpRequest.request({
             method: 'GET',
-            url: '/v1/passports/{passportId}',
+            url: '/v1/proofs/{proofId}',
             path: {
-                'passportId': passportId,
+                'proofId': proofId,
             },
             query: {
                 'framework': framework,
@@ -148,24 +177,25 @@ export class PassportsService {
     }
     /**
      * Retrieve an immutable Proof snapshot
+     * Preferred alias of GET /v1/passports/{passportId}/snapshots/{snapshotId}.
      * @returns PassportSnapshotResponse The immutable Passport snapshot.
      * @throws ApiError
      */
-    public getPassportSnapshot({
-        passportId,
+    public getProofSnapshot({
+        proofId,
         snapshotId,
     }: {
         /**
-         * A Proof resource id (ppt_) or display id (PP-XXXX-XXXX-XXXX). Passport is the deprecated product name for the same identifier. Possession of the identifier does not grant access.
+         * A Proof resource id (ppt_) or display id (PP-XXXX-XXXX-XXXX). Possession of the identifier does not grant access.
          */
-        passportId: string,
+        proofId: string,
         snapshotId: string,
     }): CancelablePromise<PassportSnapshotResponse> {
         return this.httpRequest.request({
             method: 'GET',
-            url: '/v1/passports/{passportId}/snapshots/{snapshotId}',
+            url: '/v1/proofs/{proofId}/snapshots/{snapshotId}',
             path: {
-                'passportId': passportId,
+                'proofId': proofId,
                 'snapshotId': snapshotId,
             },
             errors: {
@@ -180,20 +210,20 @@ export class PassportsService {
     }
     /**
      * Create a presentation-only Proof PDF export
-     * Renders a frozen snapshot to PDF. presentationOnly remains true. Native artifacts and manifests remain the source records. HMAC-SHA256 service authentication is not a digital signature.
+     * Preferred alias of POST /v1/passports/{passportId}/snapshots/{snapshotId}/exports.
      * @returns PassportExportResponse The original Passport PDF export for an exact idempotent retry.
      * @throws ApiError
      */
-    public createPassportExport({
-        passportId,
+    public createProofExport({
+        proofId,
         snapshotId,
         idempotencyKey,
         requestBody,
     }: {
         /**
-         * A Proof resource id (ppt_) or display id (PP-XXXX-XXXX-XXXX). Passport is the deprecated product name for the same identifier. Possession of the identifier does not grant access.
+         * A Proof resource id (ppt_) or display id (PP-XXXX-XXXX-XXXX). Possession of the identifier does not grant access.
          */
-        passportId: string,
+        proofId: string,
         snapshotId: string,
         /**
          * A unique key for this logical mutation. Reuse only for an exact retry.
@@ -203,9 +233,9 @@ export class PassportsService {
     }): CancelablePromise<PassportExportResponse> {
         return this.httpRequest.request({
             method: 'POST',
-            url: '/v1/passports/{passportId}/snapshots/{snapshotId}/exports',
+            url: '/v1/proofs/{proofId}/snapshots/{snapshotId}/exports',
             path: {
-                'passportId': passportId,
+                'proofId': proofId,
                 'snapshotId': snapshotId,
             },
             headers: {

@@ -43,6 +43,7 @@ export function App() {
           <Route index element={<WorkspaceOverview />} />
           <Route path="activity" element={<WorkspaceActivity />} />
           <Route path="evidence" element={<WorkspaceEvidence />} />
+          <Route path="proof" element={<PassportPage />} />
           <Route path="passport" element={<PassportPage />} />
         </Route>
         <Route path="packproofs/:id/handoff" element={<HandoffPage />} />

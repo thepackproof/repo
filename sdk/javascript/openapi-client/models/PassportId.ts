@@ -3,6 +3,6 @@
 /* tslint:disable */
 /* eslint-disable */
 /**
- * A PackProof Passport resource id (ppt_) or display id (PP-XXXX-XXXX-XXXX). Possession of the identifier does not grant access.
+ * A Proof resource id (ppt_) or display id (PP-XXXX-XXXX-XXXX). Passport is the deprecated product name for the same identifier. Possession of the identifier does not grant access.
  */
 export type PassportId = string;

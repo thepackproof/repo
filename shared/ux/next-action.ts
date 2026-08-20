@@ -132,7 +132,7 @@ export type UxPrimaryActionKind =
   | 'RECORD_ARRIVAL'
   | 'RECORD_UNBOXING'
   | 'COMPLETE_TRANSACTION'
-  | 'OPEN_PASSPORT'
+  | 'OPEN_PASSPORT' // Proof viewer; kind name is schema v1
   | 'AUTHORIZE_RETURN'
   | 'RECORD_RETURN_PACKING'
   | 'RECORD_RETURN_SEAL'
@@ -372,7 +372,7 @@ function finish(
     passportReady: ready,
     canLeaveWhileProcessing: draft.humanState === 'EVIDENCE_PROCESSING',
     secondaryAction: draft.secondaryAction ?? (ready && draft.primaryAction?.kind !== 'OPEN_PASSPORT'
-      ? { kind: 'OPEN_PASSPORT', label: 'View Passport' }
+        ? { kind: 'OPEN_PASSPORT', label: 'View Proof' }
       : null),
   };
 }
@@ -690,7 +690,7 @@ function resolveStatus(input: UxFlowInput, role: ParticipantRole, protocol: Pack
       instruction: 'The finished record is ready when you need it.',
       nextHappens: 'You can view or share it where permitted.',
       actionRequiredBy: 'NONE',
-      primaryAction: { kind: 'OPEN_PASSPORT', label: 'View Passport' },
+      primaryAction: { kind: 'OPEN_PASSPORT', label: 'View Proof' },
       secondaryAction: null,
       progressStage: 'COMPLETE',
       waitingReason: 'NONE',
@@ -698,9 +698,9 @@ function resolveStatus(input: UxFlowInput, role: ParticipantRole, protocol: Pack
       waitingOnTask: null,
       lockedExplanation: null,
       prerequisites: [],
-      notificationCopy: notify('PackProof complete', 'Your PackProof Passport is ready.'),
+      notificationCopy: notify('PackProof complete', 'Your Proof is ready.'),
       inboxBucket: 'COMPLETED',
-      inboxSentence: 'Your PackProof Passport is ready.',
+      inboxSentence: 'Your Proof is ready.',
       noActionRequired: false,
     };
   }
@@ -714,7 +714,7 @@ function resolveStatus(input: UxFlowInput, role: ParticipantRole, protocol: Pack
       nextHappens: 'Completion stays paused until the concern is resolved.',
       actionRequiredBy: 'YOU',
       primaryAction: null,
-      secondaryAction: passportReady(status, transaction.passportId) ? { kind: 'OPEN_PASSPORT', label: 'View Passport' } : null,
+      secondaryAction: passportReady(status, transaction.passportId) ? { kind: 'OPEN_PASSPORT', label: 'View Proof' } : null,
       progressStage: stage,
       waitingReason: 'NONE',
       waitingOnName: null,
