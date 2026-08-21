@@ -19,3 +19,5 @@ Architecture decisions are immutable records. If a decision changes, add a new A
 | [0013](0013-transaction-intake-layer.md) | Consumer transaction intake is adapters over `commerce_context`, with user-provided trust and capture freeze | Accepted |
 | [0014](0014-web-portal-presentation-surface.md) | Web portal is a browser presentation surface over the canonical core; merchant API keys stay out of the browser | Accepted |
 | [0015](0015-proof-is-the-passport.md) | Proof is the product name for the existing Passport projection; PackProof does not adjudicate | Accepted |
+| [0016](0016-zendesk-claims-presentation-surface.md) | Zendesk Support is a claims-review presentation surface over PackProof API / Connect; merchant keys stay in Zendesk secure settings | Accepted |
+| [0017](0017-salesforce-claims-presentation-surface.md) | Salesforce Service Cloud is a claims-review presentation surface over PackProof API / Connect; merchant keys stay in Named Credentials | Accepted |

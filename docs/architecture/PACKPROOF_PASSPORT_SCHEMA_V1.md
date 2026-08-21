@@ -14,6 +14,8 @@ The Proof is **not** another evidence record, video, manifest, claims report, or
 |---|---|
 | `GET` JSON Proof (`/passport` and `/proof`) | Canonical representation |
 | Web Proof | Interactive rendering of that JSON |
+| Zendesk ticket sidebar | Interactive rendering of that JSON for claims review; see [ADR 0016](../adr/0016-zendesk-claims-presentation-surface.md) |
+| Salesforce Case record page | Interactive rendering of that JSON for claims review; see [ADR 0017](../adr/0017-salesforce-claims-presentation-surface.md) |
 | Claims / network projection | Filtered view of the same JSON |
 | PDF / `evidence_report` | Presentation export of a frozen snapshot |
 

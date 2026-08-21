@@ -44,6 +44,8 @@ npm.cmd run test:ux-flow
 npm.cmd --prefix portal ci
 npm.cmd --prefix portal test
 npm.cmd --prefix portal run build
+npm.cmd run test:zendesk
+npm.cmd run test:salesforce
 npm.cmd run doctor
 npx.cmd expo-doctor
 ```
@@ -63,6 +65,7 @@ npx.cmd expo-doctor
 | AUTO-11 | Merchant API Firestore integration | Real emulator transactions/queries preserve one stable retry ID, exact replay, failed-attempt recovery, org isolation, credential revocation, no raw credential/key storage, rate counters, and recomputable audit hashes |
 | AUTO-12 | Firebase Function/Hosting configuration smoke | The compiled Firebase entrypoint loads; the Gen 2 HTTP export metadata, region, Secret Manager declaration, resource settings, and Hosting rewrite target are correct |
 | AUTO-13 | Web portal independent build | `portal/` typecheck, Next Action/invariant tests, and Vite build pass without compiling the Expo app; portal source does not import Firestore or Storage |
+| AUTO-14 | Zendesk and Salesforce claims presentation | `integrations/zendesk` and `integrations/salesforce` Node tests pass; merchant keys stay out of the iframe/LWC; lookups do not invent a Proof |
 
 ## Merchant API deployment acceptance
 

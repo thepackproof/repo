@@ -1,0 +1,172 @@
+:host {
+  color-scheme: light;
+  --pp-background: #f9fafb;
+  --pp-ink: #1b2232;
+  --pp-primary: #467c63;
+  --pp-primary-dark: #315a47;
+  --pp-secondary: #edf0f3;
+  --pp-accent: #e7efeb;
+  --pp-card: #ffffff;
+  --pp-muted: #5c6678;
+  --pp-border: #dbe0e6;
+  --pp-limited: #8a5a12;
+  display: block;
+  font-family: "Segoe UI", var(--lwc-fontFamily, system-ui), sans-serif;
+  font-size: 13px;
+  color: var(--pp-ink);
+}
+
+.wrap {
+  background: var(--pp-background);
+  padding: 12px 12px 16px;
+}
+
+h1 {
+  margin: 0;
+  font-size: 20px;
+}
+
+h2 {
+  margin: 0 0 6px;
+  font-size: 15px;
+}
+
+p {
+  margin: 0 0 8px;
+  line-height: 1.45;
+}
+
+.eyebrow {
+  color: var(--pp-primary);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  margin: 0;
+}
+
+.header {
+  margin-bottom: 12px;
+}
+
+.lookup {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.lookup-submit {
+  align-self: flex-start;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.card {
+  background: var(--pp-card);
+  border: 1px solid var(--pp-border);
+  border-radius: 14px;
+  padding: 12px 14px;
+}
+
+.card.error {
+  border-color: #f3c4c4;
+}
+
+.meta {
+  color: var(--pp-muted);
+  font-size: 12px;
+  margin: 0 0 8px;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 10px 0 0;
+  align-items: center;
+}
+
+.btn-ghost {
+  color: var(--pp-primary-dark);
+  text-decoration: none;
+  font-weight: 700;
+  padding: 8px 14px;
+}
+
+.banner {
+  display: inline-block;
+  background: var(--pp-accent);
+  color: var(--pp-primary-dark);
+  border-radius: 999px;
+  padding: 3px 8px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  margin-bottom: 8px;
+}
+
+.banner.limited {
+  background: #f7ead3;
+  color: var(--pp-limited);
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chip {
+  background: var(--pp-secondary);
+  border-radius: 999px;
+  padding: 3px 8px;
+  font-size: 11px;
+}
+
+.chip.present {
+  background: var(--pp-accent);
+  color: var(--pp-primary-dark);
+  font-weight: 700;
+}
+
+.facts {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.fact {
+  display: grid;
+  grid-template-columns: 96px 1fr;
+  gap: 4px 8px;
+}
+
+.fact-label {
+  color: var(--pp-muted);
+  font-weight: 600;
+}
+
+.fact-value {
+  word-break: break-word;
+}
+
+.plain {
+  margin: 0;
+  padding-left: 16px;
+}
+
+.plain li {
+  margin: 0 0 4px;
+}
+
+.boundary {
+  color: var(--pp-muted);
+  font-size: 11px;
+  margin: 12px 0 0;
+  line-height: 1.4;
+}

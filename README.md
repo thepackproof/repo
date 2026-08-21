@@ -46,6 +46,8 @@ These controls are not certification, scientific validation, a penetration test,
 - PackProof API order ingestion, idempotent handoff, exact-body webhook HMAC, and retry delivery.
 - Contract-first PackProof Merchant API v1 foundation with scoped merchant credentials, organization-isolated transaction create/read/list, idempotency, rate controls, structured errors/logs, and hash-linked audit events. See [`docs/API_ARCHITECTURE.md`](docs/API_ARCHITECTURE.md).
 - PackProof Web Portal (`portal/`) as a React 19 + Vite SPA over `/v1/portal`, Firebase Web Auth/App Check, and a dedicated Hosting target. It is not a second backend or a browser capture engine. See [`docs/adr/0014-web-portal-presentation-surface.md`](docs/adr/0014-web-portal-presentation-surface.md).
+- PackProof Zendesk app (`integrations/zendesk/`) as a Support ticket-sidebar presentation of Connect/Proof JSON. Merchant API keys stay in Zendesk secure settings. It does not decide claims. See [`docs/adr/0016-zendesk-claims-presentation-surface.md`](docs/adr/0016-zendesk-claims-presentation-surface.md).
+- PackProof Salesforce app (`integrations/salesforce/`) as a Service Cloud Case-record presentation of Connect/Proof JSON. Merchant API keys stay in Named Credentials. It does not decide claims. See [`docs/adr/0017-salesforce-claims-presentation-surface.md`](docs/adr/0017-salesforce-claims-presentation-surface.md).
 - PackProof Enterprise™ architecture, warehouse domain, Edge protocol, simulated single-station Edge runtime, application-layer Evidence Format v2 finalization, Enterprise console projection, and simulated WMS ingest (`SOURCE_CHECKED` only). See [`docs/PACKPROOF_ENTERPRISE.md`](docs/PACKPROOF_ENTERPRISE.md).
 - Google Play / RevenueCat subscription scaffolding and policy templates.
 
@@ -82,6 +84,8 @@ npm.cmd run test:application
 npm.cmd run test:enterprise
 npm.cmd run test:sdk
 npm.cmd run test:portal
+npm.cmd run test:zendesk
+npm.cmd run test:salesforce
 npm.cmd run portal:build
 npm.cmd run verify:pc
 npm.cmd run build:android:preview

@@ -1,0 +1,4 @@
+.sfdx/
+.sf/
+.localdevserver/
+deploy-status.json

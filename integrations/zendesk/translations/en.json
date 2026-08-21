@@ -1,0 +1,26 @@
+{
+  "app": {
+    "name": "PackProof Proof",
+    "short_description": "Receive the PackProof Proof (Passport) on a Zendesk ticket so claims agents can review recorded facts faster.",
+    "long_description": "Looks up a PackProof Connect session or merchant transaction from the ticket’s order ID, Proof ID, or transaction ID, then renders the live Proof JSON in the ticket sidebar.\n\nThe app organizes terms, evidence inventory, expected-versus-observed comparisons, and limitations for authorized human review. It does not authenticate items, prove custody, decide fraud or fault, recommend a refund, or determine a card-network, carrier, marketplace, or payment outcome.\n\nThe merchant API key is a Zendesk secure setting. It is injected only by the Zendesk proxy and never appears in the iframe.",
+    "installation_instructions": "1. Create a PackProof merchant API credential with transactions:read, evidence:read, and (for Connect order lookup) the credential bound to your Connect integration.\n2. Paste the API key into the secure setting. Use a hostname already on this app’s domain whitelist, such as packproof-4cf53.web.app.\n3. Optional: enter a Zendesk ticket custom field ID that stores the commerce order ID.\n4. Optional: set receiving framework to VISA, MASTERCARD, PAYPAL, or GENERIC so Proof reviewContext uses that overlay.\n5. Open a dispute ticket and confirm the sidebar receives the Proof. Add an internal note to keep the facts on the ticket.",
+    "parameters": {
+      "api_key": {
+        "label": "PackProof API key",
+        "helpText": "Merchant credential (pp_sandbox_… or pp_live_…). Stored as a Zendesk secure setting and never sent to the browser."
+      },
+      "api_host": {
+        "label": "PackProof API host",
+        "helpText": "Hostname only, without https://. Must match a domainWhitelist entry in manifest.json. Example: packproof-4cf53.web.app"
+      },
+      "order_id_field": {
+        "label": "Order ID ticket field",
+        "helpText": "Optional Zendesk custom field ID that stores the commerce order ID (digits only, or custom_field_123456)."
+      },
+      "receiving_framework": {
+        "label": "Receiving framework",
+        "helpText": "Optional overlay for Proof reviewContext: GENERIC, VISA, MASTERCARD, or PAYPAL. Filing labels only; not a network filing."
+      }
+    }
+  }
+}

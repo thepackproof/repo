@@ -110,6 +110,10 @@ None of these writes decide fraud, fault, custody, or a refund.
 
 The review package always states `physicalCorrespondence: NOT_AVAILABLE` and `businessLegalRelevance: REVIEW_REQUIRED`. Documentation categories are filing labels only. The package does not decide fraud, fault, authenticity, custody, or a card-network, carrier, marketplace, or payment outcome.
 
+Claims agents working in Zendesk can receive the same live Proof JSON in the ticket sidebar. The private app in [`integrations/zendesk`](../integrations/zendesk/README.md) looks up `GET /v1/connect/sessions?externalOrderId=` then `GET /v1/transactions/{transactionId}/proof`. The merchant API key is a Zendesk secure setting; the iframe never holds it. The app does not file or decide the claim.
+
+Claims agents working in Salesforce Service Cloud can receive that same JSON on the Case record page. The source app in [`integrations/salesforce`](../integrations/salesforce/README.md) uses the same Connect then Proof lookup. The merchant API key is a Named Credential External Credential principal; the Lightning component never holds it. The app does not file or decide the claim.
+
 ## Callback fields
 
 `evidenceStatus` is `DIGITAL_EVIDENCE_READY` only when all of the following are true:

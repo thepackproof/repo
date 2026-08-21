@@ -1,0 +1,59 @@
+{
+  "name": "PackProof Proof",
+  "author": {
+    "name": "PackProof",
+    "email": "nericollin@thepackproof.com",
+    "url": "https://thepackproof.com"
+  },
+  "defaultLocale": "en",
+  "private": true,
+  "singleInstall": true,
+  "signedUrls": false,
+  "location": {
+    "support": {
+      "ticket_sidebar": {
+        "url": "assets/iframe.html",
+        "flexible": true
+      },
+      "new_ticket_sidebar": {
+        "url": "assets/iframe.html",
+        "flexible": true
+      }
+    }
+  },
+  "domainWhitelist": [
+    "packproof-4cf53.web.app",
+    "packproof-4cf53.firebaseapp.com",
+    "thepackproof.com",
+    "app.thepackproof.com",
+    "api.thepackproof.com"
+  ],
+  "parameters": [
+    {
+      "name": "api_key",
+      "type": "text",
+      "secure": true,
+      "required": true,
+      "scopes": ["header"]
+    },
+    {
+      "name": "api_host",
+      "type": "text",
+      "required": true,
+      "default": "packproof-4cf53.web.app"
+    },
+    {
+      "name": "order_id_field",
+      "type": "text",
+      "required": false
+    },
+    {
+      "name": "receiving_framework",
+      "type": "text",
+      "required": false,
+      "default": "GENERIC"
+    }
+  ],
+  "version": "1.0.0",
+  "frameworkVersion": "2.0"
+}

@@ -109,6 +109,8 @@
     "portal:dev": "npm --prefix portal run dev",
     "portal:build": "npm --prefix portal run build",
     "test:portal": "npm --prefix portal test",
+    "test:zendesk": "npm --prefix integrations/zendesk test",
+    "test:salesforce": "npm --prefix integrations/salesforce test",
     "test:capture-workflow": "node --experimental-strip-types scripts/test-capture-workflow.mjs",
     "test:dependency-advisories": "node scripts/check-dependency-advisories.mjs",
     "validate:physical": "node scripts/analyze-physical-validation.mjs",

@@ -13,7 +13,7 @@ This directory records the controlled migration of the current PackProof 0.9.5.0
 - [Baseline evidence](BASELINE_2026-08-11.md) - exact local source/emulator results and known open risks for the uncommitted 0.3.0 working tree.
 - [Migration map](MIGRATION_MAP.md) - current modules, current coupling and their target architectural destinations.
 - [Checkpoint plan](CHECKPOINT_PLAN.md) - historical disposition of the now-resolved uncommitted-baseline problem.
-- [Architecture decisions](../adr/README.md) - accepted decisions that later sections must preserve, including [ADR 0013](../adr/0013-transaction-intake-layer.md) (consumer intake over `commerce_context`) and [ADR 0014](../adr/0014-web-portal-presentation-surface.md) (web portal as a presentation surface).
+- [Architecture decisions](../adr/README.md) - accepted decisions that later sections must preserve, including [ADR 0013](../adr/0013-transaction-intake-layer.md) (consumer intake over `commerce_context`), [ADR 0014](../adr/0014-web-portal-presentation-surface.md) (web portal as a presentation surface), [ADR 0016](../adr/0016-zendesk-claims-presentation-surface.md) (Zendesk ticket sidebar as a claims-review presentation surface), and [ADR 0017](../adr/0017-salesforce-claims-presentation-surface.md) (Salesforce Case record page as a claims-review presentation surface).
 - [PackProof Web Portal v1](WEB_PORTAL_V1.md) - browser SPA, `PortalPrincipal`, `/v1/portal` transport, Hosting target, and activation limits.
 
 ## Section 2 artifacts

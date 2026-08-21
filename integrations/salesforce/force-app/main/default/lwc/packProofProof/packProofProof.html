@@ -1,0 +1,178 @@
+<template>
+  <article class="wrap">
+    <header class="header">
+      <p class="eyebrow">PackProof</p>
+      <h1>Proof</h1>
+    </header>
+
+    <form class="lookup" onsubmit={handleLookupSubmit}>
+      <lightning-input
+        type="text"
+        label="Order or Proof ID"
+        name="lookup"
+        value={query}
+        placeholder="order-123 or PP-XXXX-XXXX-XXXX"
+        autocomplete="off"
+        onchange={handleQueryChange}
+      ></lightning-input>
+      <lightning-button
+        type="submit"
+        variant="brand"
+        label="Receive Proof"
+        disabled={loading}
+        class="lookup-submit"
+      ></lightning-button>
+    </form>
+
+    <template lwc:if={hasError}>
+      <section class="card error">
+        <h2>Lookup failed</h2>
+        <p>{error}</p>
+      </section>
+    </template>
+
+    <template lwc:elseif={loading}>
+      <section class="card">
+        <lightning-spinner alternative-text="Retrieving the Proof from PackProof API" size="small"></lightning-spinner>
+        <p class="meta">Retrieving the Proof from PackProof API…</p>
+      </section>
+    </template>
+
+    <template lwc:elseif={isReady}>
+      <div class="stack">
+        <section class="card">
+          <div class={bannerClass}>{view.bannerLabel}</div>
+          <h2>{view.displayId}</h2>
+          <p>{view.summary}</p>
+          <p class="meta">{view.meaning}</p>
+          <div class="actions">
+            <lightning-button
+              variant="brand"
+              label={noteLabel}
+              disabled={noteBusy}
+              onclick={addInternalNote}
+            ></lightning-button>
+            <template lwc:if={verificationUrl}>
+              <a class="btn-ghost" href={verificationUrl} target="_blank" rel="noopener noreferrer">Open Proof</a>
+            </template>
+          </div>
+          <template lwc:if={noteMessage}>
+            <p class="meta">{noteMessage}</p>
+          </template>
+        </section>
+
+        <section class="card">
+          <h2>Transaction</h2>
+          <div class="facts">
+            <template for:each={facts} for:item="row">
+              <div key={row.key} class="fact">
+                <span class="fact-label">{row.label}</span>
+                <span class="fact-value">{row.value}</span>
+              </div>
+            </template>
+          </div>
+        </section>
+
+        <section class="card">
+          <h2>Evidence available</h2>
+          <p class="meta">Presence labels only. Missing evidence is not a finding of fault.</p>
+          <div class="chips">
+            <template for:each={inventory} for:item="entry">
+              <span key={entry.category} class={entry.chipClass}>{entry.chip}</span>
+            </template>
+          </div>
+        </section>
+
+        <template lwc:if={hasComparisons}>
+          <section class="card">
+            <h2>Expected ↔ observed</h2>
+            <p class="meta">{view.comparisonFootnote}</p>
+            <ul class="plain">
+              <template for:each={comparisons} for:item="row">
+                <li key={row.attribute}>{row.line}</li>
+              </template>
+            </ul>
+          </section>
+        </template>
+
+        <template lwc:if={review}>
+          <section class="card">
+            <h2>Review overlay</h2>
+            <p>{review.heading}</p>
+            <p class="meta">{view.reviewFootnote}</p>
+            <ul class="plain">
+              <template for:each={review.relevance} for:item="row">
+                <li key={row.category}>{row.line}</li>
+              </template>
+            </ul>
+          </section>
+        </template>
+
+        <template lwc:if={hasTimeline}>
+          <section class="card">
+            <h2>Recent timeline</h2>
+            <ul class="plain">
+              <template for:each={timeline} for:item="event">
+                <li key={event.line}>{event.line}</li>
+              </template>
+            </ul>
+          </section>
+        </template>
+
+        <lightning-accordion allow-multiple>
+          <lightning-accordion-section name="limitations" label="Limitations">
+            <p>{view.disclaimer}</p>
+            <p class="meta">{view.boundary}</p>
+          </lightning-accordion-section>
+        </lightning-accordion>
+      </div>
+    </template>
+
+    <template lwc:elseif={isAmbiguous}>
+      <section class="card">
+        <h2>{projected.title}</h2>
+        <p>{projected.message}</p>
+        <div class="stack">
+          <template for:each={ambiguousTransactions} for:item="row">
+            <lightning-button
+              key={row.id}
+              type="button"
+              variant="neutral"
+              label={row.label}
+              data-transaction-id={row.id}
+              onclick={handlePickTransaction}
+            ></lightning-button>
+          </template>
+        </div>
+      </section>
+    </template>
+
+    <template lwc:elseif={isBlocked}>
+      <section class="card">
+        <h2>{projected.title}</h2>
+        <p>{projected.message}</p>
+        <template for:each={details} for:item="line">
+          <p key={line} class="meta">{line}</p>
+        </template>
+        <template lwc:if={hasSessionFacts}>
+          <div class="facts">
+            <template for:each={sessionFacts} for:item="row">
+              <div key={row.key} class="fact">
+                <span class="fact-label">{row.label}</span>
+                <span class="fact-value">{row.value}</span>
+              </div>
+            </template>
+          </div>
+        </template>
+      </section>
+    </template>
+
+    <template lwc:elseif={showIdle}>
+      <section class="card">
+        <p class="meta">Enter an order ID, Proof ID (PP-…), or transaction ID. The app uses PackProof Connect to receive the live Proof for this Case.</p>
+      </section>
+    </template>
+
+    <p class="boundary">PackProof records facts. This panel does not decide the Case, refund, chargeback, or claim.</p>
+  </article>
+</template>
