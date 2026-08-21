@@ -26,13 +26,15 @@ exports.cancelAccountDeletion = (0, https_1.onCall)({ enforceAppCheck: true }, a
 });
 exports.exportAccountData = (0, https_1.onCall)({ enforceAppCheck: true, timeoutSeconds: 120 }, async (request) => {
     const uid = (0, helpers_1.requireUid)(request);
-    const [profile, transactions] = await Promise.all([
+    const [profile, transactions, legalAcceptances] = await Promise.all([
         config_1.db.collection('users').doc(uid).get(),
         config_1.db.collection('transactions').where('participantIds', 'array-contains', uid).get(),
+        config_1.db.collection('legalAcceptances').where('accountId', '==', uid).get(),
     ]);
     const result = {
         exportedAt: new Date().toISOString(),
         profile: profile.data() ?? null,
+        legalAcceptances: legalAcceptances.docs.map((item) => ({ id: item.id, ...item.data() })),
         transactions: await Promise.all(transactions.docs.map(async (doc) => {
             const [events, evidence, returns, packets] = await Promise.all([
                 doc.ref.collection('events').orderBy('createdAt', 'asc').get(),
@@ -124,6 +126,8 @@ exports.purgeDeletedAccounts = (0, scheduler_1.onSchedule)({ schedule: 'every da
         await Promise.all([...links.docs, ...tokens.docs, ...oauthStates.docs, ...authGrants.docs, ...pendingUploads.docs, ...invites.docs].map((doc) => doc.ref.delete()));
         const [files] = await config_1.storage.bucket().getFiles({ prefix: `exports/${uid}/` });
         await Promise.all(files.map((file) => file.delete({ ignoreNotFound: true })));
+        const legalAcceptances = await config_1.db.collection('legalAcceptances').where('accountId', '==', uid).get();
+        await Promise.all(legalAcceptances.docs.map((item) => item.ref.delete()));
         await config_1.db.collection('publicProfiles').doc(uid).delete();
         await config_1.db.recursiveDelete(userDoc.ref);
         try {

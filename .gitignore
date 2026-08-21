@@ -34,16 +34,19 @@ yarn-error.*
 # local env files
 .env
 .env*.local
+functions/.env
+functions/.env.*
+!functions/.env.example
 
 # typescript
 *.tsbuildinfo
 
 # service credentials and generated configuration
 google-services.json
+google-services.*.json
 .firebaserc
 service-account*.json
 play-service-account*.json
-functions/.env
 
 # generated deliverables
 *.aab

@@ -11,16 +11,16 @@ import { useAuth } from '@/providers/auth-provider';
 
 export default function PublicCommerceHandoffReview() {
   const { handoff, token } = useLocalSearchParams<{ handoff?: string; token?: string }>();
-  const { user, loading } = useAuth();
+  const { sessionReady, loading } = useAuth();
   const router = useRouter();
   const [redeeming, setRedeeming] = useState(false);
   const valid = Boolean(handoff && token);
 
   useEffect(() => {
-    if (!loading && !user && valid) {
+    if (!loading && !sessionReady && valid) {
       router.replace({ pathname: '/welcome', params: { redirect: `/handoff/review?handoff=${encodeURIComponent(handoff!)}&token=${encodeURIComponent(token!)}` } });
     }
-  }, [handoff, loading, router, token, user, valid]);
+  }, [handoff, loading, router, token, sessionReady, valid]);
 
   const review = async () => {
     if (!handoff || !token) return;
@@ -38,7 +38,7 @@ export default function PublicCommerceHandoffReview() {
     }
   };
 
-  if (loading || (valid && !user)) return <LoadingScreen />;
+  if (loading || (valid && !sessionReady)) return <LoadingScreen />;
   return <SafeAreaView style={styles.safe}>
     <View style={styles.container}>
       <ScreenTitle

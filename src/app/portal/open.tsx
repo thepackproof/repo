@@ -14,18 +14,18 @@ const ACTION_KIND: Record<string, UxPrimaryActionKind> = {
 
 export default function PortalOpenHandoff() {
   const { transaction, action } = useLocalSearchParams<{ transaction?: string; action?: string }>();
-  const { user, loading } = useAuth();
+  const { sessionReady, loading } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
-    if (loading || !user || !transaction) return;
+    if (loading || !sessionReady || !transaction) return;
     const kind = ACTION_KIND[action ?? 'pack'] ?? 'START_PACKING';
     router.replace(toHref(hrefForPrimaryAction(kind, transaction)));
-  }, [action, loading, router, transaction, user]);
+  }, [action, loading, router, sessionReady, transaction]);
 
   if (loading) return <LoadingScreen />;
   if (!transaction) return <Redirect href="/(tabs)" />;
-  if (!user) {
+  if (!sessionReady) {
     return <Redirect href={{ pathname: '/welcome', params: { redirect: `/portal/open?transaction=${encodeURIComponent(transaction)}&action=${encodeURIComponent(action ?? 'pack')}` } }} />;
   }
   return <LoadingScreen />;

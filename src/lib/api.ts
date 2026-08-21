@@ -15,6 +15,22 @@ export async function callFunction<TInput, TOutput>(name: string, input: TInput)
 
 export const ensureProfile = () => callFunction<Record<string, never>, UserProfile>('ensureUserProfile', {});
 
+export type LegalAcceptanceStatus = {
+  accepted: boolean;
+  termsVersion: string;
+  privacyVersion: string;
+  effectiveDate: string;
+};
+
+export const getLegalAcceptanceStatus = () => callFunction<Record<string, never>, LegalAcceptanceStatus>('getLegalAcceptanceStatus', {});
+
+export const acceptLegalPolicies = (input: {
+  termsVersion: string;
+  privacyVersion: string;
+  appVersion: string;
+  affirmation: string;
+}) => callFunction<typeof input, LegalAcceptanceStatus & { acceptedAt: string }>('acceptLegalPolicies', input);
+
 export type ParticipantEvidenceSession = {
   id: string;
   object: 'evidence_session';

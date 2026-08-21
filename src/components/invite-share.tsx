@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Alert, Share, StyleSheet, Text, View } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import QRCode from 'react-native-qrcode-svg';
@@ -22,6 +22,11 @@ export function InviteShare({
 }) {
   const [invite, setInvite] = useState<{ url: string; expiresAt: string } | null>(null);
   const [more, setMore] = useState(false);
+  const onCloseRef = useRef(onClose);
+
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
 
   useEffect(() => {
     let active = true;
@@ -30,7 +35,7 @@ export function InviteShare({
       .catch((error) => {
         if (!active) return;
         Alert.alert('Could not create invitation', readableError(error));
-        onClose();
+        onCloseRef.current();
       });
     return () => { active = false; };
   }, [transactionId]);

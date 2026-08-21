@@ -9,6 +9,7 @@ import { featureFlags } from '@/constants/features';
 import { callFunction, downloadUrl } from '@/lib/api';
 import { readableError } from '@/lib/format';
 import { useAuth } from '@/providers/auth-provider';
+import { LEGAL_BASE_URL } from '@/constants/legal';
 import { usePurchases } from '@/providers/purchases-provider';
 
 function ProviderRow({ name, icon, linked, onPress, busy }: { name: string; icon: AppIconName; linked: boolean; onPress: () => void; busy: boolean }) {
@@ -71,8 +72,8 @@ export default function AccountScreen() {
     <View style={styles.actions}>
       {billingAvailable ? <Button label={profile?.plan === 'PRO' ? 'Manage PackProof Pro' : 'Upgrade to PackProof Pro'} icon="star.fill" variant="secondary" onPress={() => managementUrl ? Linking.openURL(managementUrl) : router.push('/paywall')} /> : null}
       <Button label="Export account record (JSON)" icon="square.and.arrow.up" variant="secondary" busy={busy === 'export'} onPress={exportData} />
-      <Button label="Privacy policy" variant="ghost" onPress={() => Linking.openURL(`${process.env.EXPO_PUBLIC_LEGAL_BASE_URL}/privacy.html`)} />
-      <Button label="Terms of use" variant="ghost" onPress={() => Linking.openURL(`${process.env.EXPO_PUBLIC_LEGAL_BASE_URL}/terms.html`)} />
+      <Button label="Privacy policy" variant="ghost" onPress={() => Linking.openURL(`${LEGAL_BASE_URL}/privacy.html`)} />
+      <Button label="Terms of use" variant="ghost" onPress={() => Linking.openURL(`${LEGAL_BASE_URL}/terms.html`)} />
       <Button label="Sign out" variant="ghost" onPress={signOut} />
     </View>
 

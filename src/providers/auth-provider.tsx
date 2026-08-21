@@ -13,9 +13,10 @@ import {
 } from '@react-native-firebase/auth';
 import * as WebBrowser from 'expo-web-browser';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type PropsWithChildren } from 'react';
-import { callFunction, ensureProfile } from '@/lib/api';
+import { acceptLegalPolicies, callFunction, ensureProfile, getLegalAcceptanceStatus } from '@/lib/api';
+import { CURRENT_APP_VERSION, CURRENT_PRIVACY_VERSION, CURRENT_TERMS_VERSION, LEGAL_AFFIRMATION } from '@/constants/legal';
 import { featureFlags } from '@/constants/features';
-import { auth, initializeSecurity } from '@/lib/firebase';
+import { auth, forceFreshCallableCredentials, initializeSecurity } from '@/lib/firebase';
 import type { UserProfile } from '@/types/models';
 
 WebBrowser.maybeCompleteAuthSession();
@@ -24,9 +25,12 @@ type AuthContextValue = {
   user: User | null;
   profile: UserProfile | null;
   loading: boolean;
-  signInGoogle: (link?: boolean) => Promise<void>;
-  signInFacebook: (link?: boolean) => Promise<void>;
-  signInTikTok: () => Promise<void>;
+  legalAccepted: boolean;
+  sessionReady: boolean;
+  signInGoogle: (link?: boolean, acceptCurrentPolicies?: boolean) => Promise<void>;
+  signInFacebook: (link?: boolean, acceptCurrentPolicies?: boolean) => Promise<void>;
+  signInTikTok: (acceptCurrentPolicies?: boolean) => Promise<void>;
+  acceptCurrentPolicies: () => Promise<void>;
   refreshAuthentication: () => Promise<void>;
   refreshProfile: () => Promise<void>;
   signOut: () => Promise<void>;
@@ -64,40 +68,78 @@ async function facebookCredential() {
 export function AuthProvider({ children }: PropsWithChildren) {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [legalAccepted, setLegalAccepted] = useState(false);
   const [loading, setLoading] = useState(true);
 
   const refreshProfile = useCallback(async () => {
     if (!auth.currentUser) { setProfile(null); return; }
-    const next = await ensureProfile();
+    const [next, legal] = await Promise.all([ensureProfile(), getLegalAcceptanceStatus()]);
     setProfile(next);
+    setLegalAccepted(legal.accepted);
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
     let unsubscribe: () => void = () => {};
-    initializeSecurity()
-      .then(() => {
-        unsubscribe = onAuthStateChanged(auth, async (nextUser) => {
-          setUser(nextUser);
-          if (nextUser) {
-            try { setProfile(await ensureProfile()); } catch { setProfile(null); }
-          } else setProfile(null);
-          setLoading(false);
-        });
-      })
-      .catch(() => setLoading(false));
-    return () => unsubscribe();
+    void (async () => {
+      try {
+        await initializeSecurity();
+      } catch {
+        // App Check init must not skip auth restoration. Callables still
+        // fail closed if attestation cannot be obtained later.
+      }
+      if (cancelled) return;
+      unsubscribe = onAuthStateChanged(auth, async (nextUser) => {
+        setUser(nextUser);
+        if (nextUser) {
+          try {
+            const [nextProfile, legal] = await Promise.all([ensureProfile(), getLegalAcceptanceStatus()]);
+            setProfile(nextProfile);
+            setLegalAccepted(legal.accepted);
+          } catch {
+            setProfile(null);
+            setLegalAccepted(false);
+          }
+        } else {
+          setProfile(null);
+          setLegalAccepted(false);
+        }
+        setLoading(false);
+      });
+    })();
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
   }, []);
 
-  const applyCredential = useCallback(async (credential: AuthCredential, link = false) => {
+  const recordCurrentPolicies = useCallback(async () => {
+    await acceptLegalPolicies({
+      termsVersion: CURRENT_TERMS_VERSION,
+      privacyVersion: CURRENT_PRIVACY_VERSION,
+      appVersion: CURRENT_APP_VERSION,
+      affirmation: LEGAL_AFFIRMATION,
+    });
+    setLegalAccepted(true);
+  }, []);
+
+  const applyCredential = useCallback(async (credential: AuthCredential, link = false, acceptCurrentPolicies = false) => {
     if (link && auth.currentUser) await linkWithCredential(auth.currentUser, credential);
     else await signInWithCredential(auth, credential);
-    await refreshProfile();
-  }, [refreshProfile]);
+    try {
+      await forceFreshCallableCredentials();
+      if (acceptCurrentPolicies) await recordCurrentPolicies();
+      await refreshProfile();
+    } catch (error) {
+      if (!link) await firebaseSignOut(auth).catch(() => undefined);
+      throw error;
+    }
+  }, [recordCurrentPolicies, refreshProfile]);
 
-  const signInGoogle = useCallback(async (link = false) => applyCredential(await googleCredential(), link), [applyCredential]);
-  const signInFacebook = useCallback(async (link = false) => applyCredential(await facebookCredential(), link), [applyCredential]);
+  const signInGoogle = useCallback(async (link = false, acceptCurrentPolicies = false) => applyCredential(await googleCredential(), link, acceptCurrentPolicies), [applyCredential]);
+  const signInFacebook = useCallback(async (link = false, acceptCurrentPolicies = false) => applyCredential(await facebookCredential(), link, acceptCurrentPolicies), [applyCredential]);
 
-  const signInTikTok = useCallback(async () => {
+  const signInTikTok = useCallback(async (acceptCurrentPolicies = false) => {
     const session = await callFunction<Record<string, never>, { authorizationUrl: string }>('createTikTokAuthSession', {});
     const result = await WebBrowser.openAuthSessionAsync(session.authorizationUrl, 'packproof://auth/tiktok');
     if (result.type !== 'success' || !result.url) throw new Error('TikTok sign-in was cancelled.');
@@ -105,8 +147,15 @@ export function AuthProvider({ children }: PropsWithChildren) {
     if (!grant) throw new Error('TikTok did not return a valid sign-in grant.');
     const redemption = await callFunction<{ grant: string }, { customToken: string }>('redeemTikTokGrant', { grant });
     await signInWithCustomToken(auth, redemption.customToken);
-    await refreshProfile();
-  }, [refreshProfile]);
+    try {
+      await forceFreshCallableCredentials();
+      if (acceptCurrentPolicies) await recordCurrentPolicies();
+      await refreshProfile();
+    } catch (error) {
+      await firebaseSignOut(auth).catch(() => undefined);
+      throw error;
+    }
+  }, [recordCurrentPolicies, refreshProfile]);
 
   const refreshAuthentication = useCallback(async () => {
     const current = auth.currentUser;
@@ -114,7 +163,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
     const providerIds = new Set(current.providerData.map((item) => item.providerId));
     if (providerIds.has('google.com')) await reauthenticateWithCredential(current, await googleCredential());
     else if (providerIds.has('facebook.com')) await reauthenticateWithCredential(current, await facebookCredential());
-    else if (profile?.providers.some((providerId) => providerId === 'tiktok.com')) await signInTikTok();
+    else if (profile?.providers.some((providerId) => providerId === 'tiktok.com')) await signInTikTok(false);
     else throw new Error('Link Google, Facebook, or TikTok before performing this security-sensitive action.');
   }, [profile?.providers, signInTikTok]);
 
@@ -130,17 +179,21 @@ export function AuthProvider({ children }: PropsWithChildren) {
     await firebaseSignOut(auth);
   }, []);
 
+  const sessionReady = Boolean(user && legalAccepted);
   const value = useMemo<AuthContextValue>(() => ({
     user,
     profile,
     loading,
+    legalAccepted,
+    sessionReady,
     signInGoogle,
     signInFacebook,
     signInTikTok,
+    acceptCurrentPolicies: recordCurrentPolicies,
     refreshAuthentication,
     refreshProfile,
     signOut,
-  }), [user, profile, loading, signInGoogle, signInFacebook, signInTikTok, refreshAuthentication, refreshProfile, signOut]);
+  }), [user, profile, loading, legalAccepted, sessionReady, signInGoogle, signInFacebook, signInTikTok, recordCurrentPolicies, refreshAuthentication, refreshProfile, signOut]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

@@ -30,7 +30,7 @@ output.write('\nPackProof external-demo configuration\nValues remain in local fi
 
 const firebaseProjectId = requireValue(await ask('Firebase project ID', previous.FIREBASE_PROJECT_ID), 'Firebase project ID');
 if (!/^[a-z][a-z0-9-]{4,28}[a-z0-9]$/.test(firebaseProjectId)) throw new Error('Firebase project ID format is invalid.');
-const androidPackage = await ask('Android package name (choose permanently before Play upload)', previous.ANDROID_PACKAGE_NAME || 'com.packproof.app');
+const androidPackage = await ask('Android package name (choose permanently before Play upload)', previous.ANDROID_PACKAGE_NAME || 'com.thepackproof.app');
 if (!/^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*){1,}$/.test(androidPackage)) throw new Error('Android package name is invalid. Example: com.company.packproof');
 const expoOwner = requireValue(await ask('Expo account name', previous.EXPO_OWNER), 'Expo account name');
 const expoProjectId = requireValue(await ask('Expo project ID from `npx eas-cli@21.4.0 init`', previous.EXPO_PROJECT_ID), 'Expo project ID');
@@ -88,7 +88,7 @@ for (const path of ['public/index.html', 'public/privacy.html', 'public/terms.ht
 await writeFile('public/runtime-config.js', `window.PACKPROOF_CONFIG = Object.freeze({ tiktokEnabled: ${enableTikTok} });\n`);
 
 rl.close();
-output.write('\nConfiguration written. Place google-services.json in the project root, run `npm run sync:eas`, generate App Links after a signing key exists, and run `npm run doctor`.\n');
+output.write('\nConfiguration written. Place google-services.json in the project root, run `npm run sync:eas -- preview` and `npm run sync:eas -- production` as needed, generate App Links after a signing key exists, and run `npm run doctor`.\n');
 if (enableTikTok) output.write('TikTok is enabled: configure TIKTOK_CLIENT_KEY and TIKTOK_CLIENT_SECRET with `firebase functions:secrets:set`.\n');
 if (enableBilling) output.write('Billing is enabled: configure REVENUECAT_WEBHOOK_SECRET with `firebase functions:secrets:set`.\n');
 output.write('Always configure MANIFEST_SIGNING_SECRET before deploying Functions.\n');

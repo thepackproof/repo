@@ -26,13 +26,15 @@ export const cancelAccountDeletion = onCall({ enforceAppCheck: true }, async (re
 
 export const exportAccountData = onCall({ enforceAppCheck: true, timeoutSeconds: 120 }, async (request) => {
   const uid = requireUid(request);
-  const [profile, transactions] = await Promise.all([
+  const [profile, transactions, legalAcceptances] = await Promise.all([
     db.collection('users').doc(uid).get(),
     db.collection('transactions').where('participantIds', 'array-contains', uid).get(),
+    db.collection('legalAcceptances').where('accountId', '==', uid).get(),
   ]);
   const result = {
     exportedAt: new Date().toISOString(),
     profile: profile.data() ?? null,
+    legalAcceptances: legalAcceptances.docs.map((item) => ({ id: item.id, ...item.data() })),
     transactions: await Promise.all(transactions.docs.map(async (doc) => {
       const [events, evidence, returns, packets] = await Promise.all([
         doc.ref.collection('events').orderBy('createdAt', 'asc').get(),
@@ -129,6 +131,8 @@ export const purgeDeletedAccounts = onSchedule({ schedule: 'every day 03:15', ti
 
     const [files] = await storage.bucket().getFiles({ prefix: `exports/${uid}/` });
     await Promise.all(files.map((file) => file.delete({ ignoreNotFound: true })));
+    const legalAcceptances = await db.collection('legalAcceptances').where('accountId', '==', uid).get();
+    await Promise.all(legalAcceptances.docs.map((item) => item.ref.delete()));
     await db.collection('publicProfiles').doc(uid).delete();
     await db.recursiveDelete(userDoc.ref);
     try { await adminAuth.deleteUser(uid); } catch { /* already deleted */ }

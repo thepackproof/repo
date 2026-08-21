@@ -1,4 +1,4 @@
-# PackProof 0.9.5.0
+# PackProof 0.9.6.0
 
 PackProof is an Android application and Firebase backend for documenting high-value private and platform-originated transactions. It connects mutually confirmed terms, native packing/unboxing capture, return evidence, shipping-label context, exact-byte fingerprints, private evidence manifests, and presentation dossiers in one participant-restricted record.
 
@@ -8,7 +8,7 @@ The release strategy is evidence-vault first: shared terms, guided seller packin
 
 ## Scientific and claim boundary
 
-Version 0.9.5.0 implements the digital-evidence path described below. It deliberately reports physical correspondence as `NOT_AVAILABLE` because this repository contains no validated physical feature extractor, matcher, calibrated thresholds, or PackProof-specific blind validation corpus. Acquisition quality is `NOT_EVALUATED` until a versioned, calibrated quality gate exists.
+Version 0.9.6.0 implements the digital-evidence path described below. It deliberately reports physical correspondence as `NOT_AVAILABLE` because this repository contains no validated physical feature extractor, matcher, calibrated thresholds, or PackProof-specific blind validation corpus. Acquisition quality is `NOT_EVALUATED` until a versioned, calibrated quality gate exists.
 
 The source includes:
 
@@ -20,7 +20,7 @@ The source includes:
 
 These controls are not certification, scientific validation, a penetration test, laboratory accreditation, or a legal opinion.
 
-## Current 0.9.5.0 candidate scope
+## Current 0.9.6.0 candidate scope
 
 - Removed the disabled Facebook integration's eager native import, which previously prevented the supplied Android build from reaching its startup UI.
 - Added an explicit encrypted-queue state machine and retry-stable client evidence identity. Ciphertext is retained until the Firestore evidence record confirms server finalization.

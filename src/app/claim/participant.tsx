@@ -12,16 +12,16 @@ import { useAuth } from '@/providers/auth-provider';
 
 export default function ParticipantClaimScreen() {
   const { claim, token } = useLocalSearchParams<{ claim?: string; token?: string }>();
-  const { user, loading } = useAuth();
+  const { sessionReady, loading } = useAuth();
   const router = useRouter();
   const [claiming, setClaiming] = useState(false);
   const valid = Boolean(claim && token);
 
   useEffect(() => {
-    if (!loading && !user && valid) {
+    if (!loading && !sessionReady && valid) {
       router.replace({ pathname: '/welcome', params: { redirect: `/claim/participant?claim=${encodeURIComponent(claim!)}&token=${encodeURIComponent(token!)}` } });
     }
-  }, [claim, loading, router, token, user, valid]);
+  }, [claim, loading, router, token, sessionReady, valid]);
 
   const accept = async () => {
     if (!claim || !token) return;
@@ -36,7 +36,7 @@ export default function ParticipantClaimScreen() {
     }
   };
 
-  if (loading || (valid && !user)) return <LoadingScreen />;
+  if (loading || (valid && !sessionReady)) return <LoadingScreen />;
   return <SafeAreaView style={styles.safe}>
     <View style={styles.container}>
       <ScreenTitle

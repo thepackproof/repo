@@ -107,15 +107,15 @@ export default function CaptureScreen() {
   const [previewSeconds, setPreviewSeconds] = useState(0);
   const [flashMode, setFlashMode] = useState<FlashMode>('off');
   const [torchEnabled, setTorchEnabled] = useState(false);
-  const [zoom, setZoom] = useState<number>(zoomSteps[0]);
+  const zoom = zoomSteps[0];
   const [includeLocation] = useState(false);
   const [localUri, setLocalUri] = useState<string | null>(null);
   const [manifest, setManifest] = useState<CaptureManifestInput | null>(null);
-  const [reviewSummary, setReviewSummary] = useState<ReviewSummary | null>(null);
+  const [, setReviewSummary] = useState<ReviewSummary | null>(null);
   const [progress, setProgress] = useState(0);
   const [shippingLabel, setShippingLabel] = useState<ShippingLabelTelemetry | null>(null);
   const [barcodeFlash, setBarcodeFlash] = useState(false);
-  const [labelStillUri, setLabelStillUri] = useState<string | null>(null);
+  const [, setLabelStillUri] = useState<string | null>(null);
   const shutterScale = useMemo(() => new Animated.Value(1), []);
   const shippingLabelRef = useRef<ShippingLabelTelemetry | null>(null);
   const labelStillUriRef = useRef<string | null>(null);

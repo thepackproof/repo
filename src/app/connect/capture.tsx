@@ -11,14 +11,14 @@ import { useAuth } from '@/providers/auth-provider';
 
 export default function ConnectCaptureHandoff() {
   const { session, token } = useLocalSearchParams<{ session?: string; token?: string }>();
-  const { user, loading } = useAuth();
+  const { sessionReady, loading } = useAuth();
   const router = useRouter();
   const [redeeming, setRedeeming] = useState(false);
   const valid = Boolean(session && token);
 
   useEffect(() => {
-    if (!loading && !user && valid) router.replace({ pathname: '/welcome', params: { redirect: `/connect/capture?session=${encodeURIComponent(session!)}&token=${encodeURIComponent(token!)}` } });
-  }, [loading, user, valid, router, session, token]);
+    if (!loading && !sessionReady && valid) router.replace({ pathname: '/welcome', params: { redirect: `/connect/capture?session=${encodeURIComponent(session!)}&token=${encodeURIComponent(token!)}` } });
+  }, [loading, sessionReady, valid, router, session, token]);
 
   const begin = async () => {
     if (!session || !token) return;
@@ -33,7 +33,7 @@ export default function ConnectCaptureHandoff() {
     }
   };
 
-  if (loading || (valid && !user)) return <LoadingScreen />;
+  if (loading || (valid && !sessionReady)) return <LoadingScreen />;
   return <SafeAreaView style={styles.safe}>
     <View style={styles.container}>
       <ScreenTitle eyebrow="PackProof API" title="Document this marketplace order" subtitle="The order context will be locked to a native PackProof evidence capture and a structured finalization record will be returned to the originating platform." />

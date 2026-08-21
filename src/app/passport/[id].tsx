@@ -21,18 +21,18 @@ function Chip({ label, state }: { label: string; state: string }) {
 export default function PackProofPassportScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const { user, loading } = useAuth();
+  const { sessionReady, loading } = useAuth();
   const [passport, setPassport] = useState<PackProofPassportView | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!loading && !user && id) {
+    if (!loading && !sessionReady && id) {
       router.replace({ pathname: '/welcome', params: { redirect: `/passport/${encodeURIComponent(id)}` } });
     }
-  }, [id, loading, router, user]);
+  }, [id, loading, router, sessionReady]);
 
   useEffect(() => {
-    if (!user || !id) return;
+    if (!sessionReady || !id) return;
     let cancelled = false;
     (async () => {
       try {
@@ -48,9 +48,9 @@ export default function PackProofPassportScreen() {
       }
     })();
     return () => { cancelled = true; };
-  }, [id, user]);
+  }, [id, sessionReady]);
 
-  if (loading || (id && !user)) return <LoadingScreen />;
+  if (loading || (id && !sessionReady)) return <LoadingScreen />;
   if (!passport && !error) return <LoadingScreen />;
 
   return <SafeAreaView style={styles.safe}>

@@ -138,7 +138,7 @@ Enable App Check enforcement for callable Functions and Storage only after at le
 Sync the finalized mobile configuration and protected Firebase file to EAS:
 
 ```powershell
-npm.cmd run sync:eas
+npm.cmd run sync:eas -- production
 ```
 
 Choose one distribution path.

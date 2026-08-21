@@ -28,6 +28,7 @@ try {
     await setDoc(doc(db, 'webhookDeliveries', 'delivery-security-001'), { targetUrl: 'https://example.com', state: 'PENDING', nextAttemptAt: Timestamp.fromMillis(Date.now() - 60_000), attemptCount: 0 });
     await setDoc(doc(db, 'mail', 'mail-security-001'), { to: 'alice@example.test' });
     await setDoc(doc(db, 'webDeletionTokens', 'token-security-001'), { uid: 'alice' });
+    await setDoc(doc(db, 'legalAcceptances', 'acceptance-security-001'), { accountId: 'alice', termsVersion: '2026.08.20' });
     await setDoc(doc(db, 'apiIdempotencyRecords', 'idem-security-001'), { state: 'COMPLETE', createdAt: Timestamp.fromMillis(Date.now() - 60000) });
     await setDoc(doc(db, 'consumerIntakeRecords', 'ctx-intake-001'), { actorId: 'alice', status: 'PENDING' });
     await setDoc(doc(db, 'users', 'alice', 'pendingIntakes', 'ctx-intake-001'), { title: 'Imported camera', commerceContextId: 'ctx-intake-001' });
@@ -64,6 +65,8 @@ try {
   await assertFails(getDoc(doc(guest.firestore(), 'publicProfiles', 'alice')));
   await assertFails(getDoc(doc(alice.firestore(), 'mail', 'mail-security-001')));
   await assertFails(getDoc(doc(alice.firestore(), 'webDeletionTokens', 'token-security-001')));
+  await assertFails(getDoc(doc(alice.firestore(), 'legalAcceptances', 'acceptance-security-001')));
+  await assertFails(setDoc(doc(alice.firestore(), 'legalAcceptances', 'acceptance-security-001'), { termsVersion: 'tampered' }, { merge: true }));
   await assertFails(getDoc(doc(alice.firestore(), 'unlistedCollection', 'doc-security-001')));
   await assertFails(getDoc(doc(alice.firestore(), 'commerceContexts', 'ctx-security-001')));
   await assertFails(setDoc(doc(alice.firestore(), 'commerceContexts', 'ctx-security-001'), { status: 'REVOKED' }, { merge: true }));

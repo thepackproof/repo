@@ -12,17 +12,17 @@ import { useAuth } from '@/providers/auth-provider';
 
 export default function EvidenceSessionRedemptionScreen() {
   const { session, token } = useLocalSearchParams<{ session?: string; token?: string }>();
-  const { user, loading } = useAuth();
+  const { sessionReady, loading } = useAuth();
   const router = useRouter();
   const [opening, setOpening] = useState(false);
   const [operationKey] = useState(() => `native_${Crypto.randomUUID()}`);
   const valid = Boolean(session && token);
 
   useEffect(() => {
-    if (!loading && !user && valid) {
+    if (!loading && !sessionReady && valid) {
       router.replace({ pathname: '/welcome', params: { redirect: `/evidence-session/redeem?session=${encodeURIComponent(session!)}&token=${encodeURIComponent(token!)}` } });
     }
-  }, [loading, router, session, token, user, valid]);
+  }, [loading, router, session, token, sessionReady, valid]);
 
   const begin = async () => {
     if (!session || !token) return;
@@ -57,7 +57,7 @@ export default function EvidenceSessionRedemptionScreen() {
     }
   };
 
-  if (loading || (valid && !user)) return <LoadingScreen />;
+  if (loading || (valid && !sessionReady)) return <LoadingScreen />;
   return <SafeAreaView style={styles.safe}>
     <View style={styles.container}>
       <ScreenTitle

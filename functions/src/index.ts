@@ -29,3 +29,4 @@ export { handleMarketplaceOrder, onConnectEvidenceVerified, provisionConnectInte
 export { ingestTransactionIntake, listPendingTransactionIntake, previewTransactionIntake, startPackProofFromIntake } from './transaction-intake-callables';
 export { packproofApi } from './api/v1/production';
 export { getPackProofPassport } from './passport-callables';
+export { acceptLegalPolicies, getLegalAcceptanceStatus } from './legal-acceptance';

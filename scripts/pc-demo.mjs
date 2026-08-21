@@ -106,7 +106,7 @@ async function installApk() {
 
   let packageName = process.argv[4];
   if (!packageName && await exists('.env')) packageName = parseEnv(await readFile('.env', 'utf8')).ANDROID_PACKAGE_NAME;
-  packageName ||= 'com.packproof.app';
+  packageName ||= 'com.thepackproof.app';
   if (!/^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*){1,}$/.test(packageName)) throw new Error('The Android package name is invalid.');
   run('adb', ['-s', devices[0], 'shell', 'monkey', '-p', packageName, '-c', 'android.intent.category.LAUNCHER', '1']);
   pass(`Installed and opened ${packageName} on ${devices[0]}`);

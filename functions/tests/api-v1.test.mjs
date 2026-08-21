@@ -235,7 +235,7 @@ class FakePortalWorkspaceService {
       captureOnNativeOnly: true,
       universalLink: `https://packproof.example/portal/open?transaction=${transactionId}&action=pack`,
       appLink: `packproof://pack/${transactionId}`,
-      storeUrl: 'https://play.google.com/store/apps/details?id=com.packproof.app',
+      storeUrl: 'https://play.google.com/store/apps/details?id=com.thepackproof.app',
     };
   }
 }

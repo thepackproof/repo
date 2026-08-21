@@ -82,6 +82,7 @@ service cloud.firestore {
     match /apiRateLimits/{limitId} { allow read, write: if false; }
     match /apiAuditStreams/{streamId} { allow read, write: if false; }
     match /webDeletionTokens/{tokenId} { allow read, write: if false; }
+    match /legalAcceptances/{acceptanceId} { allow read, write: if false; }
     match /deletionRateLimits/{limitId} { allow read, write: if false; }
     match /mail/{messageId} { allow read, write: if false; }
 

@@ -11,11 +11,11 @@ import { useAuth } from '@/providers/auth-provider';
 
 export default function AcceptInvite() {
   const { code } = useLocalSearchParams<{ code?: string }>();
-  const { user, loading } = useAuth();
+  const { sessionReady, loading } = useAuth();
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   if (loading) return <LoadingScreen />;
-  if (!user) return <Redirect href={{ pathname: '/welcome', params: code ? { invite: code } : {} }} />;
+  if (!sessionReady) return <Redirect href={{ pathname: '/welcome', params: code ? { invite: code } : {} }} />;
   const accept = async () => {
     if (!code) return;
     setBusy(true);

@@ -14,7 +14,7 @@ import { useAuth } from '@/providers/auth-provider';
 
 export default function ImportPurchaseScreen() {
   const router = useRouter();
-  const { user, loading } = useAuth();
+  const { sessionReady, loading } = useAuth();
   const [artifactText, setArtifactText] = useState('');
   const [preview, setPreview] = useState<IntakePreview | null>(null);
   const [title, setTitle] = useState('');
@@ -26,10 +26,10 @@ export default function ImportPurchaseScreen() {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    if (!loading && !user) {
+    if (!loading && !sessionReady) {
       router.replace({ pathname: '/welcome', params: { redirect: '/transaction/import' } });
     }
-  }, [loading, router, user]);
+  }, [loading, router, sessionReady]);
 
   const parsedReady = Boolean(preview || title.trim().length > 2 || binaryHash);
   const missing = preview?.missingFields ?? (title.trim() ? [] : ['title']);
@@ -156,7 +156,7 @@ export default function ImportPurchaseScreen() {
     }
   };
 
-  if (loading || !user) return <LoadingScreen />;
+  if (loading || !sessionReady) return <LoadingScreen />;
 
   return (
     <TaskSession

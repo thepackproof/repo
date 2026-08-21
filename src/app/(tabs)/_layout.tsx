@@ -5,9 +5,10 @@ import { useAuth } from '@/providers/auth-provider';
 import { useNotifications } from '@/hooks/use-notifications';
 
 export default function TabLayout() {
-  const { user, loading } = useAuth();
+  const { user, sessionReady, loading } = useAuth();
   useNotifications(user?.uid);
-  if (!loading && !user) return <Redirect href="/welcome" />;
+  if (loading) return null;
+  if (!sessionReady) return <Redirect href="/welcome" />;
   return <Tabs screenOptions={{
     headerShown: false,
     tabBarActiveTintColor: colors.teal,

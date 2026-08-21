@@ -328,7 +328,7 @@ export class PortalWorkspaceApplicationService {
       captureOnNativeOnly: true,
       universalLink,
       appLink: `packproof:/${links.appPath}`,
-      storeUrl: 'https://play.google.com/store/apps/details?id=com.packproof.app',
+      storeUrl: 'https://play.google.com/store/apps/details?id=com.thepackproof.app',
     };
     const event: ApplicationEvent = {
       id: `evt_${sha256(`PORTAL_MOBILE_HANDOFF\n${record.id}\n${action}\n${requestId}`).slice(0, 40)}`,

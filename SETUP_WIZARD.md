@@ -2,7 +2,7 @@
 
 This guide takes PackProof from this folder to an internal Android test, then to Google Play production. You do not need Android Studio. For the shorter real staging path used in team and partner demonstrations, start with `EXTERNAL_DEMO.md`. Budget one focused afternoon for accounts and configuration, plus any review time required by the optional Meta and TikTok providers.
 
-Do the sections in order. Keep the package name `com.packproof.app` unless you already own another permanent reverse-domain name. A package name cannot be changed after the first Play upload.
+Do the sections in order. Keep the permanent package name `com.thepackproof.app`. A package name cannot be changed after the first Play upload.
 
 ## 1. Create the owner accounts
 
@@ -37,7 +37,7 @@ On Windows, use `npm.cmd` and `npx.cmd` if the PowerShell execution policy block
 
 1. In Firebase Console choose **Add project**, name it `PackProof`, and turn Analytics off for the first release unless you intentionally want it.
 2. Upgrade to the **Blaze** pay-as-you-go plan. Cloud Functions and file processing require billing. Set billing-budget alerts immediately.
-3. Project settings → **Your apps** → Android → package name `com.packproof.app` → register.
+3. Project settings → **Your apps** → Android → package name `com.thepackproof.app` → register.
 4. Download `google-services.json` and place it directly inside this folder, beside `package.json`.
 5. Build → Authentication → Get started. Enable **Google**. Enable **Facebook** only if you choose it in `npm run configure`. TikTok is optional and uses the included secure custom-token bridge, so it will not appear as a native Firebase provider.
 6. Build → Firestore Database → Create database → choose your primary region → start in production mode.
@@ -60,10 +60,11 @@ The helper asks for the Firebase project ID, Expo owner/project ID, permanent An
 If you do not have a value yet, finish the relevant section below and run `npm run configure` again. Once all values and `google-services.json` are present, sync them to Expo’s protected cloud-build environments:
 
 ```bash
-npm run sync:eas
+npm run sync:eas -- preview
+npm run sync:eas -- production
 ```
 
-Run that command again whenever any mobile configuration value or `google-services.json` changes. These identifiers are embedded in the released app and are not server secrets; the Firebase file is uploaded as a protected EAS file variable.
+Each command requires the matching local file (`.env.preview.local` or `.env.production.local`, falling back to `.env` only for non-production). Production sync refuses to reuse another environment. Run the relevant command again whenever that environment's mobile configuration or `google-services.json` changes. These identifiers are embedded in the released app and are not server secrets; the Firebase file is uploaded as a protected EAS file variable.
 
 ## 5. Configure Google sign-in
 
@@ -78,7 +79,7 @@ Google may require verification if you later add sensitive scopes. PackProof req
 ## 6. Configure Facebook sign-in (optional)
 
 1. Meta for Developers → Create app → choose a consumer/business-compatible app type → add **Facebook Login for Android**.
-2. Basic settings: add the package `com.packproof.app`, the PackProof privacy-policy URL, terms URL, data-deletion URL (`https://YOUR_PROJECT.web.app/delete.html`), app icon and category.
+2. Basic settings: add the package `com.thepackproof.app`, the PackProof privacy-policy URL, terms URL, data-deletion URL (`https://YOUR_PROJECT.web.app/delete.html`), app icon and category.
 3. Add the default activity shown by Meta for React Native Android: `com.facebook.FacebookActivity` is injected by the included build plugin.
 4. Add the key hashes for the EAS build certificate and the Google Play App Signing certificate. Expo’s build-credentials page and Play Console’s App integrity page expose the required certificate information.
 5. Copy the **App ID** and the non-secret **Client Token** into `npm run configure`.
@@ -94,7 +95,7 @@ Never put the Facebook App Secret in the mobile app.
 
    `https://us-east1-YOUR_FIREBASE_PROJECT.cloudfunctions.net/tiktokAuthCallback`
 
-4. Add Android package `com.packproof.app`, privacy URL, terms URL and required branding.
+4. Add Android package `com.thepackproof.app`, privacy URL, terms URL and required branding.
 5. Set the backend secrets from this folder:
 
 ```bash
@@ -108,7 +109,7 @@ Paste each value only into the hidden terminal prompt. The backend uses state, P
 
 The app never handles card data. Android subscriptions are purchased with Google Play Billing through RevenueCat; the backend accepts plan changes only from a signed, secret-protected RevenueCat webhook.
 
-1. Google Play Console → create the PackProof app using package `com.packproof.app`.
+1. Google Play Console → create the PackProof app using package `com.thepackproof.app`.
 2. Monetize → Products → Subscriptions → create products such as `packproof_pro_monthly` and `packproof_pro_yearly`; activate their base plans.
 3. RevenueCat → new project → add Google Play app. Follow RevenueCat’s service-account instructions and grant only the required Play permissions.
 4. RevenueCat → Products: import the Play product IDs.

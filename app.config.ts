@@ -1,7 +1,7 @@
 import type { ExpoConfig } from 'expo/config';
 
 const value = (name: string, fallback = '') => process.env[name]?.trim() || fallback;
-const productVersion = '0.9.5.0';
+const productVersion = '0.9.6.0';
 const facebookEnabled = process.env.EXPO_PUBLIC_ENABLE_FACEBOOK_AUTH?.trim().toLowerCase() === 'true';
 const facebookAppId = value('FACEBOOK_APP_ID');
 const facebookClientToken = value('FACEBOOK_CLIENT_TOKEN');
@@ -52,8 +52,8 @@ const config: ExpoConfig = {
   runtimeVersion: { policy: 'appVersion' },
   updates: { fallbackToCacheTimeout: 0 },
   android: {
-    package: value('ANDROID_PACKAGE_NAME', 'com.packproof.app'),
-    versionCode: 7,
+    package: value('ANDROID_PACKAGE_NAME', 'com.thepackproof.app'),
+    versionCode: 8,
     // Queue ciphertext is intentionally device-bound to Android Keystore keys.
     // Restoring it onto another install would create undecryptable evidence, so
     // application-data backup is disabled and sync remains the recovery path.
@@ -127,7 +127,7 @@ const config: ExpoConfig = {
   experiments: { typedRoutes: true, reactCompiler: true },
   extra: {
     eas: { projectId: value('EXPO_PROJECT_ID', '0196c3f7-cb3a-472c-99be-825558f227e8') },
-    legalBaseUrl: value('EXPO_PUBLIC_LEGAL_BASE_URL', 'https://example.invalid'),
+    legalBaseUrl: value('EXPO_PUBLIC_LEGAL_BASE_URL', 'https://packproof-4cf53.web.app'),
   },
 };
 

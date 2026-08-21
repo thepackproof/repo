@@ -74,7 +74,7 @@ const physicalManifest = {
     } },
   },
   runtimeIntegrity: {
-    appVersion: '0.3.0', nativeBuildVersion: '3', applicationId: 'com.packproof.app', runtimeVersion: null, expoReleaseChannel: null,
+    appVersion: '0.3.0', nativeBuildVersion: '3', applicationId: 'com.thepackproof.app', runtimeVersion: null, expoReleaseChannel: null,
     deviceBrand: 'test', deviceModel: 'fixture', osName: 'Android', osVersion: '16', runtimeArtifactHash: 'a'.repeat(64), integrityScope: 'RUNTIME_METADATA_FINGERPRINT',
   },
   sensorFusion: {
