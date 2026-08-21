@@ -27,6 +27,7 @@ export type PortalTransaction = {
     completedBy: Array<string>;
     passportId: string | null;
     passportDisplayId: string | null;
+    proofReady: boolean;
     source: any | null;
     protocol: PortalProtocol;
     lockedAt: string | null;

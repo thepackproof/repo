@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { groupLibrary, resolveNextRequiredAction } from '@packproof/ux';
-import { listTransactions, toUxTransaction, type PortalTransaction } from '../api';
+import { listTransactions, toUxFlowInput, type PortalTransaction } from '../api';
 import { useAuth } from '../auth';
 
 export function LibraryPage() {
@@ -17,11 +17,7 @@ export function LibraryPage() {
     return () => { cancelled = true; };
   }, []);
 
-  const grouped = user ? groupLibrary(items, (item) => resolveNextRequiredAction({
-    transaction: toUxTransaction(item),
-    viewerId: user.uid,
-    protocol: item.protocol,
-  })) : { active: [], completed: [] };
+  const grouped = user ? groupLibrary(items, (item) => resolveNextRequiredAction(toUxFlowInput(item, user.uid))) : { active: [], completed: [] };
 
   return (
     <>
@@ -41,12 +37,20 @@ export function LibraryPage() {
         <>
           <h1 style={{ marginTop: 36, fontSize: 22 }}>Completed</h1>
           <section className="stack">
-            {grouped.completed.map((item) => (
-              <Link key={item.id} className="card" to={`/packproofs/${item.id}/proof`} style={{ textDecoration: 'none', color: 'inherit' }}>
+            {grouped.completed.map((item) => {
+              const next = user ? resolveNextRequiredAction(toUxFlowInput(item, user.uid)) : null;
+              return (
+              <Link
+                key={item.id}
+                className="card"
+                to={next?.proofReady ? `/packproofs/${item.id}/proof` : `/packproofs/${item.id}`}
+                style={{ textDecoration: 'none', color: 'inherit' }}
+              >
                 <h2>{item.title}</h2>
-                <p className="meta">View Proof</p>
+                <p className="meta">{next?.proofReady ? 'View Proof' : 'Completed'}</p>
               </Link>
-            ))}
+              );
+            })}
           </section>
         </>
       ) : null}

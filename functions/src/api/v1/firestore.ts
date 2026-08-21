@@ -133,6 +133,7 @@ function toStoredTransaction(transaction: MerchantTransaction): DocumentData {
     lockedAt: null,
     createdAt: Timestamp.fromDate(transaction.createdAt),
     updatedAt: Timestamp.fromDate(transaction.updatedAt),
+    proofReady: false,
   };
 }
 

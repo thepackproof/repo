@@ -69,6 +69,7 @@ export type PackProofTransaction = {
   passportId?: string | null;
   passportDisplayId?: string | null;
   passportIssuedAt?: DateLike;
+  proofReady?: boolean;
   shipping?: {
     carrier: string;
     trackingNumber: string;

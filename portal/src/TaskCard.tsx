@@ -1,14 +1,10 @@
 import { Link } from 'react-router-dom';
 import { CAPTURE_PRIMARY_ACTIONS, groupHomeInbox, resolveNextRequiredAction } from '@packproof/ux';
 import type { PortalTransaction } from './api';
-import { toUxTransaction } from './api';
+import { toUxFlowInput } from './api';
 
 export function TaskCard({ item, viewerId }: { item: PortalTransaction; viewerId: string }) {
-  const next = resolveNextRequiredAction({
-    transaction: toUxTransaction(item),
-    viewerId,
-    protocol: item.protocol,
-  });
+  const next = resolveNextRequiredAction(toUxFlowInput(item, viewerId));
   const captureOnPhone = Boolean(next.primaryAction && CAPTURE_PRIMARY_ACTIONS.has(next.primaryAction.kind));
   return (
     <article className="card">
@@ -18,7 +14,7 @@ export function TaskCard({ item, viewerId }: { item: PortalTransaction; viewerId
       <p>{next.headline}</p>
       <div className="row" style={{ marginTop: 12 }}>
         {captureOnPhone ? <Link className="btn" to={`/packproofs/${item.id}/handoff`}>Continue on phone</Link> : null}
-        {next.passportReady ? <Link className="btn secondary" to={`/packproofs/${item.id}/proof`}>View Proof</Link> : null}
+        {next.proofReady ? <Link className="btn secondary" to={`/packproofs/${item.id}/proof`}>View Proof</Link> : null}
         <Link className="btn ghost" to={`/packproofs/${item.id}`}>Open</Link>
       </div>
     </article>
@@ -26,11 +22,7 @@ export function TaskCard({ item, viewerId }: { item: PortalTransaction; viewerId
 }
 
 export function HomeQueue({ items, viewerId }: { items: PortalTransaction[]; viewerId: string }) {
-  const grouped = groupHomeInbox(items, (item) => resolveNextRequiredAction({
-    transaction: toUxTransaction(item),
-    viewerId,
-    protocol: item.protocol,
-  }));
+  const grouped = groupHomeInbox(items, (item) => resolveNextRequiredAction(toUxFlowInput(item, viewerId)));
   if (!grouped.needsAttention.length && !grouped.waiting.length) {
     return (
       <div className="card">

@@ -22,6 +22,7 @@ import {
 import { HUMAN_REVIEW_DISCLAIMER, groupPackageSealObservations, isOutboundPackingEvidenceType } from './package-seal-protocol';
 import { asShippingTrackerObservation, type ShippingTrackerObservation } from './shipping-tracker';
 import { transactionIdSchema } from './validation';
+import { FirestoreMerchantEvidenceRepository } from './infrastructure/firebase/v1/merchant-evidence-repository';
 
 const MAX_EVIDENCE_BYTES = 600 * 1024 * 1024;
 
@@ -422,6 +423,7 @@ export const onEvidenceUploaded = onObjectFinalized({ timeoutSeconds: 540, memor
     return true;
   });
 
+  await new FirestoreMerchantEvidenceRepository(db).refreshProofReady(transactionId);
   if (created) {
     await notifyOtherParticipants(
       transactionId,

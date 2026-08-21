@@ -86,7 +86,7 @@ class FirestoreConsumerTransactionRepository {
                 completedBy: record.completedBy,
                 lockedAt: null,
                 updatedAt: firestore_1.Timestamp.fromDate(record.updatedAt),
-                ...(current.exists ? {} : { createdAt: firestore_1.Timestamp.fromDate(record.createdAt) }),
+                ...(current.exists ? {} : { createdAt: firestore_1.Timestamp.fromDate(record.createdAt), proofReady: false }),
             }, { merge: true });
             if (!event.exists) {
                 tx.create(eventRef, {

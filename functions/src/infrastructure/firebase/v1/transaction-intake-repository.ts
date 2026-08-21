@@ -229,6 +229,7 @@ export class FirestoreTransactionIntakeRepository implements TransactionIntakeRe
         source: record.source,
         createdAt: Timestamp.fromDate(record.createdAt),
         updatedAt: Timestamp.fromDate(record.updatedAt),
+        proofReady: false,
       });
       tx.update(recordRef, {
         status: 'CLAIMED',

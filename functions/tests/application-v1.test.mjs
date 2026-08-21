@@ -943,7 +943,11 @@ test('portal workspace authorizes participants, maps DTOs, and refuses browser c
     async listTimeline() { return []; },
     async listReturns() { return []; },
     async findCommerceContext() { return null; },
-    async bindPassportIdentity(_id, identity) { return identity; },
+    async bindPassportIdentity(_id, identity) {
+      const item = this.records.get(_id);
+      if (item) item.proofReady = true;
+      return identity;
+    },
   };
   const audits = [];
   const service = new PortalWorkspaceApplicationService(

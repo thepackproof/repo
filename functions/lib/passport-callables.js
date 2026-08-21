@@ -25,30 +25,28 @@ exports.getPackProofPassport = (0, https_1.onCall)(callOptions, async (request) 
     if (!transaction.participantIds.includes(uid)) {
         throw new https_1.HttpsError('permission-denied', 'You are not a participant in this transaction.');
     }
-    const [records, timeline, returns] = await Promise.all([
+    const [records, timeline, returns, commerce] = await Promise.all([
         repository.listEvidence(transaction.id),
         repository.listTimeline(transaction.id),
         repository.listReturns(transaction.id),
+        transaction.commerceContextId ? repository.findCommerceContext(transaction.commerceContextId) : Promise.resolve(null),
     ]);
     try {
-        (0, passport_projection_1.assertPassportEligible)(transaction, records);
+        (0, passport_projection_1.assertPassportEligible)(transaction, records, commerce);
     }
     catch (error) {
         throw new https_1.HttpsError('failed-precondition', error instanceof Error ? error.message : 'This transaction does not yet qualify for a Proof.');
     }
     const issuedAt = new Date();
     const identity = (0, passport_projection_1.boundOrIssuedIdentity)(transaction, issuedAt);
-    if (identity.bind) {
-        const bound = await repository.bindPassportIdentity(transaction.id, {
-            passportId: identity.passportId,
-            displayId: identity.displayId,
-            issuedAt: identity.issuedAt,
-        });
-        identity.passportId = bound.passportId;
-        identity.displayId = bound.displayId;
-        identity.issuedAt = bound.issuedAt;
-    }
-    const commerce = transaction.commerceContextId ? await repository.findCommerceContext(transaction.commerceContextId) : null;
+    const bound = await repository.bindPassportIdentity(transaction.id, {
+        passportId: identity.passportId,
+        displayId: identity.displayId,
+        issuedAt: identity.issuedAt,
+    });
+    identity.passportId = bound.passportId;
+    identity.displayId = bound.displayId;
+    identity.issuedAt = bound.issuedAt;
     return (0, passport_projection_1.projectPassport)({
         transaction,
         artifacts: records,

@@ -69,9 +69,15 @@ class MemoryEvidenceRepo {
   async bindPassportIdentity(transactionId, identity) {
     const record = this.transactions.get(transactionId);
     if (record.passportId && record.passportDisplayId) {
+      record.proofReady = true;
       return { passportId: record.passportId, displayId: record.passportDisplayId, issuedAt: record.passportIssuedAt };
     }
-    Object.assign(record, { passportId: identity.passportId, passportDisplayId: identity.displayId, passportIssuedAt: identity.issuedAt });
+    Object.assign(record, {
+      passportId: identity.passportId,
+      passportDisplayId: identity.displayId,
+      passportIssuedAt: identity.issuedAt,
+      proofReady: true,
+    });
     return identity;
   }
   async findCommerceContext(commerceContextId) { return this.commerce.get(commerceContextId) ?? null; }
@@ -465,6 +471,7 @@ test('merchant passport service issues a stable identity and refuses ineligible 
   assert.equal(first.object, 'packproof_passport');
   assert.match(first.identity.displayId, /^PP-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$/);
   assert.equal(first.identity.passportId, repository.transactions.get('txn_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa').passportId);
+  assert.equal(repository.transactions.get('txn_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa').proofReady, true);
   const second = await service.getPassportByIdentity(orgA, first.identity.displayId);
   assert.equal(second.identity.passportId, first.identity.passportId);
   assert.equal(second.limitations.doesNotDecideFraudOrFault, true);

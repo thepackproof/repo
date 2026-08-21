@@ -87,6 +87,7 @@ function storedTransaction(decision) {
         listingImageReferences: record.listingImageReferences,
         createdAt: firestore_1.Timestamp.fromDate(record.createdAt),
         updatedAt: firestore_1.Timestamp.fromDate(record.updatedAt),
+        proofReady: false,
     };
 }
 class FirestorePublicCommerceHandoffRepository {

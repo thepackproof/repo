@@ -19,6 +19,7 @@ import { formatRuntimeEnum, normalizePhysicalStatus, type PhysicalStatusView } f
 import {
   orderLabel,
   resolveNextRequiredAction,
+  toUxFlowInput,
   viewerRole,
   type NextRequiredAction,
 } from '@/lib/ux-flow';
@@ -71,14 +72,12 @@ export default function TransactionDetail() {
 
   const ux = useMemo<NextRequiredAction | null>(() => {
     if (!item || !user) return null;
-    return resolveNextRequiredAction({
-      transaction: item,
-      viewerId: user.uid,
+    return resolveNextRequiredAction(toUxFlowInput(item, user.uid, {
       protocol,
       returnPassport: activeReturn,
       returnProtocol,
       inviteSentAt,
-    });
+    }));
   }, [item, user, protocol, activeReturn, returnProtocol, inviteSentAt]);
 
   const activityCtx = useMemo(() => (

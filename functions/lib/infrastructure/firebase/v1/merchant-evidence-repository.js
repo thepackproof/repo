@@ -5,6 +5,7 @@ const firestore_1 = require("firebase-admin/firestore");
 const errors_1 = require("../../../application/v1/errors");
 const commerce_1 = require("../../../domain/v1/commerce");
 const merchant_transaction_service_1 = require("../../../application/v1/merchant-transaction-service");
+const passport_projection_1 = require("../../../application/v1/passport-projection");
 const shipping_tracker_1 = require("../../../shipping-tracker");
 const outbox_1 = require("./outbox");
 function dateValue(value, fallback) {
@@ -344,6 +345,18 @@ class FirestoreMerchantEvidenceRepository {
             return null;
         return toAccessible(snap.id, snap.data());
     }
+    async refreshProofReady(transactionId) {
+        const transaction = await this.loadTransaction(transactionId);
+        if (!transaction)
+            return false;
+        const artifacts = await this.listEvidence(transactionId);
+        const commerce = transaction.commerceContextId
+            ? await this.findCommerceContext(transaction.commerceContextId)
+            : null;
+        const proofReady = (0, passport_projection_1.projectProofReady)(transaction, artifacts, commerce);
+        await this.firestore.collection('transactions').doc(transactionId).update({ proofReady });
+        return proofReady;
+    }
     async listTransactionsForParticipant(actorId, limit) {
         const snap = await this.firestore.collection('transactions')
             .where('participantIds', 'array-contains', actorId)
@@ -385,6 +398,7 @@ class FirestoreMerchantEvidenceRepository {
             const existingId = optionalString(data.passportId);
             const existingDisplay = optionalString(data.passportDisplayId);
             if (existingId && existingDisplay) {
+                tx.update(ref, { proofReady: true });
                 return {
                     passportId: existingId,
                     displayId: existingDisplay,
@@ -395,6 +409,7 @@ class FirestoreMerchantEvidenceRepository {
                 passportId: identity.passportId,
                 passportDisplayId: identity.displayId,
                 passportIssuedAt: firestore_1.Timestamp.fromDate(identity.issuedAt),
+                proofReady: true,
             });
             return identity;
         });

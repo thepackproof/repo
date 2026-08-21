@@ -29,6 +29,7 @@ import type { MerchantDeliveryDto, MerchantReturnPassportDto, MerchantShipmentDt
 import type { MerchantPrincipal } from '../../../application/v1/merchant-types';
 import type { PortalWorkspaceRecord, PortalWorkspaceRepository } from '../../../application/v1/portal-workspace-service';
 import { sha256 } from '../../../application/v1/merchant-transaction-service';
+import { projectProofReady } from '../../../application/v1/passport-projection';
 import { asShippingTrackerObservation } from '../../../shipping-tracker';
 import { storedOutboxEvent } from './outbox';
 
@@ -378,6 +379,18 @@ export class FirestoreMerchantEvidenceRepository implements MerchantEvidenceRepo
     return toAccessible(snap.id, snap.data()!);
   }
 
+  async refreshProofReady(transactionId: string): Promise<boolean> {
+    const transaction = await this.loadTransaction(transactionId);
+    if (!transaction) return false;
+    const artifacts = await this.listEvidence(transactionId);
+    const commerce = transaction.commerceContextId
+      ? await this.findCommerceContext(transaction.commerceContextId)
+      : null;
+    const proofReady = projectProofReady(transaction, artifacts, commerce);
+    await this.firestore.collection('transactions').doc(transactionId).update({ proofReady });
+    return proofReady;
+  }
+
   async listTransactionsForParticipant(actorId: string, limit: number): Promise<AccessibleMerchantTransaction[]> {
     const snap = await this.firestore.collection('transactions')
       .where('participantIds', 'array-contains', actorId)
@@ -419,6 +432,7 @@ export class FirestoreMerchantEvidenceRepository implements MerchantEvidenceRepo
       const existingId = optionalString(data.passportId);
       const existingDisplay = optionalString(data.passportDisplayId);
       if (existingId && existingDisplay) {
+        tx.update(ref, { proofReady: true });
         return {
           passportId: existingId,
           displayId: existingDisplay,
@@ -429,6 +443,7 @@ export class FirestoreMerchantEvidenceRepository implements MerchantEvidenceRepo
         passportId: identity.passportId,
         passportDisplayId: identity.displayId,
         passportIssuedAt: Timestamp.fromDate(identity.issuedAt),
+        proofReady: true,
       });
       return identity;
     });

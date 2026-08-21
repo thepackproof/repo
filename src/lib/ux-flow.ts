@@ -1,7 +1,8 @@
-import type { EvidenceType } from '@/types/models';
+import type { EvidenceType, PackProofTransaction } from '@/types/models';
 import {
   CAMERA_SESSION_ACTIONS,
   captureTypeForAction,
+  type UxFlowInput,
   type UxPrimaryActionKind,
 } from '../../shared/ux/next-action.ts';
 
@@ -44,6 +45,19 @@ export type {
   UxSecondaryActionKind,
   WaitingReason,
 } from '../../shared/ux/next-action.ts';
+
+export function toUxFlowInput(
+  transaction: PackProofTransaction,
+  viewerId: string,
+  extras: Omit<UxFlowInput, 'transaction' | 'viewerId' | 'proofReady'> = {},
+): UxFlowInput {
+  return {
+    ...extras,
+    transaction,
+    viewerId,
+    proofReady: transaction.proofReady === true,
+  };
+}
 
 export type PrimaryActionHref =
   | { pathname: '/task/[id]'; params: { id: string; fromShare?: string } }

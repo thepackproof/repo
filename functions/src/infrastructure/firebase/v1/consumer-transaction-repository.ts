@@ -94,7 +94,7 @@ export class FirestoreConsumerTransactionRepository implements ConsumerTransacti
         completedBy: record.completedBy,
         lockedAt: null,
         updatedAt: Timestamp.fromDate(record.updatedAt),
-        ...(current.exists ? {} : { createdAt: Timestamp.fromDate(record.createdAt) }),
+        ...(current.exists ? {} : { createdAt: Timestamp.fromDate(record.createdAt), proofReady: false }),
       }, { merge: true });
       if (!event.exists) {
         tx.create(eventRef, {

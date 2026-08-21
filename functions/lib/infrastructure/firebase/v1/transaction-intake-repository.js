@@ -218,6 +218,7 @@ class FirestoreTransactionIntakeRepository {
                 source: record.source,
                 createdAt: firestore_1.Timestamp.fromDate(record.createdAt),
                 updatedAt: firestore_1.Timestamp.fromDate(record.updatedAt),
+                proofReady: false,
             });
             tx.update(recordRef, {
                 status: 'CLAIMED',

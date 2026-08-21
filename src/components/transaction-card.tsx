@@ -3,14 +3,15 @@ import { useRouter } from 'expo-router';
 import { Card } from './ui';
 import { colors } from '@/constants/brand';
 import { formatMoney } from '@/lib/format';
-import { resolveNextRequiredAction, viewerRole, type NextRequiredAction } from '@/lib/ux-flow';
+import { resolveNextRequiredAction, toUxFlowInput, viewerRole, type NextRequiredAction } from '@/lib/ux-flow';
 import type { PackProofTransaction } from '@/types/models';
 
-export function transactionUx(transaction: PackProofTransaction, uid: string): NextRequiredAction {
-  return resolveNextRequiredAction({
-    transaction,
-    viewerId: uid,
-  });
+export function transactionUx(
+  transaction: PackProofTransaction,
+  uid: string,
+  extras: Parameters<typeof toUxFlowInput>[2] = {},
+): NextRequiredAction {
+  return resolveNextRequiredAction(toUxFlowInput(transaction, uid, extras));
 }
 
 export function TransactionCard({
