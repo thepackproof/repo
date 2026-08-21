@@ -42,7 +42,7 @@ const names = [
 const missing = names.filter((name) => !values[name]);
 if (missing.length) fail(`These .env values are empty: ${missing.join(', ')}. Run \`npm run configure\` again.`);
 
-const optionalNames = ['EXPO_PUBLIC_REVENUECAT_GOOGLE_API_KEY', 'FACEBOOK_APP_ID', 'FACEBOOK_CLIENT_TOKEN'];
+const optionalNames = ['EXPO_PUBLIC_REVENUECAT_GOOGLE_API_KEY', 'FACEBOOK_APP_ID', 'FACEBOOK_CLIENT_TOKEN', 'EXPO_PUBLIC_APP_CHECK_PROVIDER'];
 const npx = process.platform === 'win32' ? 'npx.cmd' : 'npx';
 const environmentArgs = ['--environment', targetEnvironment];
 const run = (args, label) => {

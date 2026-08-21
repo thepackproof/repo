@@ -31,6 +31,9 @@ if (await exists('.env')) {
   if (String(env.EXPO_PUBLIC_ENABLE_REVENUECAT_BILLING).toLowerCase() === 'true') {
     env.EXPO_PUBLIC_REVENUECAT_GOOGLE_API_KEY ? pass('PackProof Pro billing is enabled') : fail('RevenueCat public key is required when PackProof Pro billing is enabled');
   } else warn('PackProof Pro billing is disabled; core evidence features remain available');
+  if (String(env.EXPO_PUBLIC_APP_CHECK_PROVIDER).toLowerCase() === 'debug') {
+    warn('App Check debug provider is set; Play Integrity will not run in this build');
+  } else pass('App Check uses Play Integrity unless this is a development client');
 }
 
 if (await exists('google-services.json') && env.ANDROID_PACKAGE_NAME) {

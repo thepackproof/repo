@@ -1,16 +1,22 @@
 import { collection, doc, getDoc, onSnapshot, orderBy, query, where } from '@react-native-firebase/firestore';
 import { httpsCallable } from '@react-native-firebase/functions';
 import { ref as storageRef, putFile } from '@react-native-firebase/storage';
-import { auth, db, fileStorage, forceFreshAttestationToken, forceFreshCallableCredentials, functions } from './firebase';
+import { auth, db, fileStorage, ensureCallableCredentials, forceFreshAttestationToken, forceFreshCallableCredentials, functions } from './firebase';
+import { describeCallableError } from '@/lib/callable-error';
 import type { QueuedEvidence } from '@/lib/offline-evidence-queue';
 import type { EvidenceRecord, EvidenceType, PackProofTransaction, ReturnPassport, TimelineEvent, UserProfile } from '@/types/models';
 import type { CaptureAttestation, RuntimeIntegrityTelemetry } from '@/types/telemetry';
 import { signChallenge } from 'packproof-secure-file';
 
 export async function callFunction<TInput, TOutput>(name: string, input: TInput): Promise<TOutput> {
-  const callable = httpsCallable<TInput, TOutput>(functions, name);
-  const result = await callable(input);
-  return result.data;
+  await ensureCallableCredentials();
+  try {
+    const callable = httpsCallable<TInput, TOutput>(functions, name);
+    const result = await callable(input);
+    return result.data;
+  } catch (error) {
+    throw new Error(describeCallableError(error, { functionName: name, signedIn: Boolean(auth.currentUser) }));
+  }
 }
 
 export const ensureProfile = () => callFunction<Record<string, never>, UserProfile>('ensureUserProfile', {});

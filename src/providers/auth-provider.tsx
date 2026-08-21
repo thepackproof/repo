@@ -17,6 +17,7 @@ import { acceptLegalPolicies, callFunction, ensureProfile, getLegalAcceptanceSta
 import { CURRENT_APP_VERSION, CURRENT_PRIVACY_VERSION, CURRENT_TERMS_VERSION, LEGAL_AFFIRMATION } from '@/constants/legal';
 import { featureFlags } from '@/constants/features';
 import { auth, forceFreshCallableCredentials, initializeSecurity } from '@/lib/firebase';
+import { describeCallableError, shouldKeepSignedInAfterCallableFailure } from '@/lib/callable-error';
 import type { UserProfile } from '@/types/models';
 
 WebBrowser.maybeCompleteAuthSession();
@@ -73,9 +74,13 @@ export function AuthProvider({ children }: PropsWithChildren) {
 
   const refreshProfile = useCallback(async () => {
     if (!auth.currentUser) { setProfile(null); return; }
-    const [next, legal] = await Promise.all([ensureProfile(), getLegalAcceptanceStatus()]);
-    setProfile(next);
-    setLegalAccepted(legal.accepted);
+    const [profileResult, legalResult] = await Promise.allSettled([ensureProfile(), getLegalAcceptanceStatus()]);
+    if (profileResult.status === 'fulfilled') setProfile(profileResult.value);
+    else setProfile(null);
+    if (legalResult.status === 'fulfilled') setLegalAccepted(legalResult.value.accepted);
+    else setLegalAccepted(false);
+    if (profileResult.status === 'rejected') throw profileResult.reason;
+    if (legalResult.status === 'rejected') throw legalResult.reason;
   }, []);
 
   useEffect(() => {
@@ -93,9 +98,12 @@ export function AuthProvider({ children }: PropsWithChildren) {
         setUser(nextUser);
         if (nextUser) {
           try {
-            const [nextProfile, legal] = await Promise.all([ensureProfile(), getLegalAcceptanceStatus()]);
-            setProfile(nextProfile);
-            setLegalAccepted(legal.accepted);
+            await forceFreshCallableCredentials();
+            const [profileResult, legalResult] = await Promise.allSettled([ensureProfile(), getLegalAcceptanceStatus()]);
+            if (profileResult.status === 'fulfilled') setProfile(profileResult.value);
+            else setProfile(null);
+            if (legalResult.status === 'fulfilled') setLegalAccepted(legalResult.value.accepted);
+            else setLegalAccepted(false);
           } catch {
             setProfile(null);
             setLegalAccepted(false);
@@ -131,8 +139,11 @@ export function AuthProvider({ children }: PropsWithChildren) {
       if (acceptCurrentPolicies) await recordCurrentPolicies();
       await refreshProfile();
     } catch (error) {
-      if (!link) await firebaseSignOut(auth).catch(() => undefined);
-      throw error;
+      const signedIn = Boolean(auth.currentUser);
+      if (!link && !shouldKeepSignedInAfterCallableFailure(error, signedIn)) {
+        await firebaseSignOut(auth).catch(() => undefined);
+      }
+      throw new Error(describeCallableError(error, { functionName: 'signIn', signedIn }));
     }
   }, [recordCurrentPolicies, refreshProfile]);
 
@@ -152,8 +163,11 @@ export function AuthProvider({ children }: PropsWithChildren) {
       if (acceptCurrentPolicies) await recordCurrentPolicies();
       await refreshProfile();
     } catch (error) {
-      await firebaseSignOut(auth).catch(() => undefined);
-      throw error;
+      const signedIn = Boolean(auth.currentUser);
+      if (!shouldKeepSignedInAfterCallableFailure(error, signedIn)) {
+        await firebaseSignOut(auth).catch(() => undefined);
+      }
+      throw new Error(describeCallableError(error, { functionName: 'signInTikTok', signedIn }));
     }
   }, [recordCurrentPolicies, refreshProfile]);
 
