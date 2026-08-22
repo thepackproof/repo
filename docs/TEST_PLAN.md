@@ -63,6 +63,7 @@ npx.cmd expo-doctor
 | AUTO-11 | Merchant API Firestore integration | Real emulator transactions/queries preserve one stable retry ID, exact replay, failed-attempt recovery, org isolation, credential revocation, no raw credential/key storage, rate counters, and recomputable audit hashes |
 | AUTO-12 | Firebase Function/Hosting configuration smoke | The compiled Firebase entrypoint loads; the Gen 2 HTTP export metadata, region, Secret Manager declaration, resource settings, and Hosting rewrite target are correct |
 | AUTO-13 | Web portal independent build | `portal/` typecheck, Next Action/invariant tests, and Vite build pass without compiling the Expo app; portal source does not import Firestore or Storage |
+| AUTO-14 | Cross-surface torture contract | `npm run test:cross-surface` — seller Android, buyer Android, and portal agree on the same next-action snapshot for the same inputs; device-local upload failure does not offer recapture; unreadable ciphertext is the only recapture case |
 
 ## Merchant API deployment acceptance
 

@@ -103,6 +103,7 @@
     "test:android-release-config": "node scripts/test-android-release-config.mjs",
     "test:queue-attention": "node --experimental-strip-types scripts/test-queue-attention.mjs",
     "test:evidence-resume": "node --experimental-strip-types scripts/test-evidence-resume.mjs",
+    "test:cross-surface": "node --experimental-strip-types scripts/test-cross-surface.mjs",
     "test:runtime-display": "node --experimental-strip-types scripts/test-runtime-display.mjs",
     "test:package-seal-protocol": "node --experimental-strip-types scripts/test-package-seal-protocol.mjs",
     "test:ux-flow": "node --experimental-strip-types scripts/test-ux-flow.mjs",

@@ -3,17 +3,19 @@ import { useRouter } from 'expo-router';
 import { Card } from './ui';
 import { colors } from '@/constants/brand';
 import { formatMoney } from '@/lib/format';
-import { evidenceProcessingForTransaction, resolveNextRequiredAction, viewerRole, type EvidenceResumeObservation, type NextRequiredAction } from '@/lib/ux-flow';
+import { evidenceProcessingForTransaction, resolveNextRequiredAction, viewerRole, type EvidenceResumeObservation, type NextRequiredAction, type PackageSealProtocolStatus } from '@/lib/ux-flow';
 import type { PackProofTransaction } from '@/types/models';
 
 export function transactionUx(
   transaction: PackProofTransaction,
   uid: string,
   queueItems: readonly EvidenceResumeObservation[] = [],
+  protocol: PackageSealProtocolStatus | null = null,
 ): NextRequiredAction {
   return resolveNextRequiredAction({
     transaction,
     viewerId: uid,
+    protocol,
     evidenceProcessing: evidenceProcessingForTransaction(transaction.id, queueItems),
   });
 }
