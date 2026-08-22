@@ -30,10 +30,19 @@ export {
   recoverInFlightQueueState,
 } from './evidence-resume';
 
+export {
+  toPortalTransactionLike,
+  toUxTransaction,
+} from './cross-surface';
+
 export type {
   EvidenceResumeObservation,
   QueueCrashPhase,
 } from './evidence-resume';
+
+export type {
+  PortalTransactionLike,
+} from './cross-surface';
 
 export type {
   ActionRequiredBy,

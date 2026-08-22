@@ -45,6 +45,7 @@ export type {
   HumanState,
   InboxBucket,
   NextRequiredAction,
+  PackageSealProtocolStatus,
   ParticipantRole,
   ProgressStage,
   ProgressStep,

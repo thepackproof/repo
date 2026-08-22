@@ -132,41 +132,4 @@ export function createMobileHandoff(id: string, action: string) {
   });
 }
 
-export function toUxTransaction(item: PortalTransaction) {
-  return {
-    id: item.id,
-    sellerId: item.sellerId ?? '',
-    buyerId: item.buyerId,
-    participantIds: item.participantIds,
-    status: item.status as import('@packproof/ux').TransactionStatus,
-    title: item.title,
-    category: item.category,
-    description: item.description,
-    priceMinor: item.priceMinor ?? 0,
-    currency: item.currency ?? 'USD',
-    identifiers: item.identifiers,
-    conditionNotes: item.conditionNotes,
-    terms: item.terms ?? {
-      saleType: 'SHIPPED' as const,
-      shippingResponsibility: 'SELLER' as const,
-      returns: 'AS_AGREED' as const,
-      returnWindowDays: 0,
-      customTerms: '',
-    },
-    confirmedBy: item.confirmedBy,
-    handoffConfirmedBy: item.handoffConfirmedBy,
-    completedBy: item.completedBy,
-    createdAt: item.createdAt,
-    updatedAt: item.updatedAt,
-    lockedAt: item.lockedAt,
-    passportId: item.passportId,
-    passportDisplayId: item.passportDisplayId,
-    source: item.source
-      ? {
-          type: item.source.type ?? undefined,
-          platform: item.source.platform ?? undefined,
-          externalOrderId: item.source.externalOrderId ?? undefined,
-        }
-      : null,
-  };
-}
+export { toUxTransaction } from '@packproof/ux';
