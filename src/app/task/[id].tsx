@@ -9,7 +9,7 @@ import { TaskSession } from '@/components/task-session';
 import { callFunction, subscribeEvents, subscribeEvidence, subscribeReturnPassports, subscribeTransaction } from '@/lib/api';
 import { readableError } from '@/lib/format';
 import { packageSealProtocolStatus } from '@/lib/package-seal-protocol';
-import { displayCarrierName, hrefForPrimaryAction, PACK_SESSION_ACTIONS, resolveNextRequiredAction, toHref, type NextRequiredAction } from '@/lib/ux-flow';
+import { displayCarrierName, hrefForPrimaryAction, PACK_SESSION_ACTIONS, resolveNextRequiredAction, toHref, toUxFlowInput, type NextRequiredAction } from '@/lib/ux-flow';
 import { useAuth } from '@/providers/auth-provider';
 import type { EvidenceRecord, PackProofTransaction, ReturnPassport, TimelineEvent } from '@/types/models';
 
@@ -45,14 +45,12 @@ export default function TaskScreen() {
 
   const ux = useMemo<NextRequiredAction | null>(() => {
     if (!item || !user) return null;
-    return resolveNextRequiredAction({
-      transaction: item,
-      viewerId: user.uid,
+    return resolveNextRequiredAction(toUxFlowInput(item, user.uid, {
       protocol,
       returnPassport: activeReturn,
       returnProtocol,
       inviteSentAt,
-    });
+    }));
   }, [item, user, protocol, activeReturn, returnProtocol, inviteSentAt]);
 
   const goHome = () => router.replace('/(tabs)');

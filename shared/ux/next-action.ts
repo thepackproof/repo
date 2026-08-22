@@ -186,7 +186,9 @@ export type NextRequiredAction = {
   inboxSentence: string;
   inboxCta: string | null;
   noActionRequired: boolean;
+  /** Schema v1 field name; same boolean as `proofReady`. */
   passportReady: boolean;
+  proofReady: boolean;
   canLeaveWhileProcessing: boolean;
 };
 
@@ -194,6 +196,8 @@ export type UxFlowInput = {
   transaction: PackProofTransaction;
   viewerId: string;
   protocol?: PackageSealProtocolStatus | null;
+  /** Canonical Proof retrievability from `evaluatePassportEligibility`. Never infer from lifecycle status. */
+  proofReady?: boolean;
   returnPassport?: Pick<
     ReturnPassport,
     'id' | 'status' | 'initiatedBy' | 'returningParticipantId' | 'recipientId' | 'completedBy' | 'updatedAt'
@@ -269,8 +273,8 @@ function hasConfirmed(ids: string[] | undefined, uid: string | null | undefined)
   return Boolean(uid && ids?.includes(uid));
 }
 
-function passportReady(status: TransactionStatus, passportId?: string | null): boolean {
-  return Boolean(passportId) || ['PACKED', 'SHIPPED', 'BUYER_REVIEW', 'COMPLETED'].includes(status);
+function proofIsReady(input: UxFlowInput): boolean {
+  return input.proofReady === true;
 }
 
 function progressStageFor(status: TransactionStatus, saleType: 'SHIPPED' | 'LOCAL_HANDOFF'): ProgressStage {
@@ -320,7 +324,7 @@ function notify(title: string, body: string): { title: string; body: string } {
   return { title, body };
 }
 
-type DraftView = Omit<NextRequiredAction, 'humanStateLabel' | 'progressSteps' | 'inboxCta' | 'passportReady' | 'canLeaveWhileProcessing' | 'consumerState' | 'waitingOn' | 'stepCurrent' | 'stepTotal' | 'completedContext'> & {
+type DraftView = Omit<NextRequiredAction, 'humanStateLabel' | 'progressSteps' | 'inboxCta' | 'passportReady' | 'proofReady' | 'canLeaveWhileProcessing' | 'consumerState' | 'waitingOn' | 'stepCurrent' | 'stepTotal' | 'completedContext'> & {
   completedContext?: readonly string[];
 };
 
@@ -353,7 +357,7 @@ function finish(
 ): NextRequiredAction {
   const status = input.transaction.status;
   const saleType = input.transaction.terms.saleType;
-  const ready = passportReady(status, input.transaction.passportId);
+  const ready = proofIsReady(input);
   const completedContext = draft.completedContext
     ?? draft.prerequisites.filter((item) => item.complete).map((item) => item.label);
   const step = stepOf(status, draft.primaryAction?.kind, saleType);
@@ -370,6 +374,7 @@ function finish(
     progressSteps: buildProgressSteps(saleType, draft.progressStage, status),
     inboxCta: draft.primaryAction?.label ?? null,
     passportReady: ready,
+    proofReady: ready,
     canLeaveWhileProcessing: draft.humanState === 'EVIDENCE_PROCESSING',
     secondaryAction: draft.secondaryAction ?? (ready && draft.primaryAction?.kind !== 'OPEN_PASSPORT'
         ? { kind: 'OPEN_PASSPORT', label: 'View Proof' }
@@ -683,14 +688,15 @@ function resolveStatus(input: UxFlowInput, role: ParticipantRole, protocol: Pack
   }
 
   if (status === 'ARCHIVED' || status === 'COMPLETED') {
+    const ready = proofIsReady(input);
     return {
       humanState: 'COMPLETE',
       headline: 'PackProof complete',
       description: 'This PackProof is finished.',
-      instruction: 'The finished record is ready when you need it.',
-      nextHappens: 'You can view or share it where permitted.',
+      instruction: ready ? 'The finished record is ready when you need it.' : 'This PackProof is finished.',
+      nextHappens: ready ? 'You can view or share it where permitted.' : "We'll notify you if anything else needs your attention.",
       actionRequiredBy: 'NONE',
-      primaryAction: { kind: 'OPEN_PASSPORT', label: 'View Proof' },
+      primaryAction: ready ? { kind: 'OPEN_PASSPORT', label: 'View Proof' } : null,
       secondaryAction: null,
       progressStage: 'COMPLETE',
       waitingReason: 'NONE',
@@ -698,10 +704,12 @@ function resolveStatus(input: UxFlowInput, role: ParticipantRole, protocol: Pack
       waitingOnTask: null,
       lockedExplanation: null,
       prerequisites: [],
-      notificationCopy: notify('PackProof complete', 'Your Proof is ready.'),
+      notificationCopy: ready
+        ? notify('PackProof complete', 'Your Proof is ready.')
+        : notify('PackProof complete', 'This PackProof is finished.'),
       inboxBucket: 'COMPLETED',
-      inboxSentence: 'Your Proof is ready.',
-      noActionRequired: false,
+      inboxSentence: ready ? 'Your Proof is ready.' : 'This PackProof is finished.',
+      noActionRequired: !ready,
     };
   }
 
@@ -714,7 +722,7 @@ function resolveStatus(input: UxFlowInput, role: ParticipantRole, protocol: Pack
       nextHappens: 'Completion stays paused until the concern is resolved.',
       actionRequiredBy: 'YOU',
       primaryAction: null,
-      secondaryAction: passportReady(status, transaction.passportId) ? { kind: 'OPEN_PASSPORT', label: 'View Proof' } : null,
+      secondaryAction: null,
       progressStage: stage,
       waitingReason: 'NONE',
       waitingOnName: null,

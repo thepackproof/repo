@@ -10,6 +10,7 @@ import {
   hrefAfterCapture,
   hrefForPrimaryAction,
   resolveNextRequiredAction,
+  toUxFlowInput,
   viewerRole,
 } from '../src/lib/ux-flow.ts';
 
@@ -162,6 +163,8 @@ assert.equal(packedReady.headline, 'Add tracking');
 assert.equal(packedReady.primaryAction?.kind, 'ADD_SHIPMENT');
 assert.deepEqual([...packedReady.completedContext], ['Packing video', 'Package photo']);
 assert.equal(packedReady.notificationCopy.title, 'Packing complete');
+assert.equal(packedReady.proofReady, false);
+assert.notEqual(packedReady.secondaryAction?.kind, 'OPEN_PASSPORT');
 
 const packedBuyer = resolveNextRequiredAction({
   transaction: tx({ status: 'PACKED' }),
@@ -201,11 +204,21 @@ const complete = resolve('COMPLETED', 'SELLER');
 assert.equal(complete.humanState, 'COMPLETE');
 assert.equal(complete.headline, 'PackProof complete');
 assert.equal(complete.consumerState, 'complete');
-assert.equal(complete.primaryAction?.kind, 'OPEN_PASSPORT');
-assert.equal(complete.primaryAction?.label, 'View Proof');
+assert.equal(complete.primaryAction, null);
+assert.equal(complete.proofReady, false);
 assert.equal(complete.inboxBucket, 'COMPLETED');
 assert.equal(complete.progressSteps.every((step) => step.state === 'done'), true);
-assert.match(complete.instruction, /finished record/i);
+
+const completeReady = resolve('COMPLETED', 'SELLER', { proofReady: true });
+assert.equal(completeReady.primaryAction?.kind, 'OPEN_PASSPORT');
+assert.equal(completeReady.primaryAction?.label, 'View Proof');
+assert.equal(completeReady.proofReady, true);
+assert.match(completeReady.instruction, /finished record/i);
+
+const packedFromPersistedFlag = resolveNextRequiredAction(toUxFlowInput(tx({ status: 'PACKED', proofReady: true }), 'seller', { protocol }));
+assert.equal(packedFromPersistedFlag.proofReady, true);
+assert.equal(packedFromPersistedFlag.secondaryAction?.kind, 'OPEN_PASSPORT');
+assert.equal(packedFromPersistedFlag.secondaryAction?.label, 'View Proof');
 
 const cancelled = resolve('CANCELLED', 'BUYER');
 assert.equal(cancelled.humanState, 'CANCELLED');

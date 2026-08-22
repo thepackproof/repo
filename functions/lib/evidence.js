@@ -14,6 +14,7 @@ const evidence_finalization_1 = require("./evidence-finalization");
 const package_seal_protocol_1 = require("./package-seal-protocol");
 const shipping_tracker_1 = require("./shipping-tracker");
 const validation_1 = require("./validation");
+const merchant_evidence_repository_1 = require("./infrastructure/firebase/v1/merchant-evidence-repository");
 const MAX_EVIDENCE_BYTES = 600 * 1024 * 1024;
 async function sha256File(file) {
     const digest = (0, node_crypto_1.createHash)('sha256');
@@ -378,6 +379,7 @@ exports.onEvidenceUploaded = (0, storage_1.onObjectFinalized)({ timeoutSeconds: 
         });
         return true;
     });
+    await new merchant_evidence_repository_1.FirestoreMerchantEvidenceRepository(config_1.db).refreshProofReady(transactionId);
     if (created) {
         await (0, helpers_1.notifyOtherParticipants)(transactionId, uploaderId, integrityAccepted ? 'Evidence saved' : 'Please recapture', integrityAccepted
             ? 'PackProof finished saving the evidence. Open the PackProof to see what happens next.'

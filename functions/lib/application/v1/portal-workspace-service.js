@@ -52,7 +52,7 @@ function protocolFromEvidence(records) {
         outboundComplete: hasPackingVideo && hasSealReference && hasArrivalPhoto && hasUnboxingVideo,
     };
 }
-function toPortalTransactionDto(record, protocol = EMPTY_PROTOCOL) {
+function toPortalTransactionDto(record, protocol = EMPTY_PROTOCOL, proofReady = false) {
     return {
         id: record.id,
         object: 'portal_transaction',
@@ -74,6 +74,7 @@ function toPortalTransactionDto(record, protocol = EMPTY_PROTOCOL) {
         completedBy: record.completedBy,
         passportId: record.passportId,
         passportDisplayId: record.passportDisplayId,
+        proofReady,
         source: record.sourceType || record.sourcePlatform || record.externalOrderId
             ? { type: record.sourceType, platform: record.sourcePlatform, externalOrderId: record.externalOrderId }
             : null,
@@ -117,12 +118,11 @@ class PortalWorkspaceApplicationService {
     }
     async listTransactions(principal, limit = 50) {
         const records = await this.repository.listForParticipant(principal.actorId, Math.min(Math.max(limit, 1), 50));
-        return records.map((record) => toPortalTransactionDto(record));
+        return Promise.all(records.map((record) => this.projectTransaction(record)));
     }
     async getTransaction(principal, transactionId) {
         const record = await this.requireParticipant(principal, transactionId);
-        const evidence = await this.repository.listEvidence(record.id);
-        return toPortalTransactionDto(record, protocolFromEvidence(evidence));
+        return this.projectTransaction(record);
     }
     async getTimeline(principal, transactionId) {
         const record = await this.requireParticipant(principal, transactionId);
@@ -135,27 +135,25 @@ class PortalWorkspaceApplicationService {
     }
     async getPassport(principal, transactionId) {
         const transaction = await this.requireParticipant(principal, transactionId);
-        const [records, timeline, returns] = await Promise.all([
+        const [records, timeline, returns, commerce] = await Promise.all([
             this.repository.listEvidence(transaction.id),
             this.repository.listTimeline(transaction.id),
             this.repository.listReturns(transaction.id),
+            transaction.commerceContextId
+                ? this.repository.findCommerceContext(transaction.commerceContextId)
+                : Promise.resolve(null),
         ]);
-        (0, passport_projection_1.assertPassportEligible)(transaction, records);
+        (0, passport_projection_1.assertPassportEligible)(transaction, records, commerce);
         const issuedAt = this.now();
         const identity = (0, passport_projection_1.boundOrIssuedIdentity)(transaction, issuedAt);
-        if (identity.bind) {
-            const bound = await this.repository.bindPassportIdentity(transaction.id, {
-                passportId: identity.passportId,
-                displayId: identity.displayId,
-                issuedAt: identity.issuedAt,
-            });
-            identity.passportId = bound.passportId;
-            identity.displayId = bound.displayId;
-            identity.issuedAt = bound.issuedAt;
-        }
-        const commerce = transaction.commerceContextId
-            ? await this.repository.findCommerceContext(transaction.commerceContextId)
-            : null;
+        const bound = await this.repository.bindPassportIdentity(transaction.id, {
+            passportId: identity.passportId,
+            displayId: identity.displayId,
+            issuedAt: identity.issuedAt,
+        });
+        identity.passportId = bound.passportId;
+        identity.displayId = bound.displayId;
+        identity.issuedAt = bound.issuedAt;
         return (0, passport_projection_1.projectPassport)({
             transaction,
             artifacts: records,
@@ -219,6 +217,15 @@ class PortalWorkspaceApplicationService {
     }
     verificationBaseUrl() {
         return this.linkBaseUrl().replace(/\/$/, '') || 'https://packproof.link';
+    }
+    async projectTransaction(record) {
+        const [evidence, commerce] = await Promise.all([
+            this.repository.listEvidence(record.id),
+            record.commerceContextId
+                ? this.repository.findCommerceContext(record.commerceContextId)
+                : Promise.resolve(null),
+        ]);
+        return toPortalTransactionDto(record, protocolFromEvidence(evidence), (0, passport_projection_1.projectProofReady)(record, evidence, commerce));
     }
     async requireParticipant(principal, transactionId) {
         const record = await this.repository.findForParticipant(transactionId, principal.actorId);

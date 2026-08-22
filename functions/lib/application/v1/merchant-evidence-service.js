@@ -601,27 +601,25 @@ class MerchantEvidenceApplicationService {
         return value || 'https://app.packproof.example';
     }
     async assemblePassport(principal, transaction, reviewQuery) {
-        const [records, timeline, returns] = await Promise.all([
+        const [records, timeline, returns, commerce] = await Promise.all([
             this.repository.listEvidence(transaction.id),
             this.repository.listTimeline(transaction.id),
             this.repository.listReturns(transaction.id),
+            transaction.commerceContextId
+                ? this.repository.findCommerceContext(transaction.commerceContextId)
+                : Promise.resolve(null),
         ]);
-        const commerce = transaction.commerceContextId
-            ? await this.repository.findCommerceContext(transaction.commerceContextId)
-            : null;
         (0, passport_projection_1.assertPassportEligible)(transaction, records, commerce);
         const issuedAt = this.now();
         const identity = (0, passport_projection_1.boundOrIssuedIdentity)(transaction, issuedAt);
-        if (identity.bind) {
-            const bound = await this.repository.bindPassportIdentity(transaction.id, {
-                passportId: identity.passportId,
-                displayId: identity.displayId,
-                issuedAt: identity.issuedAt,
-            });
-            identity.passportId = bound.passportId;
-            identity.displayId = bound.displayId;
-            identity.issuedAt = bound.issuedAt;
-        }
+        const bound = await this.repository.bindPassportIdentity(transaction.id, {
+            passportId: identity.passportId,
+            displayId: identity.displayId,
+            issuedAt: identity.issuedAt,
+        });
+        identity.passportId = bound.passportId;
+        identity.displayId = bound.displayId;
+        identity.issuedAt = bound.issuedAt;
         return (0, passport_projection_1.projectPassport)({
             transaction,
             artifacts: records,

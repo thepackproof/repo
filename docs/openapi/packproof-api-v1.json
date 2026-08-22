@@ -1457,7 +1457,7 @@
       "PortalTransaction": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["id", "object", "schemaVersion", "sellerId", "buyerId", "participantIds", "status", "title", "category", "description", "priceMinor", "currency", "identifiers", "conditionNotes", "terms", "confirmedBy", "handoffConfirmedBy", "completedBy", "passportId", "passportDisplayId", "source", "protocol", "lockedAt", "createdAt", "updatedAt"],
+        "required": ["id", "object", "schemaVersion", "sellerId", "buyerId", "participantIds", "status", "title", "category", "description", "priceMinor", "currency", "identifiers", "conditionNotes", "terms", "confirmedBy", "handoffConfirmedBy", "completedBy", "passportId", "passportDisplayId", "proofReady", "source", "protocol", "lockedAt", "createdAt", "updatedAt"],
         "properties": {
           "id": { "type": "string", "minLength": 10, "maxLength": 128 },
           "object": { "const": "portal_transaction" },
@@ -1479,6 +1479,7 @@
           "completedBy": { "type": "array", "items": { "type": "string" } },
           "passportId": { "type": ["string", "null"] },
           "passportDisplayId": { "type": ["string", "null"] },
+          "proofReady": { "type": "boolean" },
           "source": {
             "type": ["object", "null"],
             "additionalProperties": false,

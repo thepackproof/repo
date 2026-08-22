@@ -71,6 +71,7 @@ export type PortalTransaction = {
   completedBy: string[];
   passportId: string | null;
   passportDisplayId: string | null;
+  proofReady: boolean;
   source: { type: string | null; platform: string | null; externalOrderId: string | null } | null;
   protocol: PortalProtocol;
   lockedAt: string | null;
@@ -168,5 +169,14 @@ export function toUxTransaction(item: PortalTransaction) {
           externalOrderId: item.source.externalOrderId ?? undefined,
         }
       : null,
+  };
+}
+
+export function toUxFlowInput(item: PortalTransaction, viewerId: string) {
+  return {
+    transaction: toUxTransaction(item),
+    viewerId,
+    protocol: item.protocol,
+    proofReady: item.proofReady === true,
   };
 }

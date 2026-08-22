@@ -22,29 +22,27 @@ export const getPackProofPassport = onCall(callOptions, async (request) => {
   if (!transaction.participantIds.includes(uid)) {
     throw new HttpsError('permission-denied', 'You are not a participant in this transaction.');
   }
-  const [records, timeline, returns] = await Promise.all([
+  const [records, timeline, returns, commerce] = await Promise.all([
     repository.listEvidence(transaction.id),
     repository.listTimeline(transaction.id),
     repository.listReturns(transaction.id),
+    transaction.commerceContextId ? repository.findCommerceContext(transaction.commerceContextId) : Promise.resolve(null),
   ]);
   try {
-    assertPassportEligible(transaction, records);
+    assertPassportEligible(transaction, records, commerce);
   } catch (error) {
     throw new HttpsError('failed-precondition', error instanceof Error ? error.message : 'This transaction does not yet qualify for a Proof.');
   }
   const issuedAt = new Date();
   const identity = boundOrIssuedIdentity(transaction, issuedAt);
-  if (identity.bind) {
-    const bound = await repository.bindPassportIdentity(transaction.id, {
-      passportId: identity.passportId,
-      displayId: identity.displayId,
-      issuedAt: identity.issuedAt,
-    });
-    identity.passportId = bound.passportId;
-    identity.displayId = bound.displayId;
-    identity.issuedAt = bound.issuedAt;
-  }
-  const commerce = transaction.commerceContextId ? await repository.findCommerceContext(transaction.commerceContextId) : null;
+  const bound = await repository.bindPassportIdentity(transaction.id, {
+    passportId: identity.passportId,
+    displayId: identity.displayId,
+    issuedAt: identity.issuedAt,
+  });
+  identity.passportId = bound.passportId;
+  identity.displayId = bound.displayId;
+  identity.issuedAt = bound.issuedAt;
   return projectPassport({
     transaction,
     artifacts: records,

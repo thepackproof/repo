@@ -4,6 +4,9 @@ exports.passportArtifactInput = passportArtifactInput;
 exports.passportTransactionInput = passportTransactionInput;
 exports.passportNotReady = passportNotReady;
 exports.projectPassport = projectPassport;
+exports.evaluateStoredPassportEligibility = evaluateStoredPassportEligibility;
+exports.projectProofReady = projectProofReady;
+exports.isPassportEligible = isPassportEligible;
 exports.assertPassportEligible = assertPassportEligible;
 exports.boundOrIssuedIdentity = boundOrIssuedIdentity;
 exports.snapshotDto = snapshotDto;
@@ -109,9 +112,9 @@ function projectPassport(input) {
         now: input.now,
     });
 }
-function assertPassportEligible(transaction, artifacts, commerce = null) {
+function evaluateStoredPassportEligibility(transaction, artifacts, commerce = null) {
     const transactionInput = passportTransactionInput(transaction);
-    const result = (0, passport_1.evaluatePassportEligibility)({
+    return (0, passport_1.evaluatePassportEligibility)({
         transactionExists: true,
         merchantReference: transaction.merchantReference,
         commerceContextId: transaction.commerceContextId,
@@ -121,6 +124,15 @@ function assertPassportEligible(transaction, artifacts, commerce = null) {
         artifacts: artifacts.map(passportArtifactInput),
         displayedUnattributedFacts: (0, passport_1.countDisplayedUnattributedCommercialFacts)(transactionInput, commerce),
     });
+}
+function projectProofReady(transaction, artifacts, commerce = null) {
+    return evaluateStoredPassportEligibility(transaction, artifacts, commerce).ok;
+}
+function isPassportEligible(transaction, artifacts, commerce = null) {
+    return projectProofReady(transaction, artifacts, commerce);
+}
+function assertPassportEligible(transaction, artifacts, commerce = null) {
+    const result = evaluateStoredPassportEligibility(transaction, artifacts, commerce);
     if (!result.ok)
         throw passportNotReady(result.failures);
 }

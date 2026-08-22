@@ -8,7 +8,7 @@ import { TaskSession } from '@/components/task-session';
 import { callFunction, subscribeEvidence, subscribeReturnPassports, subscribeTransaction } from '@/lib/api';
 import { readableError } from '@/lib/format';
 import { packageSealProtocolStatus } from '@/lib/package-seal-protocol';
-import { displayCarrierName, resolveNextRequiredAction, toHref } from '@/lib/ux-flow';
+import { displayCarrierName, resolveNextRequiredAction, toHref, toUxFlowInput } from '@/lib/ux-flow';
 import { useAuth } from '@/providers/auth-provider';
 import type { EvidenceRecord, EvidenceType, PackProofTransaction, ReturnPassport } from '@/types/models';
 
@@ -59,13 +59,11 @@ export default function PackSession() {
   );
   const ux = useMemo(() => {
     if (!item || !user) return null;
-    return resolveNextRequiredAction({
-      transaction: item,
-      viewerId: user.uid,
+    return resolveNextRequiredAction(toUxFlowInput(item, user.uid, {
       protocol: activeReturn ? returnProtocol : protocol,
       returnPassport: activeReturn,
       returnProtocol,
-    });
+    }));
   }, [item, user, protocol, activeReturn, returnProtocol]);
 
   const returning = Boolean(activeReturn && (ux?.primaryAction?.kind === 'RECORD_RETURN_PACKING' || ux?.primaryAction?.kind === 'RECORD_RETURN_SEAL' || ux?.primaryAction?.kind === 'ADD_RETURN_SHIPMENT'));

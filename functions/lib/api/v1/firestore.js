@@ -126,6 +126,7 @@ function toStoredTransaction(transaction) {
         lockedAt: null,
         createdAt: firestore_1.Timestamp.fromDate(transaction.createdAt),
         updatedAt: firestore_1.Timestamp.fromDate(transaction.updatedAt),
+        proofReady: false,
     };
 }
 class FirestoreTransactionRepository {

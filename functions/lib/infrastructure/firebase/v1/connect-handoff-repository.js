@@ -69,6 +69,7 @@ function storedTransaction(decision) {
         createdAt: firestore_1.Timestamp.fromDate(record.createdAt),
         updatedAt: firestore_1.Timestamp.fromDate(record.updatedAt),
         source: record.source,
+        proofReady: false,
     };
 }
 class FirestoreConnectHandoffRepository {

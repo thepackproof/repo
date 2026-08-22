@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { resolveNextRequiredAction } from '@packproof/ux';
-import { listTransactions, toUxTransaction, type PortalTransaction } from '../api';
+import { listTransactions, toUxFlowInput, type PortalTransaction } from '../api';
 import { useAuth } from '../auth';
 
 export function ActivityPage() {
@@ -25,11 +25,7 @@ export function ActivityPage() {
       {error ? <p className="error">{error}</p> : null}
       <section className="stack">
         {items.map((item) => {
-          const next = user ? resolveNextRequiredAction({
-            transaction: toUxTransaction(item),
-            viewerId: user.uid,
-            protocol: item.protocol,
-          }) : null;
+          const next = user ? resolveNextRequiredAction(toUxFlowInput(item, user.uid)) : null;
           return (
             <Link key={item.id} className="card" to={`/packproofs/${item.id}/activity`} style={{ textDecoration: 'none', color: 'inherit' }}>
               <h2>{item.title}</h2>

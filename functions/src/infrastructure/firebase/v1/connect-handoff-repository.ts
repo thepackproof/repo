@@ -72,6 +72,7 @@ function storedTransaction(decision: Extract<ConnectRedemptionDecision, { type: 
     createdAt: Timestamp.fromDate(record.createdAt),
     updatedAt: Timestamp.fromDate(record.updatedAt),
     source: record.source,
+    proofReady: false,
   };
 }
 
