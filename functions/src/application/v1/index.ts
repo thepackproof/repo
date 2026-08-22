@@ -3,6 +3,7 @@ export * from './connect-callback';
 export * from './connect-callback-retry-policy';
 export * from './connect-handoff-service';
 export * from './consumer-transaction-service';
+export * from './authorization-boundary';
 export * from './errors';
 export * from './events';
 export * from './merchant-ports';

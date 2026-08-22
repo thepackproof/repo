@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.MerchantEvidenceApplicationService = void 0;
 exports.toMerchantEvidenceArtifactDto = toMerchantEvidenceArtifactDto;
 const package_seal_protocol_1 = require("../../package-seal-protocol");
+const authorization_boundary_1 = require("./authorization-boundary");
 const errors_1 = require("./errors");
 const merchant_transaction_service_1 = require("./merchant-transaction-service");
 const passport_projection_1 = require("./passport-projection");
@@ -184,8 +185,9 @@ class MerchantEvidenceApplicationService {
     async requireAccessible(principal, transactionId) {
         this.authorization.requireEnvironment(principal, this.config.environment);
         const transaction = await this.repository.findAccessibleTransaction(transactionId, principal);
-        if (!transaction)
+        if (!transaction || !(0, authorization_boundary_1.merchantCanAccessTransaction)(transaction, principal)) {
             throw notFound('TRANSACTION_NOT_FOUND', 'The requested transaction was not found.');
+        }
         return transaction;
     }
     async listEvidence(principal, transactionId) {
@@ -652,8 +654,9 @@ class MerchantEvidenceApplicationService {
             throw new errors_1.ApplicationError('INVALID_ARGUMENT', 'INVALID_PASSPORT_ID', 'This is not a valid Proof identifier.');
         }
         const transaction = await this.repository.findAccessibleTransactionByPassportIdentity(passportIdentity, principal);
-        if (!transaction)
+        if (!transaction || !(0, authorization_boundary_1.merchantCanAccessTransaction)(transaction, principal)) {
             throw notFound('PASSPORT_NOT_FOUND', 'The requested Proof was not found.');
+        }
         return this.assemblePassport(principal, transaction, reviewQuery);
     }
     async createPassportSnapshot(principal, transactionId, idempotencyKey, requestId, reviewQuery = null) {
@@ -685,8 +688,9 @@ class MerchantEvidenceApplicationService {
         this.authorization.requireScope(principal, 'evidence:read');
         this.authorization.requireEnvironment(principal, this.config.environment);
         const transaction = await this.repository.findAccessibleTransactionByPassportIdentity(passportIdentity, principal);
-        if (!transaction)
+        if (!transaction || !(0, authorization_boundary_1.merchantCanAccessTransaction)(transaction, principal)) {
             throw notFound('PASSPORT_NOT_FOUND', 'The requested Proof was not found.');
+        }
         const record = await this.repository.findPassportSnapshot(transaction.id, snapshotId);
         if (!record)
             throw notFound('PASSPORT_SNAPSHOT_NOT_FOUND', 'The requested Passport snapshot was not found.');
@@ -696,8 +700,9 @@ class MerchantEvidenceApplicationService {
         this.authorization.requireScope(principal, 'evidence:read');
         this.authorization.requireEnvironment(principal, this.config.environment);
         const transaction = await this.repository.findAccessibleTransactionByPassportIdentity(passportIdentity, principal);
-        if (!transaction)
+        if (!transaction || !(0, authorization_boundary_1.merchantCanAccessTransaction)(transaction, principal)) {
             throw notFound('PASSPORT_NOT_FOUND', 'The requested Proof was not found.');
+        }
         const snapshot = await this.repository.findPassportSnapshot(transaction.id, snapshotId);
         if (!snapshot)
             throw notFound('PASSPORT_SNAPSHOT_NOT_FOUND', 'The requested Passport snapshot was not found.');

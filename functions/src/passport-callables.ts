@@ -1,5 +1,6 @@
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import { connectLinkBaseUrl, db } from './config';
+import { recordVisibleToActor } from './application/v1/authorization-boundary';
 import { assertPassportEligible, boundOrIssuedIdentity, projectPassport } from './application/v1/passport-projection';
 import { isPassportDisplayId, isPassportResourceId } from './domain/v1/passport';
 import { FirestoreMerchantEvidenceRepository } from './infrastructure/firebase/v1/merchant-evidence-repository';
@@ -13,15 +14,15 @@ export const getPackProofPassport = onCall(callOptions, async (request) => {
   const passportId = typeof request.data?.passportId === 'string' ? request.data.passportId : '';
   if (!transactionId && !passportId) throw new HttpsError('invalid-argument', 'A transactionId or passportId is required.');
   const repository = new FirestoreMerchantEvidenceRepository(db);
-  const transaction = transactionId
-    ? await repository.loadTransaction(transactionId)
-    : isPassportResourceId(passportId) || isPassportDisplayId(passportId)
-      ? await repository.loadTransactionByPassportIdentity(passportId)
-      : await repository.loadTransaction(passportId);
+  const transaction = recordVisibleToActor(
+    transactionId
+      ? await repository.loadTransaction(transactionId)
+      : isPassportResourceId(passportId) || isPassportDisplayId(passportId)
+        ? await repository.loadTransactionByPassportIdentity(passportId)
+        : await repository.loadTransaction(passportId),
+    uid,
+  );
   if (!transaction) throw new HttpsError('not-found', 'This Proof was not found.');
-  if (!transaction.participantIds.includes(uid)) {
-    throw new HttpsError('permission-denied', 'You are not a participant in this transaction.');
-  }
   const [records, timeline, returns] = await Promise.all([
     repository.listEvidence(transaction.id),
     repository.listTimeline(transaction.id),

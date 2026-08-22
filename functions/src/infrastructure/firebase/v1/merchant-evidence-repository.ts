@@ -27,6 +27,7 @@ import {
 } from '../../../domain/v1/commerce';
 import type { MerchantDeliveryDto, MerchantReturnPassportDto, MerchantShipmentDto, MerchantTimelineEventDto } from '../../../application/v1/merchant-evidence-types';
 import type { MerchantPrincipal } from '../../../application/v1/merchant-types';
+import { merchantCanAccessTransaction } from '../../../application/v1/authorization-boundary';
 import type { PortalWorkspaceRecord, PortalWorkspaceRepository } from '../../../application/v1/portal-workspace-service';
 import { sha256 } from '../../../application/v1/merchant-transaction-service';
 import { asShippingTrackerObservation } from '../../../shipping-tracker';
@@ -260,9 +261,7 @@ function toCommerce(id: string, data: DocumentData): PassportCommerceInput {
 }
 
 function principalCanAccess(transaction: AccessibleMerchantTransaction, principal: MerchantPrincipal): boolean {
-  if (transaction.organizationId && transaction.organizationId === principal.organizationId) return true;
-  if (transaction.integrationId && principal.integrationId && transaction.integrationId === principal.integrationId) return true;
-  return false;
+  return merchantCanAccessTransaction(transaction, principal);
 }
 
 function toEvidence(transactionId: string, id: string, data: DocumentData): StoredEvidenceRecord {
