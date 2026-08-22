@@ -41,6 +41,7 @@ npm.cmd run test:api:functions
 npm.cmd run test:domain
 npm.cmd run test:application
 npm.cmd run test:ux-flow
+npm.cmd run test:rc-e2e
 npm.cmd --prefix portal ci
 npm.cmd --prefix portal test
 npm.cmd --prefix portal run build
@@ -63,6 +64,25 @@ npx.cmd expo-doctor
 | AUTO-11 | Merchant API Firestore integration | Real emulator transactions/queries preserve one stable retry ID, exact replay, failed-attempt recovery, org isolation, credential revocation, no raw credential/key storage, rate counters, and recomputable audit hashes |
 | AUTO-12 | Firebase Function/Hosting configuration smoke | The compiled Firebase entrypoint loads; the Gen 2 HTTP export metadata, region, Secret Manager declaration, resource settings, and Hosting rewrite target are correct |
 | AUTO-13 | Web portal independent build | `portal/` typecheck, Next Action/invariant tests, and Vite build pass without compiling the Expo app; portal source does not import Firestore or Storage |
+| AUTO-19 | Release-candidate source journey | One fixture walks intake, Next Action roles, eligibility, Proof JSON, PDF, stranger denial, and non-verdict copy. Passing this gate does not satisfy E2E-01..10 or AND-01..07 |
+
+## Release-candidate source journey
+
+`npm run test:rc-e2e` is source evidence that Android, backend, portal, intake, and Proof still describe the same transaction. It is not a live two-device run, not a sandbox deploy, and not a launch claim.
+
+| ID | Invariant | Required result |
+|---|---|---|
+| RC-S-01 | Order information enters | Labeled receipt fields parse; an unlabeled money token does not invent a title |
+| RC-S-02 | Source is preserved | User-provided correspondence is `USER_PROVIDED_COMMERCE_ARTIFACT` and cannot authoritatively bind an order |
+| RC-S-03 | Participants agree to terms | Seller invites and packs; buyer confirms; `TERMS_LOCKED` does not open a Proof |
+| RC-S-04 | Native capture records evidence | Finalized packing artifact carries file and manifest SHA-256 |
+| RC-S-05 | Interrupted uploads recover | Queue crash recovery retains ciphertext |
+| RC-S-06 | Backend finalizes evidence | `QUARANTINED` is not a finalized manifest artifact |
+| RC-S-07 | Canonical eligibility | `PACKED` without a commerce source and artifact is not eligible; the same transaction with both is |
+| RC-S-08 | Proof is issued | `ppt_` / `PP-` identity is stable for the transaction |
+| RC-S-09 | Same Proof everywhere | PDF title contains the same display ID as canonical JSON |
+| RC-S-10 | Unauthorized retrieval fails | Only `participantIds` may read the Proof; `getPackProofPassport` enforces that |
+| RC-S-11 | No surface declares who is right | Comparisons are never `MATCH`; limitations refuse fraud, fault, and authenticity |
 
 ## Merchant API deployment acceptance
 
@@ -97,7 +117,7 @@ Do not label an APK externally demonstrable if AND-03 through AND-05 have not pa
 
 ## Two-party live-backend journey
 
-Use two ordinary test accounts and preferably two physical devices. Do not use customer evidence.
+Use two ordinary test accounts and preferably two physical devices. Do not use customer evidence. AUTO-19 does not satisfy this section.
 
 | ID | Scenario | Expected result |
 |---|---|---|
