@@ -84,6 +84,8 @@ export type PortalMobileHandoff = {
   channel: 'WEB_PORTAL';
   transactionId: string;
   action: string;
+  issuedAt: string;
+  expiresAt: string;
   captureOnNativeOnly: true;
   universalLink: string;
   appLink: string;

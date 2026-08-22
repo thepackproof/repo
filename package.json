@@ -106,6 +106,7 @@
     "test:runtime-display": "node --experimental-strip-types scripts/test-runtime-display.mjs",
     "test:package-seal-protocol": "node --experimental-strip-types scripts/test-package-seal-protocol.mjs",
     "test:ux-flow": "node --experimental-strip-types scripts/test-ux-flow.mjs",
+    "test:handoff": "node --experimental-strip-types scripts/test-handoff.mjs",
     "portal:dev": "npm --prefix portal run dev",
     "portal:build": "npm --prefix portal run build",
     "test:portal": "npm --prefix portal test",

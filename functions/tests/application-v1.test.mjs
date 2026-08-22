@@ -969,8 +969,12 @@ test('portal workspace authorizes participants, maps DTOs, and refuses browser c
   const handoff = await service.createMobileHandoff(principal, record.id, 'START_PACKING', 'request-portal-1');
   assert.equal(handoff.captureOnNativeOnly, true);
   assert.equal(handoff.channel, 'WEB_PORTAL');
+  assert.equal(handoff.action, 'START_PACKING');
+  assert.equal(handoff.issuedAt, now.toISOString());
+  assert.equal(handoff.expiresAt, new Date(now.getTime() + 15 * 60 * 1000).toISOString());
   assert.match(handoff.universalLink, /\/portal\/open\?transaction=/);
-  assert.match(handoff.appLink, /^packproof:\/\//);
+  assert.equal(/[?&]action=/.test(handoff.universalLink), false);
+  assert.equal(handoff.appLink, `packproof://portal/open?transaction=${record.id}`);
   assert.equal(audits[0].metadata.channel, 'WEB_PORTAL');
   await assert.rejects(
     () => service.createMobileHandoff(principal, record.id, 'BROWSER_UPLOAD', 'request-portal-2'),

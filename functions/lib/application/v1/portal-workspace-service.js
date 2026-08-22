@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.PortalWorkspaceApplicationService = exports.nativeCaptureHandoffActions = void 0;
+exports.PortalWorkspaceApplicationService = exports.PORTAL_MOBILE_HANDOFF_TTL_MS = exports.nativeCaptureHandoffActions = void 0;
 exports.protocolFromEvidence = protocolFromEvidence;
 exports.toPortalTransactionDto = toPortalTransactionDto;
 const authorization_boundary_1 = require("./authorization-boundary");
@@ -18,6 +18,7 @@ exports.nativeCaptureHandoffActions = [
     'RECORD_RETURN_SEAL',
     'RECORD_RETURN_UNBOXING',
 ];
+exports.PORTAL_MOBILE_HANDOFF_TTL_MS = 15 * 60 * 1000;
 const EMPTY_PROTOCOL = {
     hasPackingVideo: false,
     hasSealReference: false,
@@ -81,23 +82,12 @@ function toPortalTransactionDto(record, protocol = EMPTY_PROTOCOL) {
         updatedAt: record.updatedAt.toISOString(),
     };
 }
-function nativePathForAction(action, transactionId) {
-    if (action === 'START_PACKING' || action === 'RECORD_RETURN_PACKING') {
-        return { appPath: `/pack/${encodeURIComponent(transactionId)}`, queryAction: 'pack' };
-    }
-    if (action === 'RECORD_SEAL' || action === 'RECORD_RETURN_SEAL') {
-        return { appPath: `/pack/${encodeURIComponent(transactionId)}?beat=label`, queryAction: 'seal' };
-    }
-    if (action === 'RECORD_ARRIVAL') {
-        return { appPath: `/capture/${encodeURIComponent(transactionId)}?type=DELIVERY_PHOTO&session=task`, queryAction: 'arrival' };
-    }
-    if (action === 'RECORD_UNBOXING') {
-        return { appPath: `/capture/${encodeURIComponent(transactionId)}?type=UNBOXING_VIDEO&session=task`, queryAction: 'unbox' };
-    }
-    if (action === 'RECORD_RETURN_UNBOXING') {
-        return { appPath: `/capture/${encodeURIComponent(transactionId)}?type=RETURN_UNBOXING_VIDEO&session=task`, queryAction: 'return-unbox' };
-    }
-    return { appPath: `/task/${encodeURIComponent(transactionId)}`, queryAction: 'task' };
+function portalOpenLinks(transactionId) {
+    const query = `transaction=${encodeURIComponent(transactionId)}`;
+    return {
+        universalLink: `/portal/open?${query}`,
+        appLink: `packproof://portal/open?${query}`,
+    };
 }
 class PortalWorkspaceApplicationService {
     repository;
@@ -177,18 +167,21 @@ class PortalWorkspaceApplicationService {
             throw new errors_1.ApplicationError('INVALID_ARGUMENT', 'UNSUPPORTED_PORTAL_HANDOFF', 'Browser capture is not available. Continue this step on your phone.');
         }
         const record = await this.requireParticipant(principal, transactionId);
-        const links = nativePathForAction(action, record.id);
+        const issuedAt = this.now();
+        const expiresAt = new Date(issuedAt.getTime() + exports.PORTAL_MOBILE_HANDOFF_TTL_MS);
+        const links = portalOpenLinks(record.id);
         const base = this.verificationBaseUrl();
-        const universalLink = `${base}/portal/open?transaction=${encodeURIComponent(record.id)}&action=${encodeURIComponent(links.queryAction)}`;
         const handoff = {
             object: 'portal_mobile_handoff',
             schemaVersion: 1,
             channel: 'WEB_PORTAL',
             transactionId: record.id,
             action,
+            issuedAt: issuedAt.toISOString(),
+            expiresAt: expiresAt.toISOString(),
             captureOnNativeOnly: true,
-            universalLink,
-            appLink: `packproof:/${links.appPath}`,
+            universalLink: `${base}${links.universalLink}`,
+            appLink: links.appLink,
             storeUrl: 'https://play.google.com/store/apps/details?id=com.packproof.app',
         };
         const event = {

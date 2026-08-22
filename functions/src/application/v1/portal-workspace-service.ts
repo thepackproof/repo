@@ -74,12 +74,16 @@ export const nativeCaptureHandoffActions = [
 
 export type NativeCaptureHandoffAction = (typeof nativeCaptureHandoffActions)[number];
 
+export const PORTAL_MOBILE_HANDOFF_TTL_MS = 15 * 60 * 1000;
+
 export type PortalMobileHandoffDto = {
   object: 'portal_mobile_handoff';
   schemaVersion: 1;
   channel: 'WEB_PORTAL';
   transactionId: string;
   action: NativeCaptureHandoffAction;
+  issuedAt: string;
+  expiresAt: string;
   captureOnNativeOnly: true;
   universalLink: string;
   appLink: string;
@@ -188,23 +192,12 @@ export function toPortalTransactionDto(
   };
 }
 
-function nativePathForAction(action: NativeCaptureHandoffAction, transactionId: string): { appPath: string; queryAction: string } {
-  if (action === 'START_PACKING' || action === 'RECORD_RETURN_PACKING') {
-    return { appPath: `/pack/${encodeURIComponent(transactionId)}`, queryAction: 'pack' };
-  }
-  if (action === 'RECORD_SEAL' || action === 'RECORD_RETURN_SEAL') {
-    return { appPath: `/pack/${encodeURIComponent(transactionId)}?beat=label`, queryAction: 'seal' };
-  }
-  if (action === 'RECORD_ARRIVAL') {
-    return { appPath: `/capture/${encodeURIComponent(transactionId)}?type=DELIVERY_PHOTO&session=task`, queryAction: 'arrival' };
-  }
-  if (action === 'RECORD_UNBOXING') {
-    return { appPath: `/capture/${encodeURIComponent(transactionId)}?type=UNBOXING_VIDEO&session=task`, queryAction: 'unbox' };
-  }
-  if (action === 'RECORD_RETURN_UNBOXING') {
-    return { appPath: `/capture/${encodeURIComponent(transactionId)}?type=RETURN_UNBOXING_VIDEO&session=task`, queryAction: 'return-unbox' };
-  }
-  return { appPath: `/task/${encodeURIComponent(transactionId)}`, queryAction: 'task' };
+function portalOpenLinks(transactionId: string): { universalLink: string; appLink: string } {
+  const query = `transaction=${encodeURIComponent(transactionId)}`;
+  return {
+    universalLink: `/portal/open?${query}`,
+    appLink: `packproof://portal/open?${query}`,
+  };
 }
 
 export class PortalWorkspaceApplicationService {
@@ -293,18 +286,21 @@ export class PortalWorkspaceApplicationService {
       throw new ApplicationError('INVALID_ARGUMENT', 'UNSUPPORTED_PORTAL_HANDOFF', 'Browser capture is not available. Continue this step on your phone.');
     }
     const record = await this.requireParticipant(principal, transactionId);
-    const links = nativePathForAction(action, record.id);
+    const issuedAt = this.now();
+    const expiresAt = new Date(issuedAt.getTime() + PORTAL_MOBILE_HANDOFF_TTL_MS);
+    const links = portalOpenLinks(record.id);
     const base = this.verificationBaseUrl();
-    const universalLink = `${base}/portal/open?transaction=${encodeURIComponent(record.id)}&action=${encodeURIComponent(links.queryAction)}`;
     const handoff: PortalMobileHandoffDto = {
       object: 'portal_mobile_handoff',
       schemaVersion: 1,
       channel: 'WEB_PORTAL',
       transactionId: record.id,
       action,
+      issuedAt: issuedAt.toISOString(),
+      expiresAt: expiresAt.toISOString(),
       captureOnNativeOnly: true,
-      universalLink,
-      appLink: `packproof:/${links.appPath}`,
+      universalLink: `${base}${links.universalLink}`,
+      appLink: links.appLink,
       storeUrl: 'https://play.google.com/store/apps/details?id=com.packproof.app',
     };
     const event: ApplicationEvent = {
