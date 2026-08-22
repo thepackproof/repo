@@ -9,26 +9,26 @@ import { HomeTaskTile, HomeWaitTile } from '@/components/task-session';
 import { transactionUx } from '@/components/transaction-card';
 import { colors } from '@/constants/brand';
 import { useTransactions } from '@/hooks/use-transactions';
-import { useWorkspaceSlices } from '@/hooks/use-workspace-slices';
+import { useWorkspaces } from '@/hooks/use-workspace-slices';
 import { usePendingIntakes } from '@/hooks/use-pending-intakes';
 import { useAuth } from '@/providers/auth-provider';
 import { useOfflineEvidence } from '@/providers/offline-evidence-provider';
 import { queueAttentionMessage } from '@/lib/queue-attention';
 import { formatMoney } from '@/lib/format';
 import { formatIntakeSource } from '@/lib/transaction-intake';
-import { groupHomeInbox, hrefForPrimaryAction, toHref, viewerRole } from '@/lib/ux-flow';
+import { groupHomeInbox, hrefForPrimaryAction, toHref } from '@/lib/ux-flow';
 
 export default function HomeScreen() {
   const router = useRouter();
   const { user, profile } = useAuth();
   const { items } = useTransactions(user?.uid);
-  const slices = useWorkspaceSlices(user?.uid, items);
-  const hydrated = items.filter((item) => slices[item.id]);
+  const workspaces = useWorkspaces(user?.uid, items);
+  const hydrated = items.map((item) => workspaces[item.id]).filter(Boolean);
   const { items: pendingIntakes } = usePendingIntakes(user?.uid);
   const { queuedCount, attentionCount, attentionReason, syncNow, retryAttention } = useOfflineEvidence();
   const [joinOpen, setJoinOpen] = useState(false);
   const [inviteCode, setInviteCode] = useState('');
-  const grouped = user ? groupHomeInbox(hydrated, (item) => transactionUx(item, user.uid, slices[item.id])) : {
+  const grouped = user ? groupHomeInbox(hydrated, (workspace) => transactionUx(workspace)) : {
     needsAttention: [],
     waiting: [],
   };
@@ -90,16 +90,16 @@ export default function HomeScreen() {
                 onCta={() => router.push('/transaction/orders')}
               />
             ))}
-            {grouped.needsAttention.map((item) => {
-              const ux = transactionUx(item, user!.uid, slices[item.id]);
+            {grouped.needsAttention.map((workspace) => {
+              const ux = transactionUx(workspace);
               const href = ux.primaryAction
-                ? hrefForPrimaryAction(ux.primaryAction.kind, item.id)
-                : { pathname: '/task/[id]' as const, params: { id: item.id } };
+                ? hrefForPrimaryAction(ux.primaryAction.kind, workspace.transactionId)
+                : { pathname: '/task/[id]' as const, params: { id: workspace.transactionId } };
               return (
                 <HomeTaskTile
-                  key={item.id}
-                  identity={`${viewerRole(item, user!.uid) === 'SELLER' ? 'Selling' : 'Buying'} · ${formatMoney(item.priceMinor, item.currency)}`}
-                  title={item.title}
+                  key={workspace.transactionId}
+                  identity={`${workspace.viewer.role === 'SELLER' ? 'Selling' : 'Buying'} · ${formatMoney(workspace.display.priceMinor, workspace.display.currency)}`}
+                  title={workspace.display.title}
                   job={ux.inboxSentence}
                   cta={ux.primaryAction?.label ?? null}
                   onPress={() => router.push(toHref(href))}
@@ -109,14 +109,14 @@ export default function HomeScreen() {
             })}
             {grouped.waiting.length ? (
               <View style={styles.waiting}>
-                {grouped.waiting.map((item) => {
-                  const ux = transactionUx(item, user!.uid, slices[item.id]);
+                {grouped.waiting.map((workspace) => {
+                  const ux = transactionUx(workspace);
                   return (
                     <HomeWaitTile
-                      key={item.id}
-                      title={item.title}
+                      key={workspace.transactionId}
+                      title={workspace.display.title}
                       sentence={ux.inboxSentence}
-                      onPress={() => router.push(toHref({ pathname: '/task/[id]', params: { id: item.id } }))}
+                      onPress={() => router.push(toHref({ pathname: '/task/[id]', params: { id: workspace.transactionId } }))}
                     />
                   );
                 })}

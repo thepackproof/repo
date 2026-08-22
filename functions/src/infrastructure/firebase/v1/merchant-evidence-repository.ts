@@ -1,4 +1,4 @@
-import { FieldValue, Timestamp, type DocumentData, type Firestore } from 'firebase-admin/firestore';
+import { FieldValue, Timestamp, type DocumentData, type DocumentReference, type Firestore } from 'firebase-admin/firestore';
 import type { ApplicationEvent } from '../../../application/v1/events';
 import { ApplicationError } from '../../../application/v1/errors';
 import type {
@@ -28,6 +28,7 @@ import {
 import type { MerchantDeliveryDto, MerchantReturnPassportDto, MerchantShipmentDto, MerchantTimelineEventDto } from '../../../application/v1/merchant-evidence-types';
 import type { MerchantPrincipal } from '../../../application/v1/merchant-types';
 import type { PortalWorkspaceRecord, PortalWorkspaceRepository } from '../../../application/v1/portal-workspace-service';
+import type { WorkspaceSummaryRecord } from '../../../application/v1/transaction-workspace-service';
 import { sha256 } from '../../../application/v1/merchant-transaction-service';
 import { asShippingTrackerObservation } from '../../../shipping-tracker';
 import { storedOutboxEvent } from './outbox';
@@ -370,6 +371,22 @@ function toReport(transactionId: string, id: string, data: DocumentData): Stored
 
 export class FirestoreMerchantEvidenceRepository implements MerchantEvidenceRepository {
   constructor(private readonly firestore: Firestore) {}
+
+  workspaceSummaryRef(transactionId: string) {
+    return this.firestore.collection('transactionWorkspaces').doc(transactionId);
+  }
+
+  getAll(refs: DocumentReference[]) {
+    return this.firestore.getAll(...refs);
+  }
+
+  async putWorkspaceSummary(summary: WorkspaceSummaryRecord): Promise<void> {
+    await this.workspaceSummaryRef(summary.transactionId).set({
+      ...summary,
+      object: 'transaction_workspace_summary',
+      schemaVersion: 1,
+    });
+  }
 
   async findAccessibleTransaction(transactionId: string, principal: MerchantPrincipal): Promise<AccessibleMerchantTransaction | null> {
     const snap = await this.firestore.collection('transactions').doc(transactionId).get();
@@ -872,5 +889,20 @@ export class FirestorePortalWorkspaceRepository implements PortalWorkspaceReposi
 
   bindPassportIdentity(transactionId: string, identity: PassportIdentityBinding) {
     return this.evidence.bindPassportIdentity(transactionId, identity);
+  }
+
+  async listWorkspaceSummaries(ids: readonly string[]): Promise<WorkspaceSummaryRecord[]> {
+    if (!ids.length) return [];
+    const refs = ids.slice(0, 50).map((id) => this.evidence.workspaceSummaryRef(id));
+    const snaps = await this.evidence.getAll(refs);
+    return snaps.flatMap((snap) => {
+      if (!snap.exists) return [];
+      const data = snap.data() as WorkspaceSummaryRecord;
+      return data?.transactionId ? [data] : [];
+    });
+  }
+
+  putWorkspaceSummary(summary: WorkspaceSummaryRecord) {
+    return this.evidence.putWorkspaceSummary(summary);
   }
 }

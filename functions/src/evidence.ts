@@ -22,6 +22,9 @@ import {
 import { HUMAN_REVIEW_DISCLAIMER, groupPackageSealObservations, isOutboundPackingEvidenceType } from './package-seal-protocol';
 import { asShippingTrackerObservation, type ShippingTrackerObservation } from './shipping-tracker';
 import { transactionIdSchema } from './validation';
+import { ApplicationError } from './application/v1/errors';
+import { ProofApplicationService } from './application/v1/proof-application-service';
+import { FirestoreMerchantEvidenceRepository } from './infrastructure/firebase/v1/merchant-evidence-repository';
 
 const MAX_EVIDENCE_BYTES = 600 * 1024 * 1024;
 
@@ -431,8 +434,31 @@ export const onEvidenceUploaded = onObjectFinalized({ timeoutSeconds: 540, memor
         ? 'PackProof finished saving the evidence. Open the PackProof to see what happens next.'
         : 'That recording could not be used. Open the PackProof to try this step again.',
     );
+    if (integrityAccepted) {
+      await issueProofIdentityIfEligible(transactionId);
+    }
   }
 });
+
+async function issueProofIdentityIfEligible(transactionId: string): Promise<void> {
+  try {
+    const repository = new FirestoreMerchantEvidenceRepository(db);
+    const transaction = await repository.loadTransaction(transactionId);
+    if (!transaction) return;
+    const artifacts = await repository.listEvidence(transactionId);
+    const commerce = transaction.commerceContextId
+      ? await repository.findCommerceContext(transaction.commerceContextId)
+      : null;
+    await new ProofApplicationService(repository, () => '', () => new Date()).issueProofIdentity({
+      transaction,
+      artifacts,
+      commerce,
+    });
+  } catch (error) {
+    if (error instanceof ApplicationError && error.code === 'PASSPORT_NOT_READY') return;
+    console.warn('issueProofIdentityIfEligible skipped', transactionId, error instanceof Error ? error.message : error);
+  }
+}
 
 function money(minor: number, currency: string): string {
   try {

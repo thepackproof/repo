@@ -287,6 +287,13 @@ function createApiV1App(dependencies) {
         const transaction = await dependencies.transactionService.get(principal, (0, validation_1.parseTransactionId)(req.params.transactionId));
         res.status(200).json({ data: transaction });
     }));
+    merchantRouter.get('/transactions/:transactionId/workspace', asyncHandler(async (req, res) => {
+        res.locals.operation = 'getTransactionWorkspace';
+        const principal = res.locals.principal;
+        await enforcePrincipalRateLimit(dependencies.rateLimiter, principal, ratePolicies.transactionRead, res);
+        const workspace = await dependencies.merchantEvidenceService.getWorkspace(principal, (0, validation_1.parseAccessibleTransactionId)(req.params.transactionId));
+        res.status(200).json({ data: workspace });
+    }));
     merchantRouter.post('/transactions/:transactionId/participant-invitations', asyncHandler(async (req, res) => {
         res.locals.operation = 'createParticipantInvitation';
         requireJson(req);
@@ -379,6 +386,14 @@ function createApiV1App(dependencies) {
         await enforcePrincipalRateLimit(dependencies.rateLimiter, principal, ratePolicies.evidenceRead, res);
         const reviewPackage = await dependencies.merchantEvidenceService.getReviewPackage(principal, (0, validation_1.parseAccessibleTransactionId)(req.params.transactionId));
         res.status(200).json({ data: reviewPackage });
+    }));
+    merchantRouter.post(['/transactions/:transactionId/passport/identity', '/transactions/:transactionId/proof/identity'], asyncHandler(async (req, res) => {
+        res.locals.operation = 'issueProofIdentity';
+        requireJson(req);
+        const principal = res.locals.principal;
+        await enforcePrincipalRateLimit(dependencies.rateLimiter, principal, ratePolicies.evidenceRead, res);
+        const identity = await dependencies.merchantEvidenceService.issueProofIdentity(principal, (0, validation_1.parseAccessibleTransactionId)(req.params.transactionId));
+        res.status(200).json({ data: identity });
     }));
     merchantRouter.get(['/transactions/:transactionId/passport', '/transactions/:transactionId/proof'], asyncHandler(async (req, res) => {
         res.locals.operation = 'getPassport';

@@ -27,6 +27,7 @@ export {
   WORKSPACE_PROJECTION_VERSION,
   evidenceProcessingStateFromPhase,
   projectTransactionWorkspace,
+  sourceTransactionRevisionOf,
 } from './workspace-projection.ts';
 
 export type {
@@ -55,6 +56,7 @@ export type {
 } from './next-action.ts';
 
 export type {
+  TransactionWorkspaceDisplay,
   TransactionWorkspaceProjectionV1,
   WorkspaceEvidenceProcessingState,
   WorkspaceProjectionInput,

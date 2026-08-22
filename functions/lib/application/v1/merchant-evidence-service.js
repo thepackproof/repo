@@ -7,6 +7,7 @@ const errors_1 = require("./errors");
 const merchant_transaction_service_1 = require("./merchant-transaction-service");
 const passport_projection_1 = require("./passport-projection");
 const proof_application_service_1 = require("./proof-application-service");
+const transaction_workspace_service_1 = require("./transaction-workspace-service");
 const passport_1 = require("../../domain/v1/passport");
 const REPORT_URL_TTL_MS = 15 * 60 * 1000;
 const ACTIVE_RETURN_STATUSES = ['REQUESTED', 'AUTHORIZED', 'PACKED', 'IN_TRANSIT', 'RECEIVED_REVIEW', 'DISPUTED'];
@@ -617,7 +618,37 @@ class MerchantEvidenceApplicationService {
             timeline,
             returns,
             commerce,
-        }, reviewQuery);
+        }, reviewQuery, { bindIdentity: false });
+    }
+    async issueProofIdentity(principal, transactionId) {
+        this.authorization.requireScope(principal, 'evidence:read');
+        const transaction = await this.requireAccessible(principal, transactionId);
+        const records = await this.repository.listEvidence(transaction.id);
+        const commerce = transaction.commerceContextId
+            ? await this.repository.findCommerceContext(transaction.commerceContextId)
+            : null;
+        return this.proofService().issueProofIdentity({ transaction, artifacts: records, commerce });
+    }
+    async getWorkspace(principal, transactionId) {
+        this.authorization.requireScope(principal, 'transactions:read');
+        const transaction = await this.requireAccessible(principal, transactionId);
+        const [artifacts, returns, timeline] = await Promise.all([
+            this.repository.listEvidence(transaction.id),
+            this.repository.listReturns(transaction.id),
+            this.repository.listTimeline(transaction.id),
+        ]);
+        const commerce = transaction.commerceContextId
+            ? await this.repository.findCommerceContext(transaction.commerceContextId)
+            : null;
+        return (0, transaction_workspace_service_1.projectWorkspaceFromLoadedFacts)({
+            record: transaction,
+            actorId: transaction.sellerId ?? principal.apiClientId,
+            artifacts,
+            returns,
+            commerce,
+            timeline,
+            generatedAt: this.now().toISOString(),
+        });
     }
     async getPassport(principal, transactionId, reviewQuery = null) {
         this.authorization.requireScope(principal, 'evidence:read');
@@ -637,6 +668,7 @@ class MerchantEvidenceApplicationService {
     }
     async createPassportSnapshot(principal, transactionId, idempotencyKey, requestId, reviewQuery = null) {
         this.authorization.requireScope(principal, 'evidence:read');
+        await this.issueProofIdentity(principal, transactionId);
         const passport = await this.getPassport(principal, transactionId, reviewQuery);
         const execution = await this.idempotency.execute({
             principalId: `${principal.organizationId}:${principal.apiClientId}`,

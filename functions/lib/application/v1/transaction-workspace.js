@@ -1,31 +1,44 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.protocolFromEvidence = protocolFromEvidence;
+exports.evidenceProcessingFromRecords = evidenceProcessingFromRecords;
+exports.inviteSentAtFromTimeline = inviteSentAtFromTimeline;
 exports.toWorkspaceTransaction = toWorkspaceTransaction;
 exports.workspaceProofFromFacts = workspaceProofFromFacts;
 exports.workspaceReturnFromRecords = workspaceReturnFromRecords;
 exports.hydrateWorkspaceSlices = hydrateWorkspaceSlices;
 const package_seal_protocol_1 = require("../../package-seal-protocol");
 const proof_application_service_1 = require("./proof-application-service");
-function protocolFromEvidence(records) {
-    const outbound = records.filter((record) => !record.returnPassportId);
-    const ready = (predicate) => outbound.some((record) => predicate(record) && (0, package_seal_protocol_1.evidenceReadyForWorkflow)({
+function protocolFromEvidence(records, options = {}) {
+    const scoped = options.returnPassportId
+        ? records.filter((record) => record.returnPassportId === options.returnPassportId)
+        : records.filter((record) => !record.returnPassportId);
+    const ready = (predicate) => scoped.some((record) => predicate(record) && (0, package_seal_protocol_1.evidenceReadyForWorkflow)({
         ...record,
         assurance: record.assurance ?? undefined,
     }));
-    const hasPackingVideo = ready((record) => (0, package_seal_protocol_1.isOutboundPackingEvidenceType)(record.type));
-    const hasSealReference = ready((record) => (0, package_seal_protocol_1.isOutboundSealEvidenceType)(record.type));
-    const hasArrivalPhoto = ready((record) => record.type === 'DELIVERY_PHOTO');
-    const hasUnboxingVideo = ready((record) => record.type === 'UNBOXING_VIDEO');
+    const hasPackingVideo = ready((record) => (options.returnPassportId ? record.type === 'RETURN_PACKING_VIDEO' : (0, package_seal_protocol_1.isOutboundPackingEvidenceType)(record.type)));
+    const hasSealReference = ready((record) => (options.returnPassportId ? record.type === 'RETURN_SHIPPING_LABEL' : (0, package_seal_protocol_1.isOutboundSealEvidenceType)(record.type)));
+    const hasArrivalPhoto = options.returnPassportId ? false : ready((record) => record.type === 'DELIVERY_PHOTO');
+    const hasUnboxingVideo = ready((record) => (options.returnPassportId ? record.type === 'RETURN_UNBOXING_VIDEO' : record.type === 'UNBOXING_VIDEO'));
     return {
         hasPackingVideo,
         hasSealReference,
         hasArrivalPhoto,
         hasUnboxingVideo,
         sellerReferenceComplete: hasPackingVideo && hasSealReference,
-        buyerArrivalComplete: hasArrivalPhoto && hasUnboxingVideo,
-        outboundComplete: hasPackingVideo && hasSealReference && hasArrivalPhoto && hasUnboxingVideo,
+        buyerArrivalComplete: options.returnPassportId ? hasUnboxingVideo : hasArrivalPhoto && hasUnboxingVideo,
+        outboundComplete: options.returnPassportId
+            ? hasPackingVideo && hasSealReference && hasUnboxingVideo
+            : hasPackingVideo && hasSealReference && hasArrivalPhoto && hasUnboxingVideo,
     };
+}
+function evidenceProcessingFromRecords(records) {
+    const pending = records.filter((record) => !record.serverFinalized && !record.serverVerified);
+    return pending.length ? { phase: 'SECURING', pendingCount: pending.length } : { phase: null, pendingCount: 0 };
+}
+function inviteSentAtFromTimeline(events) {
+    return events.find((event) => event.type === 'INVITE_CREATED')?.occurredAt ?? null;
 }
 function toWorkspaceTransaction(record) {
     return {

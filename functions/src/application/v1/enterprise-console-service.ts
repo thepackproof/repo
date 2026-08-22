@@ -155,6 +155,7 @@ export class EnterpriseConsoleApplicationService {
   <title>PackProof Enterprise console</title>
 </head>
 <body>
+  <p>Enterprise Pilot — Observe Mode</p>
   <h1>PackProof Enterprise console</h1>
   <p>${escapeHtml(snapshot.limitations[0] ?? '')}</p>
   <table>

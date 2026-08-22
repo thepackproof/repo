@@ -115,6 +115,7 @@ test('Enterprise console shows station health and cannot rewrite finalized evide
   assert.ok(snapshot.limitations.some((item) => item.includes('does not alter finalized evidence')));
   const html = consoleService.renderHtml(snapshot);
   assert.match(html, /PACK-042/);
+  assert.match(html, /Enterprise Pilot — Observe Mode/);
   assert.doesNotMatch(html, /fraud/i);
 
   const camera = station.devices.find((item) => item.kind === 'OVERHEAD_CAMERA');

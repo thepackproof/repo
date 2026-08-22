@@ -224,6 +224,11 @@ class FakePortalWorkspaceService {
     return { object: 'packproof_passport', schemaVersion: 1, identity: { passportId: 'ppt_1', displayId: 'PP-TEST' } };
   }
 
+  async issueProofIdentity(principal, transactionId) {
+    await this.getTransaction(principal, transactionId);
+    return { availability: 'AVAILABLE', passportId: 'ppt_1', displayId: 'PP-TEST', eligibility: { ok: true, failures: [] } };
+  }
+
   async createMobileHandoff(principal, transactionId, action) {
     await this.getTransaction(principal, transactionId);
     return {
@@ -278,6 +283,40 @@ class FakeMerchantEvidenceService {
   async getTimeline(principal, transactionId) {
     this.requireScope(principal, 'transactions:read');
     return this.timeline.get(transactionId) ?? [];
+  }
+
+  async getWorkspace(principal, transactionId) {
+    this.requireScope(principal, 'transactions:read');
+    if (transactionId.endsWith('missing')) throw new ApiError(404, 'TRANSACTION_NOT_FOUND', 'missing');
+    return {
+      schemaVersion: 1,
+      projectionVersion: '1.0.0',
+      transactionId,
+      sourceTransactionRevision: '2026-08-11T12:00:00.000Z',
+      viewer: { actorId: principal.apiClientId, role: 'SELLER' },
+      lifecycle: { transactionStatus: 'CREATED', humanState: 'READY_TO_PACK', consumerState: 'ACTIVE' },
+      protocol: {
+        hasPackingVideo: false, hasSealReference: false, hasArrivalPhoto: false, hasUnboxingVideo: false,
+        sellerReferenceComplete: false, buyerArrivalComplete: false, outboundComplete: false,
+      },
+      evidenceProcessing: { state: 'IDLE', pendingCount: 0 },
+      nextAction: { primaryAction: { kind: 'START_PACKING', label: 'Start packing' } },
+      proof: { availability: 'NOT_ELIGIBLE', passportId: null, displayId: null },
+      returnWorkflow: null,
+      display: { title: 'Review camera', priceMinor: 0, currency: 'USD' },
+      generatedAt: '2026-08-11T12:00:00.000Z',
+    };
+  }
+
+  async issueProofIdentity(principal, transactionId) {
+    this.requireScope(principal, 'evidence:read');
+    if (transactionId.endsWith('missing')) throw new ApiError(404, 'TRANSACTION_NOT_FOUND', 'missing');
+    return {
+      availability: 'AVAILABLE',
+      passportId: `ppt_${'a'.repeat(40)}`,
+      displayId: 'PP-AAAA-AAAA-AAAA',
+      eligibility: { ok: true, failures: [] },
+    };
   }
 
   async getReviewPackage(principal, transactionId) {
@@ -1055,6 +1094,17 @@ describe('PackProof API v1 headless Connect and claims-review routes', () => {
     const proofAlias = await jsonRequest(`/v1/transactions/${transactionId}/proof`, { headers: { authorization: 'Bearer evidence-a' } });
     assert.equal(proofAlias.response.status, 200);
     assert.equal(proofAlias.body.data.identity.passportId, passport.body.data.identity.passportId);
+    const workspace = await jsonRequest(`/v1/transactions/${transactionId}/workspace`, { headers: { authorization: 'Bearer read-a' } });
+    assert.equal(workspace.response.status, 200);
+    assert.equal(workspace.body.data.transactionId, transactionId);
+    assert.equal(workspace.body.data.schemaVersion, 1);
+    const identity = await jsonRequest(`/v1/transactions/${transactionId}/proof/identity`, {
+      method: 'POST',
+      headers: { authorization: 'Bearer evidence-a', 'content-type': 'application/json' },
+      body: JSON.stringify({ schemaVersion: 1 }),
+    });
+    assert.equal(identity.response.status, 200);
+    assert.equal(identity.body.data.availability, 'AVAILABLE');
     const snapshot = await jsonRequest(`/v1/transactions/${transactionId}/passport/snapshots`, {
       method: 'POST',
       headers: { authorization: 'Bearer evidence-a', 'content-type': 'application/json', 'idempotency-key': 'passport-snap-1' },

@@ -9,8 +9,10 @@ import type { MerchantReturnPassportDto, MerchantTimelineEventDto } from './merc
 import { toMerchantEvidenceArtifactDto } from './merchant-evidence-service';
 import { sha256 } from './merchant-transaction-service';
 import type { PackProofPassportV1, PassportCommerceInput, ProofAvailability } from '../../domain/v1/passport';
+import type { TransactionWorkspaceProjectionV1 } from '../../ux/workspace-projection';
 import { ProofApplicationService } from './proof-application-service';
-import { hydrateWorkspaceSlices, protocolFromEvidence } from './transaction-workspace';
+import { TransactionWorkspaceApplicationService, type WorkspaceSummaryRecord } from './transaction-workspace-service';
+import { protocolFromEvidence } from './transaction-workspace';
 
 export type PortalPrincipal = {
   type: 'PORTAL_USER';
@@ -57,6 +59,7 @@ export type PortalTransactionDto = {
     passportId: string | null;
     displayId: string | null;
   };
+  workspace: TransactionWorkspaceProjectionV1;
   lockedAt: string | null;
   createdAt: string;
   updatedAt: string;
@@ -103,6 +106,8 @@ export interface PortalWorkspaceRepository {
   listReturns(transactionId: string): Promise<MerchantReturnPassportDto[]>;
   findCommerceContext(commerceContextId: string): Promise<PassportCommerceInput | null>;
   bindPassportIdentity(transactionId: string, identity: PassportIdentityBinding): Promise<PassportIdentityBinding>;
+  listWorkspaceSummaries?(ids: readonly string[]): Promise<WorkspaceSummaryRecord[]>;
+  putWorkspaceSummary?(summary: WorkspaceSummaryRecord): Promise<void>;
 }
 
 export interface PortalAuditWriter {
@@ -118,12 +123,6 @@ export interface PortalAuditWriter {
   }): Promise<void>;
 }
 
-const NOT_ELIGIBLE_PROOF = {
-  availability: 'NOT_ELIGIBLE' as const,
-  passportId: null,
-  displayId: null,
-};
-
 export { protocolFromEvidence };
 
 function notFound(): ApplicationError {
@@ -136,8 +135,7 @@ function forbidden(): ApplicationError {
 
 export function toPortalTransactionDto(
   record: PortalWorkspaceRecord,
-  protocol: PortalProtocolPresence,
-  proof: PortalTransactionDto['proof'] = NOT_ELIGIBLE_PROOF,
+  workspace: TransactionWorkspaceProjectionV1,
 ): PortalTransactionDto {
   return {
     id: record.id,
@@ -160,11 +158,12 @@ export function toPortalTransactionDto(
     completedBy: record.completedBy,
     passportId: record.passportId,
     passportDisplayId: record.passportDisplayId,
-    proof,
+    proof: workspace.proof,
+    workspace,
     source: record.sourceType || record.sourcePlatform || record.externalOrderId
       ? { type: record.sourceType, platform: record.sourcePlatform, externalOrderId: record.externalOrderId }
       : null,
-    protocol,
+    protocol: workspace.protocol,
     lockedAt: record.lockedAt?.toISOString() ?? null,
     createdAt: record.createdAt.toISOString(),
     updatedAt: record.updatedAt.toISOString(),
@@ -191,20 +190,37 @@ function nativePathForAction(action: NativeCaptureHandoffAction, transactionId: 
 }
 
 export class PortalWorkspaceApplicationService {
+  private readonly workspaces: TransactionWorkspaceApplicationService;
+
   constructor(
     private readonly repository: PortalWorkspaceRepository,
     private readonly audit: PortalAuditWriter,
     private readonly linkBaseUrl: () => string,
     private readonly now: () => Date = () => new Date(),
-  ) {}
+  ) {
+    this.workspaces = new TransactionWorkspaceApplicationService(repository, now);
+  }
 
   async session(principal: PortalPrincipal): Promise<{ actorId: string; channel: 'WEB_PORTAL' }> {
     return { actorId: principal.actorId, channel: 'WEB_PORTAL' };
   }
 
+  async listWorkspaces(actorId: string, limit = 50): Promise<TransactionWorkspaceProjectionV1[]> {
+    return this.workspaces.listWorkspaces(actorId, { limit });
+  }
+
+  async getWorkspace(actorId: string, transactionId: string): Promise<TransactionWorkspaceProjectionV1> {
+    return this.workspaces.getWorkspace(actorId, transactionId);
+  }
+
   async listHydratedForActor(actorId: string, limit = 50): Promise<PortalTransactionDto[]> {
     const records = await this.repository.listForParticipant(actorId, Math.min(Math.max(limit, 1), 50));
-    return Promise.all(records.map((record) => this.toHydratedDto(record)));
+    const workspaces = await this.workspaces.listWorkspaces(actorId, { records });
+    const byId = new Map(workspaces.map((workspace) => [workspace.transactionId, workspace]));
+    return records.flatMap((record) => {
+      const workspace = byId.get(record.id);
+      return workspace ? [toPortalTransactionDto(record, workspace)] : [];
+    });
   }
 
   async listTransactions(principal: PortalPrincipal, limit = 50): Promise<PortalTransactionDto[]> {
@@ -216,7 +232,8 @@ export class PortalWorkspaceApplicationService {
     if (!record || !record.participantIds.includes(actorId)) {
       throw notFound();
     }
-    return this.toHydratedDto(record);
+    const workspace = await this.workspaces.getWorkspace(actorId, transactionId);
+    return toPortalTransactionDto(record, workspace);
   }
 
   async getTransaction(principal: PortalPrincipal, transactionId: string): Promise<PortalTransactionDto> {
@@ -250,6 +267,20 @@ export class PortalWorkspaceApplicationService {
       artifacts: records,
       timeline,
       returns,
+      commerce,
+    }, null, { bindIdentity: false });
+  }
+
+  async issueProofIdentity(principal: PortalPrincipal, transactionId: string) {
+    const transaction = await this.requireParticipant(principal, transactionId);
+    const records = await this.repository.listEvidence(transaction.id);
+    const commerce = transaction.commerceContextId
+      ? await this.repository.findCommerceContext(transaction.commerceContextId)
+      : null;
+    const proofs = new ProofApplicationService(this.repository, () => this.verificationBaseUrl(), this.now);
+    return proofs.issueProofIdentity({
+      transaction,
+      artifacts: records,
       commerce,
     });
   }
@@ -301,16 +332,6 @@ export class PortalWorkspaceApplicationService {
       metadata: { apiVersion: 'v1', channel: 'WEB_PORTAL', action },
     }).catch(() => undefined);
     return handoff;
-  }
-
-  private async toHydratedDto(record: PortalWorkspaceRecord): Promise<PortalTransactionDto> {
-    const [evidence, returns, commerce] = await Promise.all([
-      this.repository.listEvidence(record.id),
-      this.repository.listReturns(record.id),
-      record.commerceContextId ? this.repository.findCommerceContext(record.commerceContextId) : Promise.resolve(null),
-    ]);
-    const slices = hydrateWorkspaceSlices(record, evidence, returns, commerce);
-    return toPortalTransactionDto(record, slices.protocol, slices.proof);
   }
 
   private verificationBaseUrl(): string {

@@ -80,6 +80,7 @@ service cloud.firestore {
     match /organizations/{organizationId} { allow read, write: if false; }
     match /apiIdempotencyRecords/{recordId} { allow read, write: if false; }
     match /apiRateLimits/{limitId} { allow read, write: if false; }
+    match /transactionWorkspaces/{transactionId} { allow read, write: if false; }
     match /apiAuditStreams/{streamId} { allow read, write: if false; }
     match /webDeletionTokens/{tokenId} { allow read, write: if false; }
     match /deletionRateLimits/{limitId} { allow read, write: if false; }

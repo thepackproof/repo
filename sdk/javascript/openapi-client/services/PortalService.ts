@@ -4,12 +4,14 @@
 /* eslint-disable */
 import type { CreatePortalMobileHandoffRequest } from '../models/CreatePortalMobileHandoffRequest';
 import type { EvidenceListResponse } from '../models/EvidenceListResponse';
+import type { IssueProofIdentityRequest } from '../models/IssueProofIdentityRequest';
 import type { PassportResponse } from '../models/PassportResponse';
 import type { PortalHomeResponse } from '../models/PortalHomeResponse';
 import type { PortalMobileHandoffResponse } from '../models/PortalMobileHandoffResponse';
 import type { PortalSessionResponse } from '../models/PortalSessionResponse';
 import type { PortalTransactionListResponse } from '../models/PortalTransactionListResponse';
 import type { PortalTransactionResponse } from '../models/PortalTransactionResponse';
+import type { ProofIdentityResponse } from '../models/ProofIdentityResponse';
 import type { TimelineResponse } from '../models/TimelineResponse';
 import type { CancelablePromise } from '../core/CancelablePromise';
 import type { BaseHttpRequest } from '../core/BaseHttpRequest';
@@ -183,7 +185,7 @@ export class PortalService {
     }
     /**
      * Canonical JSON Proof
-     * Alias of GET /v1/portal/transactions/{transactionId}/passport. Returns the live Proof projection and binds a stable Proof identity the first time eligibility passes. List and workspace hydration do not bind.
+     * Alias of GET /v1/portal/transactions/{transactionId}/passport. GET is read-only and never binds identity. List and workspace hydration do not bind.
      * @returns PassportResponse The live Proof aggregation. It does not authenticate items, prove custody, decide fraud or fault, or guarantee a dispute outcome.
      * @throws ApiError
      */
@@ -201,6 +203,72 @@ export class PortalService {
             path: {
                 'transactionId': transactionId,
             },
+            errors: {
+                401: `Missing or invalid authentication.`,
+                404: `The resource was not found in the authenticated organization.`,
+                409: `The request conflicts with idempotency or resource state.`,
+                429: `The operation rate limit was exceeded.`,
+                500: `An internal failure occurred without exposing implementation details.`,
+            },
+        });
+    }
+    /**
+     * Issue or replay the Proof identity
+     * Portal alias of Proof identity issuance. GET Proof remains read-only.
+     * @returns ProofIdentityResponse The bound Proof identity. One ppt_ resource and one PP- display identity exist for the transaction.
+     * @throws ApiError
+     */
+    public issuePortalPassportIdentity({
+        transactionId,
+        requestBody,
+    }: {
+        /**
+         * A merchant transaction identifier or an accepted Connect-origin transaction identifier. Possession of the identifier does not grant access.
+         */
+        transactionId: string,
+        requestBody: IssueProofIdentityRequest,
+    }): CancelablePromise<ProofIdentityResponse> {
+        return this.httpRequest.request({
+            method: 'POST',
+            url: '/v1/portal/transactions/{transactionId}/passport/identity',
+            path: {
+                'transactionId': transactionId,
+            },
+            body: requestBody,
+            mediaType: 'application/json',
+            errors: {
+                401: `Missing or invalid authentication.`,
+                404: `The resource was not found in the authenticated organization.`,
+                409: `The request conflicts with idempotency or resource state.`,
+                429: `The operation rate limit was exceeded.`,
+                500: `An internal failure occurred without exposing implementation details.`,
+            },
+        });
+    }
+    /**
+     * Issue or replay the Proof identity
+     * Preferred portal alias of POST /v1/portal/transactions/{transactionId}/passport/identity.
+     * @returns ProofIdentityResponse The bound Proof identity. One ppt_ resource and one PP- display identity exist for the transaction.
+     * @throws ApiError
+     */
+    public issuePortalProofIdentity({
+        transactionId,
+        requestBody,
+    }: {
+        /**
+         * A merchant transaction identifier or an accepted Connect-origin transaction identifier. Possession of the identifier does not grant access.
+         */
+        transactionId: string,
+        requestBody: IssueProofIdentityRequest,
+    }): CancelablePromise<ProofIdentityResponse> {
+        return this.httpRequest.request({
+            method: 'POST',
+            url: '/v1/portal/transactions/{transactionId}/proof/identity',
+            path: {
+                'transactionId': transactionId,
+            },
+            body: requestBody,
+            mediaType: 'application/json',
             errors: {
                 401: `Missing or invalid authentication.`,
                 404: `The resource was not found in the authenticated organization.`,

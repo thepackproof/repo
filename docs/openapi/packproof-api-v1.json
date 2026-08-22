@@ -199,11 +199,55 @@
         "operationId": "getPortalProof",
         "tags": ["Portal", "Proofs"],
         "summary": "Canonical JSON Proof",
-        "description": "Alias of GET /v1/portal/transactions/{transactionId}/passport. Returns the live Proof projection and binds a stable Proof identity the first time eligibility passes. List and workspace hydration do not bind.",
+        "description": "Alias of GET /v1/portal/transactions/{transactionId}/passport. GET is read-only and never binds identity. List and workspace hydration do not bind.",
         "security": [{ "firebaseUserBearer": [], "firebaseAppCheck": [] }],
         "parameters": [{ "$ref": "#/components/parameters/AccessibleTransactionId" }],
         "responses": {
           "200": { "$ref": "#/components/responses/PassportRetrieved" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/v1/portal/transactions/{transactionId}/passport/identity": {
+      "post": {
+        "operationId": "issuePortalPassportIdentity",
+        "tags": ["Portal"],
+        "summary": "Issue or replay the Proof identity",
+        "description": "Portal alias of Proof identity issuance. GET Proof remains read-only.",
+        "security": [{ "firebaseUserBearer": [], "firebaseAppCheck": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/AccessibleTransactionId" }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/IssueProofIdentityRequest" } } }
+        },
+        "responses": {
+          "200": { "$ref": "#/components/responses/ProofIdentityIssued" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/v1/portal/transactions/{transactionId}/proof/identity": {
+      "post": {
+        "operationId": "issuePortalProofIdentity",
+        "tags": ["Portal", "Proofs"],
+        "summary": "Issue or replay the Proof identity",
+        "description": "Preferred portal alias of POST /v1/portal/transactions/{transactionId}/passport/identity.",
+        "security": [{ "firebaseUserBearer": [], "firebaseAppCheck": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/AccessibleTransactionId" }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/IssueProofIdentityRequest" } } }
+        },
+        "responses": {
+          "200": { "$ref": "#/components/responses/ProofIdentityIssued" },
           "401": { "$ref": "#/components/responses/Unauthorized" },
           "404": { "$ref": "#/components/responses/NotFound" },
           "409": { "$ref": "#/components/responses/Conflict" },
@@ -376,6 +420,27 @@
             },
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/GetTransactionResponse" } } }
           },
+          "400": { "$ref": "#/components/responses/InvalidRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/v1/transactions/{transactionId}/workspace": {
+      "get": {
+        "operationId": "getTransactionWorkspace",
+        "tags": ["Transactions"],
+        "summary": "Retrieve the canonical transaction workspace",
+        "description": "Returns TransactionWorkspaceProjectionV1 for the authenticated merchant viewer. Next action, protocol, processing, return state, and Proof availability come from this projection. Clients render it; they do not decide what comes next.",
+        "security": [{ "merchantApiKey": [] }],
+        "parameters": [
+          { "$ref": "#/components/parameters/AccessibleTransactionId" }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/WorkspaceRetrieved" },
           "400": { "$ref": "#/components/responses/InvalidRequest" },
           "401": { "$ref": "#/components/responses/Unauthorized" },
           "403": { "$ref": "#/components/responses/Forbidden" },
@@ -626,7 +691,7 @@
         "operationId": "getPassport",
         "tags": ["Passports"],
         "summary": "Retrieve the live Proof",
-        "description": "Returns the canonical Proof aggregation for a transaction and binds a stable Proof identity the first time eligibility passes. Proof is the product name for the Passport projection. The Proof inventories source-attributed records and integrity bindings. It does not authenticate items, prove custody, decide fraud or fault, or guarantee a dispute outcome. Absence of evidence does not make a Proof inauthentic. Returns 409 PASSPORT_NOT_READY when eligibility fails. GET /v1/transactions/{transactionId}/proof is the preferred path alias.",
+        "description": "Returns the canonical Proof aggregation for a transaction. GET is read-only and never binds identity. Eligible transactions without a bound identity return 409 PROOF_IDENTITY_NOT_BOUND until POST /proof/identity or server finalization issues one. Proof is the product name for the Passport projection. It does not authenticate items, prove custody, decide fraud or fault, or guarantee a dispute outcome. Absence of evidence does not make a Proof inauthentic. Returns 409 PASSPORT_NOT_READY when eligibility fails.",
         "security": [{ "merchantApiKey": [] }],
         "parameters": [
           { "$ref": "#/components/parameters/AccessibleTransactionId" },
@@ -640,6 +705,34 @@
           "403": { "$ref": "#/components/responses/Forbidden" },
           "404": { "$ref": "#/components/responses/NotFound" },
           "409": { "$ref": "#/components/responses/Conflict" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/v1/transactions/{transactionId}/passport/identity": {
+      "post": {
+        "operationId": "issuePassportIdentity",
+        "tags": ["Passports"],
+        "summary": "Issue or replay the Proof identity",
+        "description": "Atomically binds one ppt_ resource identity and one PP- display identity. Idempotent under concurrent Android, Portal, and API first access. GET Proof remains read-only.",
+        "security": [{ "merchantApiKey": [] }],
+        "parameters": [
+          { "$ref": "#/components/parameters/AccessibleTransactionId" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/IssueProofIdentityRequest" } } }
+        },
+        "responses": {
+          "200": { "$ref": "#/components/responses/ProofIdentityIssued" },
+          "400": { "$ref": "#/components/responses/InvalidRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "413": { "$ref": "#/components/responses/RequestTooLarge" },
+          "415": { "$ref": "#/components/responses/UnsupportedMediaType" },
           "429": { "$ref": "#/components/responses/RateLimited" },
           "500": { "$ref": "#/components/responses/InternalError" }
         }
@@ -756,7 +849,7 @@
         "operationId": "getProof",
         "tags": ["Proofs"],
         "summary": "Retrieve the live Proof",
-        "description": "Preferred alias of GET /v1/transactions/{transactionId}/passport. Returns the canonical Proof aggregation and binds a stable Proof identity the first time eligibility passes. Workspace list hydration does not bind.",
+        "description": "Preferred alias of GET /v1/transactions/{transactionId}/passport. GET is read-only and never binds identity. Workspace list hydration does not bind.",
         "security": [{ "merchantApiKey": [] }],
         "parameters": [
           { "$ref": "#/components/parameters/AccessibleTransactionId" },
@@ -770,6 +863,34 @@
           "403": { "$ref": "#/components/responses/Forbidden" },
           "404": { "$ref": "#/components/responses/NotFound" },
           "409": { "$ref": "#/components/responses/Conflict" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/v1/transactions/{transactionId}/proof/identity": {
+      "post": {
+        "operationId": "issueProofIdentity",
+        "tags": ["Proofs"],
+        "summary": "Issue or replay the Proof identity",
+        "description": "Preferred alias of POST /v1/transactions/{transactionId}/passport/identity.",
+        "security": [{ "merchantApiKey": [] }],
+        "parameters": [
+          { "$ref": "#/components/parameters/AccessibleTransactionId" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/IssueProofIdentityRequest" } } }
+        },
+        "responses": {
+          "200": { "$ref": "#/components/responses/ProofIdentityIssued" },
+          "400": { "$ref": "#/components/responses/InvalidRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "413": { "$ref": "#/components/responses/RequestTooLarge" },
+          "415": { "$ref": "#/components/responses/UnsupportedMediaType" },
           "429": { "$ref": "#/components/responses/RateLimited" },
           "500": { "$ref": "#/components/responses/InternalError" }
         }
@@ -2632,6 +2753,84 @@
         "required": ["data"],
         "properties": { "data": { "$ref": "#/components/schemas/ReviewPackage" } }
       },
+      "IssueProofIdentityRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["schemaVersion"],
+        "properties": { "schemaVersion": { "const": 1 } }
+      },
+      "ProofIdentity": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["availability", "passportId", "displayId"],
+        "properties": {
+          "availability": { "type": "string", "enum": ["AVAILABLE"] },
+          "passportId": { "type": ["string", "null"] },
+          "displayId": { "type": ["string", "null"] }
+        }
+      },
+      "ProofIdentityResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["data"],
+        "properties": { "data": { "$ref": "#/components/schemas/ProofIdentity" } }
+      },
+      "TransactionWorkspace": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "schemaVersion",
+          "projectionVersion",
+          "transactionId",
+          "sourceTransactionRevision",
+          "viewer",
+          "lifecycle",
+          "protocol",
+          "evidenceProcessing",
+          "nextAction",
+          "proof",
+          "returnWorkflow",
+          "generatedAt"
+        ],
+        "properties": {
+          "schemaVersion": { "const": 1 },
+          "projectionVersion": { "type": "string" },
+          "transactionId": { "type": "string" },
+          "sourceTransactionRevision": { "type": "string" },
+          "viewer": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["actorId", "role"],
+            "properties": {
+              "actorId": { "type": "string" },
+              "role": { "type": "string", "enum": ["SELLER", "BUYER"] }
+            }
+          },
+          "lifecycle": { "type": "object", "additionalProperties": true },
+          "protocol": { "type": "object", "additionalProperties": true },
+          "evidenceProcessing": { "type": "object", "additionalProperties": true },
+          "nextAction": { "type": "object", "additionalProperties": true },
+          "proof": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["availability", "passportId", "displayId"],
+            "properties": {
+              "availability": { "type": "string", "enum": ["NOT_ELIGIBLE", "ELIGIBLE_NOT_ISSUED", "AVAILABLE"] },
+              "passportId": { "type": ["string", "null"] },
+              "displayId": { "type": ["string", "null"] }
+            }
+          },
+          "returnWorkflow": { "type": ["object", "null"], "additionalProperties": true },
+          "display": { "type": "object", "additionalProperties": true },
+          "generatedAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "TransactionWorkspaceResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["data"],
+        "properties": { "data": { "$ref": "#/components/schemas/TransactionWorkspace" } }
+      },
       "EvidenceReportResponse": {
         "type": "object",
         "additionalProperties": false,
@@ -2925,6 +3124,16 @@
         "description": "The public audit timeline.",
         "headers": { "X-Request-Id": { "$ref": "#/components/headers/XRequestId" }, "RateLimit-Limit": { "$ref": "#/components/headers/RateLimitLimit" }, "RateLimit-Remaining": { "$ref": "#/components/headers/RateLimitRemaining" }, "RateLimit-Reset": { "$ref": "#/components/headers/RateLimitReset" } },
         "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TimelineResponse" } } }
+      },
+      "WorkspaceRetrieved": {
+        "description": "The canonical transaction workspace. Clients render it; they do not invent the next action.",
+        "headers": { "X-Request-Id": { "$ref": "#/components/headers/XRequestId" }, "RateLimit-Limit": { "$ref": "#/components/headers/RateLimitLimit" }, "RateLimit-Remaining": { "$ref": "#/components/headers/RateLimitRemaining" }, "RateLimit-Reset": { "$ref": "#/components/headers/RateLimitReset" } },
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TransactionWorkspaceResponse" } } }
+      },
+      "ProofIdentityIssued": {
+        "description": "The bound Proof identity. One ppt_ resource and one PP- display identity exist for the transaction.",
+        "headers": { "X-Request-Id": { "$ref": "#/components/headers/XRequestId" }, "RateLimit-Limit": { "$ref": "#/components/headers/RateLimitLimit" }, "RateLimit-Remaining": { "$ref": "#/components/headers/RateLimitRemaining" }, "RateLimit-Reset": { "$ref": "#/components/headers/RateLimitReset" } },
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ProofIdentityResponse" } } }
       },
       "ReviewPackageRetrieved": {
         "description": "The claims-review evidence package. It organizes documentation; it does not decide a claim.",

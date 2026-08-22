@@ -28,10 +28,17 @@ export type WorkspaceEvidenceProcessingState =
   | 'FINALIZING'
   | 'ATTENTION_REQUIRED';
 
+export type TransactionWorkspaceDisplay = {
+  title: string;
+  priceMinor: number;
+  currency: string;
+};
+
 export type TransactionWorkspaceProjectionV1 = {
   schemaVersion: 1;
   projectionVersion: typeof WORKSPACE_PROJECTION_VERSION;
   transactionId: string;
+  sourceTransactionRevision: string;
   viewer: {
     actorId: string;
     role: ParticipantRole;
@@ -56,6 +63,7 @@ export type TransactionWorkspaceProjectionV1 = {
     returnPassportId: string;
     status: string;
   } | null;
+  display: TransactionWorkspaceDisplay;
   generatedAt: string;
 };
 
@@ -79,6 +87,17 @@ export type WorkspaceProjectionInput = {
   pendingCount?: number;
   generatedAt: string;
 };
+
+export function sourceTransactionRevisionOf(value: PackProofTransaction['updatedAt']): string {
+  if (typeof value === 'string') return value;
+  if (value && typeof value === 'object' && typeof value.toDate === 'function') {
+    return value.toDate().toISOString();
+  }
+  if (value && typeof value === 'object' && typeof value.seconds === 'number') {
+    return new Date(value.seconds * 1000).toISOString();
+  }
+  return '';
+}
 
 export function evidenceProcessingStateFromPhase(
   phase: EvidenceProcessingPhase | null | undefined,
@@ -106,6 +125,7 @@ export function projectTransactionWorkspace(input: WorkspaceProjectionInput): Tr
     schemaVersion: 1,
     projectionVersion: WORKSPACE_PROJECTION_VERSION,
     transactionId: input.transaction.id,
+    sourceTransactionRevision: sourceTransactionRevisionOf(input.transaction.updatedAt),
     viewer: {
       actorId: input.viewerId,
       role: viewerRole(input.transaction, input.viewerId),
@@ -132,6 +152,11 @@ export function projectTransactionWorkspace(input: WorkspaceProjectionInput): Tr
     returnWorkflow: input.returnPassport && !['COMPLETED', 'CANCELLED'].includes(input.returnPassport.status)
       ? { returnPassportId: input.returnPassport.id, status: input.returnPassport.status }
       : null,
+    display: {
+      title: input.transaction.title,
+      priceMinor: input.transaction.priceMinor,
+      currency: input.transaction.currency,
+    },
     generatedAt: input.generatedAt,
   };
 }

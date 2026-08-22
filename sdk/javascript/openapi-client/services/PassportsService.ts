@@ -4,16 +4,18 @@
 /* eslint-disable */
 import type { CreatePassportExportRequest } from '../models/CreatePassportExportRequest';
 import type { CreatePassportSnapshotRequest } from '../models/CreatePassportSnapshotRequest';
+import type { IssueProofIdentityRequest } from '../models/IssueProofIdentityRequest';
 import type { PassportExportResponse } from '../models/PassportExportResponse';
 import type { PassportResponse } from '../models/PassportResponse';
 import type { PassportSnapshotResponse } from '../models/PassportSnapshotResponse';
+import type { ProofIdentityResponse } from '../models/ProofIdentityResponse';
 import type { CancelablePromise } from '../core/CancelablePromise';
 import type { BaseHttpRequest } from '../core/BaseHttpRequest';
 export class PassportsService {
     constructor(public readonly httpRequest: BaseHttpRequest) {}
     /**
      * Retrieve the live Proof
-     * Returns the canonical Proof aggregation for a transaction and binds a stable Proof identity the first time eligibility passes. Proof is the product name for the Passport projection. The Proof inventories source-attributed records and integrity bindings. It does not authenticate items, prove custody, decide fraud or fault, or guarantee a dispute outcome. Absence of evidence does not make a Proof inauthentic. Returns 409 PASSPORT_NOT_READY when eligibility fails. GET /v1/transactions/{transactionId}/proof is the preferred path alias.
+     * Returns the canonical Proof aggregation for a transaction. GET is read-only and never binds identity. Eligible transactions without a bound identity return 409 PROOF_IDENTITY_NOT_BOUND until POST /proof/identity or server finalization issues one. Proof is the product name for the Passport projection. It does not authenticate items, prove custody, decide fraud or fault, or guarantee a dispute outcome. Absence of evidence does not make a Proof inauthentic. Returns 409 PASSPORT_NOT_READY when eligibility fails.
      * @returns PassportResponse The live Proof aggregation. It does not authenticate items, prove custody, decide fraud or fault, or guarantee a dispute outcome.
      * @throws ApiError
      */
@@ -51,6 +53,43 @@ export class PassportsService {
                 403: `Authenticated but not authorized.`,
                 404: `The resource was not found in the authenticated organization.`,
                 409: `The request conflicts with idempotency or resource state.`,
+                429: `The operation rate limit was exceeded.`,
+                500: `An internal failure occurred without exposing implementation details.`,
+            },
+        });
+    }
+    /**
+     * Issue or replay the Proof identity
+     * Atomically binds one ppt_ resource identity and one PP- display identity. Idempotent under concurrent Android, Portal, and API first access. GET Proof remains read-only.
+     * @returns ProofIdentityResponse The bound Proof identity. One ppt_ resource and one PP- display identity exist for the transaction.
+     * @throws ApiError
+     */
+    public issuePassportIdentity({
+        transactionId,
+        requestBody,
+    }: {
+        /**
+         * A merchant transaction identifier or an accepted Connect-origin transaction identifier. Possession of the identifier does not grant access.
+         */
+        transactionId: string,
+        requestBody: IssueProofIdentityRequest,
+    }): CancelablePromise<ProofIdentityResponse> {
+        return this.httpRequest.request({
+            method: 'POST',
+            url: '/v1/transactions/{transactionId}/passport/identity',
+            path: {
+                'transactionId': transactionId,
+            },
+            body: requestBody,
+            mediaType: 'application/json',
+            errors: {
+                400: `Invalid request.`,
+                401: `Missing or invalid authentication.`,
+                403: `Authenticated but not authorized.`,
+                404: `The resource was not found in the authenticated organization.`,
+                409: `The request conflicts with idempotency or resource state.`,
+                413: `The request body exceeded 256 KiB.`,
+                415: `The request Content-Type is unsupported.`,
                 429: `The operation rate limit was exceeded.`,
                 500: `An internal failure occurred without exposing implementation details.`,
             },

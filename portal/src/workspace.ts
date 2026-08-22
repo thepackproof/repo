@@ -1,12 +1,6 @@
-import { projectTransactionWorkspace, type TransactionWorkspaceProjectionV1 } from '@packproof/ux';
-import { toUxTransaction, type PortalTransaction } from './api';
+import type { TransactionWorkspaceProjectionV1 } from '@packproof/ux';
+import type { PortalTransaction } from './api';
 
-export function workspaceFromPortal(item: PortalTransaction, viewerId: string): TransactionWorkspaceProjectionV1 {
-  return projectTransactionWorkspace({
-    transaction: toUxTransaction(item),
-    viewerId,
-    protocol: item.protocol,
-    proof: item.proof,
-    generatedAt: item.updatedAt,
-  });
+export function workspaceOf(item: PortalTransaction): TransactionWorkspaceProjectionV1 {
+  return item.workspace;
 }

@@ -1,11 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { listTransactions, type PortalTransaction } from '../api';
-import { workspaceFromPortal } from '../workspace';
-import { useAuth } from '../auth';
+import { workspaceOf } from '../workspace';
 
 export function ActivityPage() {
-  const { user } = useAuth();
   const [items, setItems] = useState<PortalTransaction[]>([]);
   const [error, setError] = useState<string | null>(null);
 
@@ -25,7 +23,7 @@ export function ActivityPage() {
       {error ? <p className="error">{error}</p> : null}
       <section className="stack">
         {items.map((item) => {
-          const next = user ? workspaceFromPortal(item, user.uid).nextAction : null;
+          const next = workspaceOf(item).nextAction;
           return (
             <Link key={item.id} className="card" to={`/packproofs/${item.id}/activity`} style={{ textDecoration: 'none', color: 'inherit' }}>
               <h2>{item.title}</h2>

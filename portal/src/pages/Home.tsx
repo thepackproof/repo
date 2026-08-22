@@ -25,7 +25,7 @@ export function HomePage() {
     <>
       <p className="eyebrow">Home</p>
       <h1>What needs you?</h1>
-      <p className="lede">Home is a task queue, not an analytics dashboard. Capture is an operation on your phone.</p>
+      <p className="lede">Home is a task queue. One next action per PackProof. Capture happens on your phone; the browser stays the workspace.</p>
       {error ? <p className="error">{error}</p> : null}
       <HomeQueue items={items} viewerId={viewerId} />
     </>

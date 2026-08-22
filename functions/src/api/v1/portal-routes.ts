@@ -122,6 +122,15 @@ export function createPortalRouter(dependencies: {
     res.status(200).json({ data: passport });
   }));
 
+  router.post(['/transactions/:transactionId/passport/identity', '/transactions/:transactionId/proof/identity'], asyncHandler(async (req, res) => {
+    res.locals.operation = 'issuePortalProofIdentity';
+    requireJson(req);
+    const principal = res.locals.portalPrincipal!;
+    await enforceRateLimitForKey(dependencies.rateLimiter, `portal:${principal.actorId}`, ratePolicies.handoff, res);
+    const identity = await dependencies.workspace.issueProofIdentity(principal, parseAccessibleTransactionId(req.params.transactionId));
+    res.status(200).json({ data: identity });
+  }));
+
   router.post(
     '/transactions/:transactionId/mobile-handoff',
     express.json({ limit: '256kb', strict: true, type: 'application/json' }),

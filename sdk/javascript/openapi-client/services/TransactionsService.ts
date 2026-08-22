@@ -8,6 +8,7 @@ import type { GetTransactionResponse } from '../models/GetTransactionResponse';
 import type { ListTransactionsResponse } from '../models/ListTransactionsResponse';
 import type { TimelineResponse } from '../models/TimelineResponse';
 import type { TransactionStatus } from '../models/TransactionStatus';
+import type { TransactionWorkspaceResponse } from '../models/TransactionWorkspaceResponse';
 import type { CancelablePromise } from '../core/CancelablePromise';
 import type { BaseHttpRequest } from '../core/BaseHttpRequest';
 export class TransactionsService {
@@ -102,6 +103,36 @@ export class TransactionsService {
         return this.httpRequest.request({
             method: 'GET',
             url: '/v1/transactions/{transactionId}',
+            path: {
+                'transactionId': transactionId,
+            },
+            errors: {
+                400: `Invalid request.`,
+                401: `Missing or invalid authentication.`,
+                403: `Authenticated but not authorized.`,
+                404: `The resource was not found in the authenticated organization.`,
+                429: `The operation rate limit was exceeded.`,
+                500: `An internal failure occurred without exposing implementation details.`,
+            },
+        });
+    }
+    /**
+     * Retrieve the canonical transaction workspace
+     * Returns TransactionWorkspaceProjectionV1 for the authenticated merchant viewer. Next action, protocol, processing, return state, and Proof availability come from this projection. Clients render it; they do not decide what comes next.
+     * @returns TransactionWorkspaceResponse The canonical transaction workspace. Clients render it; they do not invent the next action.
+     * @throws ApiError
+     */
+    public getTransactionWorkspace({
+        transactionId,
+    }: {
+        /**
+         * A merchant transaction identifier or an accepted Connect-origin transaction identifier. Possession of the identifier does not grant access.
+         */
+        transactionId: string,
+    }): CancelablePromise<TransactionWorkspaceResponse> {
+        return this.httpRequest.request({
+            method: 'GET',
+            url: '/v1/transactions/{transactionId}/workspace',
             path: {
                 'transactionId': transactionId,
             },

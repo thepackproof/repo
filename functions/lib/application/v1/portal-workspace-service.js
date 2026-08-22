@@ -6,6 +6,7 @@ const errors_1 = require("./errors");
 const merchant_evidence_service_1 = require("./merchant-evidence-service");
 const merchant_transaction_service_1 = require("./merchant-transaction-service");
 const proof_application_service_1 = require("./proof-application-service");
+const transaction_workspace_service_1 = require("./transaction-workspace-service");
 const transaction_workspace_1 = require("./transaction-workspace");
 Object.defineProperty(exports, "protocolFromEvidence", { enumerable: true, get: function () { return transaction_workspace_1.protocolFromEvidence; } });
 exports.nativeCaptureHandoffActions = [
@@ -17,18 +18,13 @@ exports.nativeCaptureHandoffActions = [
     'RECORD_RETURN_SEAL',
     'RECORD_RETURN_UNBOXING',
 ];
-const NOT_ELIGIBLE_PROOF = {
-    availability: 'NOT_ELIGIBLE',
-    passportId: null,
-    displayId: null,
-};
 function notFound() {
     return new errors_1.ApplicationError('NOT_FOUND', 'TRANSACTION_NOT_FOUND', 'The requested PackProof was not found.');
 }
 function forbidden() {
     return new errors_1.ApplicationError('FORBIDDEN', 'PORTAL_ACCESS_DENIED', 'You are not authorized to access this PackProof.');
 }
-function toPortalTransactionDto(record, protocol, proof = NOT_ELIGIBLE_PROOF) {
+function toPortalTransactionDto(record, workspace) {
     return {
         id: record.id,
         object: 'portal_transaction',
@@ -50,11 +46,12 @@ function toPortalTransactionDto(record, protocol, proof = NOT_ELIGIBLE_PROOF) {
         completedBy: record.completedBy,
         passportId: record.passportId,
         passportDisplayId: record.passportDisplayId,
-        proof,
+        proof: workspace.proof,
+        workspace,
         source: record.sourceType || record.sourcePlatform || record.externalOrderId
             ? { type: record.sourceType, platform: record.sourcePlatform, externalOrderId: record.externalOrderId }
             : null,
-        protocol,
+        protocol: workspace.protocol,
         lockedAt: record.lockedAt?.toISOString() ?? null,
         createdAt: record.createdAt.toISOString(),
         updatedAt: record.updatedAt.toISOString(),
@@ -83,18 +80,31 @@ class PortalWorkspaceApplicationService {
     audit;
     linkBaseUrl;
     now;
+    workspaces;
     constructor(repository, audit, linkBaseUrl, now = () => new Date()) {
         this.repository = repository;
         this.audit = audit;
         this.linkBaseUrl = linkBaseUrl;
         this.now = now;
+        this.workspaces = new transaction_workspace_service_1.TransactionWorkspaceApplicationService(repository, now);
     }
     async session(principal) {
         return { actorId: principal.actorId, channel: 'WEB_PORTAL' };
     }
+    async listWorkspaces(actorId, limit = 50) {
+        return this.workspaces.listWorkspaces(actorId, { limit });
+    }
+    async getWorkspace(actorId, transactionId) {
+        return this.workspaces.getWorkspace(actorId, transactionId);
+    }
     async listHydratedForActor(actorId, limit = 50) {
         const records = await this.repository.listForParticipant(actorId, Math.min(Math.max(limit, 1), 50));
-        return Promise.all(records.map((record) => this.toHydratedDto(record)));
+        const workspaces = await this.workspaces.listWorkspaces(actorId, { records });
+        const byId = new Map(workspaces.map((workspace) => [workspace.transactionId, workspace]));
+        return records.flatMap((record) => {
+            const workspace = byId.get(record.id);
+            return workspace ? [toPortalTransactionDto(record, workspace)] : [];
+        });
     }
     async listTransactions(principal, limit = 50) {
         return this.listHydratedForActor(principal.actorId, limit);
@@ -104,7 +114,8 @@ class PortalWorkspaceApplicationService {
         if (!record || !record.participantIds.includes(actorId)) {
             throw notFound();
         }
-        return this.toHydratedDto(record);
+        const workspace = await this.workspaces.getWorkspace(actorId, transactionId);
+        return toPortalTransactionDto(record, workspace);
     }
     async getTransaction(principal, transactionId) {
         return this.getHydratedForActor(principal.actorId, transactionId);
@@ -134,6 +145,19 @@ class PortalWorkspaceApplicationService {
             artifacts: records,
             timeline,
             returns,
+            commerce,
+        }, null, { bindIdentity: false });
+    }
+    async issueProofIdentity(principal, transactionId) {
+        const transaction = await this.requireParticipant(principal, transactionId);
+        const records = await this.repository.listEvidence(transaction.id);
+        const commerce = transaction.commerceContextId
+            ? await this.repository.findCommerceContext(transaction.commerceContextId)
+            : null;
+        const proofs = new proof_application_service_1.ProofApplicationService(this.repository, () => this.verificationBaseUrl(), this.now);
+        return proofs.issueProofIdentity({
+            transaction,
+            artifacts: records,
             commerce,
         });
     }
@@ -179,15 +203,6 @@ class PortalWorkspaceApplicationService {
             metadata: { apiVersion: 'v1', channel: 'WEB_PORTAL', action },
         }).catch(() => undefined);
         return handoff;
-    }
-    async toHydratedDto(record) {
-        const [evidence, returns, commerce] = await Promise.all([
-            this.repository.listEvidence(record.id),
-            this.repository.listReturns(record.id),
-            record.commerceContextId ? this.repository.findCommerceContext(record.commerceContextId) : Promise.resolve(null),
-        ]);
-        const slices = (0, transaction_workspace_1.hydrateWorkspaceSlices)(record, evidence, returns, commerce);
-        return toPortalTransactionDto(record, slices.protocol, slices.proof);
     }
     verificationBaseUrl() {
         return this.linkBaseUrl().replace(/\/$/, '') || 'https://packproof.link';

@@ -1,0 +1,33 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.sourceTransactionRevisionOf = exports.projectTransactionWorkspace = exports.evidenceProcessingStateFromPhase = exports.WORKSPACE_PROJECTION_VERSION = exports.viewerRole = exports.roleFromViewer = exports.resolveNextRequiredAction = exports.proofCanBeViewed = exports.otherLabel = exports.orderLabel = exports.integrityBannerLabel = exports.groupLibrary = exports.groupHomeInbox = exports.groupByInboxBucket = exports.evidenceProcessingFromProgress = exports.displayCarrierName = exports.captureTypeForAction = exports.buildProgressSteps = exports.actionOutcomeCopy = exports.PACK_SESSION_ACTIONS = exports.HUMAN_STATE_LABEL = exports.EVIDENCE_PROCESSING_STAGES = exports.DIRECT_CAPTURE_ACTIONS = exports.CAPTURE_PRIMARY_ACTIONS = exports.CAMERA_SESSION_ACTIONS = exports.ABSENT_PROTOCOL = void 0;
+// GENERATED FROM shared/ux. Do not edit. Run `node scripts/sync-ux-to-functions.mjs`.
+var next_action_1 = require("./next-action");
+Object.defineProperty(exports, "ABSENT_PROTOCOL", { enumerable: true, get: function () { return next_action_1.ABSENT_PROTOCOL; } });
+Object.defineProperty(exports, "CAMERA_SESSION_ACTIONS", { enumerable: true, get: function () { return next_action_1.CAMERA_SESSION_ACTIONS; } });
+Object.defineProperty(exports, "CAPTURE_PRIMARY_ACTIONS", { enumerable: true, get: function () { return next_action_1.CAPTURE_PRIMARY_ACTIONS; } });
+Object.defineProperty(exports, "DIRECT_CAPTURE_ACTIONS", { enumerable: true, get: function () { return next_action_1.DIRECT_CAPTURE_ACTIONS; } });
+Object.defineProperty(exports, "EVIDENCE_PROCESSING_STAGES", { enumerable: true, get: function () { return next_action_1.EVIDENCE_PROCESSING_STAGES; } });
+Object.defineProperty(exports, "HUMAN_STATE_LABEL", { enumerable: true, get: function () { return next_action_1.HUMAN_STATE_LABEL; } });
+Object.defineProperty(exports, "PACK_SESSION_ACTIONS", { enumerable: true, get: function () { return next_action_1.PACK_SESSION_ACTIONS; } });
+Object.defineProperty(exports, "actionOutcomeCopy", { enumerable: true, get: function () { return next_action_1.actionOutcomeCopy; } });
+Object.defineProperty(exports, "buildProgressSteps", { enumerable: true, get: function () { return next_action_1.buildProgressSteps; } });
+Object.defineProperty(exports, "captureTypeForAction", { enumerable: true, get: function () { return next_action_1.captureTypeForAction; } });
+Object.defineProperty(exports, "displayCarrierName", { enumerable: true, get: function () { return next_action_1.displayCarrierName; } });
+Object.defineProperty(exports, "evidenceProcessingFromProgress", { enumerable: true, get: function () { return next_action_1.evidenceProcessingFromProgress; } });
+Object.defineProperty(exports, "groupByInboxBucket", { enumerable: true, get: function () { return next_action_1.groupByInboxBucket; } });
+Object.defineProperty(exports, "groupHomeInbox", { enumerable: true, get: function () { return next_action_1.groupHomeInbox; } });
+Object.defineProperty(exports, "groupLibrary", { enumerable: true, get: function () { return next_action_1.groupLibrary; } });
+Object.defineProperty(exports, "integrityBannerLabel", { enumerable: true, get: function () { return next_action_1.integrityBannerLabel; } });
+Object.defineProperty(exports, "orderLabel", { enumerable: true, get: function () { return next_action_1.orderLabel; } });
+Object.defineProperty(exports, "otherLabel", { enumerable: true, get: function () { return next_action_1.otherLabel; } });
+Object.defineProperty(exports, "proofCanBeViewed", { enumerable: true, get: function () { return next_action_1.proofCanBeViewed; } });
+Object.defineProperty(exports, "resolveNextRequiredAction", { enumerable: true, get: function () { return next_action_1.resolveNextRequiredAction; } });
+Object.defineProperty(exports, "roleFromViewer", { enumerable: true, get: function () { return next_action_1.roleFromViewer; } });
+Object.defineProperty(exports, "viewerRole", { enumerable: true, get: function () { return next_action_1.viewerRole; } });
+var workspace_projection_1 = require("./workspace-projection");
+Object.defineProperty(exports, "WORKSPACE_PROJECTION_VERSION", { enumerable: true, get: function () { return workspace_projection_1.WORKSPACE_PROJECTION_VERSION; } });
+Object.defineProperty(exports, "evidenceProcessingStateFromPhase", { enumerable: true, get: function () { return workspace_projection_1.evidenceProcessingStateFromPhase; } });
+Object.defineProperty(exports, "projectTransactionWorkspace", { enumerable: true, get: function () { return workspace_projection_1.projectTransactionWorkspace; } });
+Object.defineProperty(exports, "sourceTransactionRevisionOf", { enumerable: true, get: function () { return workspace_projection_1.sourceTransactionRevisionOf; } });
+//# sourceMappingURL=index.js.map

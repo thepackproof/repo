@@ -3,42 +3,30 @@ import { useRouter } from 'expo-router';
 import { Card } from './ui';
 import { colors } from '@/constants/brand';
 import { formatMoney } from '@/lib/format';
-import { viewerRole, type NextRequiredAction } from '@/lib/ux-flow';
-import { workspaceFromSlice, type WorkspaceSlice } from '@/lib/workspace';
-import type { PackProofTransaction } from '@/types/models';
+import type { NextRequiredAction, TransactionWorkspaceProjectionV1 } from '@/lib/ux-flow';
 
-export function transactionUx(
-  transaction: PackProofTransaction,
-  uid: string,
-  slice: WorkspaceSlice,
-): NextRequiredAction {
-  return workspaceFromSlice(transaction, uid, slice).nextAction;
+export function transactionUx(workspace: TransactionWorkspaceProjectionV1): NextRequiredAction {
+  return workspace.nextAction;
 }
 
 export function TransactionCard({
-  transaction,
-  uid,
-  slice,
+  workspace,
 }: {
-  transaction: PackProofTransaction;
-  uid: string;
-  slice: WorkspaceSlice;
+  workspace: TransactionWorkspaceProjectionV1;
 }) {
   const router = useRouter();
-  const role = viewerRole(transaction, uid);
-  const workspace = workspaceFromSlice(transaction, uid, slice);
   const completed = workspace.lifecycle.consumerState === 'complete';
   const href = completed && workspace.proof.availability === 'AVAILABLE'
-    ? { pathname: '/passport/[id]' as const, params: { id: transaction.id } }
-    : { pathname: '/transaction/[id]' as const, params: { id: transaction.id } };
+    ? { pathname: '/passport/[id]' as const, params: { id: workspace.transactionId } }
+    : { pathname: '/transaction/[id]' as const, params: { id: workspace.transactionId } };
 
   return (
     <Pressable onPress={() => router.push(href)}>
       <Card style={styles.card}>
         <View style={styles.top}>
           <View style={styles.copy}>
-            <Text style={styles.role}>{role === 'SELLER' ? 'Selling' : 'Buying'} · {formatMoney(transaction.priceMinor, transaction.currency)}</Text>
-            <Text numberOfLines={2} style={styles.title}>{transaction.title}</Text>
+            <Text style={styles.role}>{workspace.viewer.role === 'SELLER' ? 'Selling' : 'Buying'} · {formatMoney(workspace.display.priceMinor, workspace.display.currency)}</Text>
+            <Text numberOfLines={2} style={styles.title}>{workspace.display.title}</Text>
           </View>
         </View>
         <Text style={styles.sentence}>

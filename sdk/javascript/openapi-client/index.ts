@@ -67,6 +67,7 @@ export type { GetTransactionResponse as GetTransactionResponseModel } from './mo
 export type { HealthResponse as HealthResponseModel } from './models/HealthResponse';
 export type { IdempotencyKey as IdempotencyKeyModel } from './models/IdempotencyKey';
 export type { ImageReference as ImageReferenceModel } from './models/ImageReference';
+export type { IssueProofIdentityRequest as IssueProofIdentityRequestModel } from './models/IssueProofIdentityRequest';
 export type { ItemIdentifier as ItemIdentifierModel } from './models/ItemIdentifier';
 export type { ItemOption as ItemOptionModel } from './models/ItemOption';
 export type { ListTransactionsResponse as ListTransactionsResponseModel } from './models/ListTransactionsResponse';
@@ -101,6 +102,8 @@ export type { PortalTransaction as PortalTransactionModel } from './models/Porta
 export type { PortalTransactionListResponse as PortalTransactionListResponseModel } from './models/PortalTransactionListResponse';
 export type { PortalTransactionResponse as PortalTransactionResponseModel } from './models/PortalTransactionResponse';
 export type { ProofId as ProofIdModel } from './models/ProofId';
+export { ProofIdentity as ProofIdentityModel } from './models/ProofIdentity';
+export type { ProofIdentityResponse as ProofIdentityResponseModel } from './models/ProofIdentityResponse';
 export type { PublicCommerceHandoff as PublicCommerceHandoffModel } from './models/PublicCommerceHandoff';
 export type { PublicCommerceHandoffResponse as PublicCommerceHandoffResponseModel } from './models/PublicCommerceHandoffResponse';
 export { PublicCommerceSource as PublicCommerceSourceModel } from './models/PublicCommerceSource';
@@ -122,6 +125,8 @@ export type { TimelineResponse as TimelineResponseModel } from './models/Timelin
 export { Transaction as TransactionModel } from './models/Transaction';
 export type { TransactionId as TransactionIdModel } from './models/TransactionId';
 export { TransactionStatus as TransactionStatusModel } from './models/TransactionStatus';
+export { TransactionWorkspace as TransactionWorkspaceModel } from './models/TransactionWorkspace';
+export type { TransactionWorkspaceResponse as TransactionWorkspaceResponseModel } from './models/TransactionWorkspaceResponse';
 
 export { ClaimsReviewService } from './services/ClaimsReviewService';
 export { CommerceHandoffsService } from './services/CommerceHandoffsService';

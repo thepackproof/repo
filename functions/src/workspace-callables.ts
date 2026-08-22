@@ -1,5 +1,5 @@
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
-import { connectLinkBaseUrl, db } from './config';
+import { db } from './config';
 import { PortalWorkspaceApplicationService } from './application/v1/portal-workspace-service';
 import { FirestoreMerchantEvidenceRepository, FirestorePortalWorkspaceRepository } from './infrastructure/firebase/v1/merchant-evidence-repository';
 import { requireUid } from './helpers';
@@ -10,7 +10,7 @@ function workspaceService() {
   return new PortalWorkspaceApplicationService(
     new FirestorePortalWorkspaceRepository(new FirestoreMerchantEvidenceRepository(db)),
     { append: async () => undefined },
-    () => connectLinkBaseUrl.value(),
+    () => '',
   );
 }
 
@@ -21,18 +21,14 @@ export const getMyTransactionWorkspaces = onCall(callOptions, async (request) =>
     ? rawIds.filter((value): value is string => typeof value === 'string' && value.length >= 10).slice(0, 50)
     : [];
   const service = workspaceService();
-  const listed = await service.listHydratedForActor(uid, 50);
+  const listed = await service.listWorkspaces(uid, 50);
   const selected = transactionIds.length
-    ? listed.filter((item) => transactionIds.includes(item.id))
+    ? listed.filter((item) => transactionIds.includes(item.transactionId))
     : listed;
   return {
     object: 'transaction_workspace_list',
     schemaVersion: 1,
-    workspaces: selected.map((item) => ({
-      transactionId: item.id,
-      protocol: item.protocol,
-      proof: item.proof,
-    })),
+    workspaces: selected,
   };
 });
 
@@ -42,13 +38,10 @@ export const getMyTransactionWorkspace = onCall(callOptions, async (request) => 
   if (!transactionId) throw new HttpsError('invalid-argument', 'A transactionId is required.');
   const service = workspaceService();
   try {
-    const item = await service.getHydratedForActor(uid, transactionId);
+    const workspace = await service.getWorkspace(uid, transactionId);
     return {
-      object: 'transaction_workspace_slice',
-      schemaVersion: 1,
-      transactionId: item.id,
-      protocol: item.protocol,
-      proof: item.proof,
+      object: 'transaction_workspace',
+      ...workspace,
     };
   } catch (error) {
     throw new HttpsError('not-found', error instanceof Error ? error.message : 'This PackProof was not found.');

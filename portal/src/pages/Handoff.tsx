@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { CAPTURE_PRIMARY_ACTIONS } from '@packproof/ux';
 import { createMobileHandoff, getTransaction, type PortalMobileHandoff, type PortalTransaction } from '../api';
-import { workspaceFromPortal } from '../workspace';
+import { workspaceOf } from '../workspace';
 import { useAuth } from '../auth';
 import { QrPanel } from '../QrPanel';
 
@@ -20,7 +20,7 @@ export function HandoffPage() {
       .then(async (result) => {
         if (cancelled || !user) return;
         setItem(result.data);
-        const next = workspaceFromPortal(result.data, user.uid).nextAction;
+        const next = workspaceOf(result.data).nextAction;
         const action = next.primaryAction?.kind;
         if (!action || !CAPTURE_PRIMARY_ACTIONS.has(action)) {
           setMessage(next.headline || 'Nothing needs phone capture on this PackProof right now.');
@@ -35,9 +35,9 @@ export function HandoffPage() {
 
   return (
     <>
-      <p className="eyebrow">Native capture</p>
+      <p className="eyebrow">Phone capture</p>
       <h1>Continue on your phone</h1>
-      <p className="lede">Packing and unboxing evidence is acquired by the PackProof app. A webcam upload is not the same thing.</p>
+      <p className="lede">The browser is the workspace. Your phone performs trusted physical capture. Scan the code or open the app to continue this exact PackProof.</p>
       {error ? <p className="error">{error}</p> : null}
       {message ? (
         <article className="card">
