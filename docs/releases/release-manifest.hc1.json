@@ -4,8 +4,8 @@
   "producerVersion": "hc1-release-manifest@1",
   "milestone": "HC-1",
   "packageVersion": "0.9.6.0",
-  "gitCommitSha": "db69eef11890fc5d566795d92d40740a21f82308",
-  "generatedAt": "2026-08-22T05:58:54.597Z",
+  "gitCommitSha": "34a23209c00a5ef39e0eeafe3516b49bab10de7d",
+  "generatedAt": "2026-08-22T06:06:26.256Z",
   "packages": {
     "app": "0.9.6.0",
     "functions": "0.9.6.0",
