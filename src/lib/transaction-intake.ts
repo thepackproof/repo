@@ -21,9 +21,18 @@ export async function readTextArtifact(uri: string): Promise<string | null> {
   return text.slice(0, 100_000);
 }
 
+export const MAX_INTAKE_ARTIFACT_BYTES = 1_048_576;
+
 export async function hashFileArtifact(uri: string): Promise<string> {
   const hashed = await sha256FileUri(uri);
   return hashed.sha256;
+}
+
+export async function readBinaryArtifact(uri: string): Promise<{ sha256: string; base64: string; sizeBytes: number } | null> {
+  const hashed = await sha256FileUri(uri);
+  if (!hashed.sizeBytes || hashed.sizeBytes > MAX_INTAKE_ARTIFACT_BYTES) return null;
+  const base64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
+  return { sha256: hashed.sha256, base64, sizeBytes: hashed.sizeBytes };
 }
 
 export function confirmedFromPreview(preview: IntakePreview, extras: { title: string; variant: string; price: string; orderNumber: string }): IntakeConfirmedFields {

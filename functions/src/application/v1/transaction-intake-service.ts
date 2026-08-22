@@ -17,7 +17,8 @@ import {
 } from '../../domain/v1/commerce';
 import { mapLegacyConsumerTransaction } from '../../domain/v1/compatibility';
 import { assertTransition } from '../../domain/v1/common';
-import { missingIntakeFields, parseCommerceArtifact } from '../../domain/v1/transaction-intake-parsers';
+import { CONFIRMED_FIELDS_V1, missingIntakeFields } from '../../domain/v1/transaction-intake-parsers';
+import { extractIntakeArtifact, sha256ArtifactBytes } from '../../domain/v1/transaction-intake-extraction';
 import { DomainValidationError } from '../../domain/v1/runtime';
 import { transactionDtoSchema, type TransactionTerms } from '../../domain/v1/transactions';
 import { activeConsumerTransactionStatuses } from './consumer-transaction-service';
@@ -37,6 +38,8 @@ export type TransactionIntakeCommand = {
   platformIdentifier: string | null;
   parserVersion: string;
   originalArtifactSha256: string;
+  extractionMethod?: string | null;
+  confirmed?: IntakeConfirmedFields | null;
   item: ItemDescriptor;
   externalOrderId: string | null;
   externalListingId: string | null;
@@ -62,6 +65,7 @@ export type TransactionIntakeArtifactCommand = {
   intakeSourceType: ConsumerIntakeSourceType;
   originalArtifactSha256: string;
   artifactText: string | null;
+  artifactBytes?: Uint8Array | null;
   confirmed?: IntakeConfirmedFields | null;
 };
 
@@ -204,6 +208,17 @@ function mergeOption(options: ItemDescriptor['selectedOptions'], option: { name:
   return next;
 }
 
+export function intakeFieldWasConfirmed(field: string, confirmed: IntakeConfirmedFields | null | undefined): boolean {
+  if (!confirmed) return false;
+  if (field === 'item.title') return Boolean(confirmed.title?.trim());
+  if (field === 'item.description') return confirmed.description != null;
+  if (field === 'item.sku') return Boolean(confirmed.sku?.trim());
+  if (field === 'item.selectedOptions') return Boolean(confirmed.variant?.trim());
+  if (field === 'item.quantity') return confirmed.quantity != null;
+  if (field === 'item.amount') return confirmed.priceMinor != null;
+  return false;
+}
+
 export function overlayIntakeItem(base: ItemDescriptor, confirmed: IntakeConfirmedFields | null | undefined): ItemDescriptor {
   if (!confirmed) return base;
   const variant = confirmed.variant?.trim();
@@ -274,19 +289,28 @@ export class TransactionIntakeApplicationService {
     private readonly now: () => Date = () => new Date(),
   ) {}
 
-  preview(artifactText: string | null, intakeSourceType: ConsumerIntakeSourceType) {
+  preview(
+    artifactText: string | null,
+    intakeSourceType: ConsumerIntakeSourceType,
+    artifactBytes?: Uint8Array | null,
+  ) {
     if (!(consumerIntakeSourceTypes as readonly string[]).includes(intakeSourceType)) {
       throw new ApplicationError('INVALID_ARGUMENT', 'UNSUPPORTED_INTAKE_SOURCE', 'This intake adapter is not a consumer correspondence source.');
     }
     try {
-      return parseCommerceArtifact(artifactText, intakeSourceType);
+      return extractIntakeArtifact({ artifactText, intakeSourceType, artifactBytes });
     } catch (error) {
       return domainError(error);
     }
   }
 
   async ingestArtifact(command: TransactionIntakeArtifactCommand): Promise<TransactionIntakeResult> {
-    if (command.artifactText !== null) {
+    if (command.artifactBytes?.length) {
+      const digest = sha256ArtifactBytes(command.artifactBytes);
+      if (digest !== command.originalArtifactSha256) {
+        throw new ApplicationError('INVALID_ARGUMENT', 'ARTIFACT_HASH_MISMATCH', 'The original artifact hash does not match the supplied file bytes.');
+      }
+    } else if (command.artifactText !== null) {
       const digest = sha256(command.artifactText);
       if (digest !== command.originalArtifactSha256) {
         throw new ApplicationError('INVALID_ARGUMENT', 'ARTIFACT_HASH_MISMATCH', 'The original artifact hash does not match the supplied correspondence text.');
@@ -294,7 +318,11 @@ export class TransactionIntakeApplicationService {
     }
     let parsed;
     try {
-      parsed = parseCommerceArtifact(command.artifactText, command.intakeSourceType);
+      parsed = extractIntakeArtifact({
+        artifactText: command.artifactText,
+        artifactBytes: command.artifactBytes,
+        intakeSourceType: command.intakeSourceType,
+      });
     } catch (error) {
       return domainError(error);
     }
@@ -316,6 +344,8 @@ export class TransactionIntakeApplicationService {
       intakeSourceType: command.intakeSourceType,
       platformIdentifier: parsed.platformIdentifier,
       parserVersion: parsed.parserVersion,
+      extractionMethod: parsed.extractionMethod,
+      confirmed: command.confirmed,
       originalArtifactSha256: command.originalArtifactSha256,
       item,
       externalOrderId,
@@ -345,15 +375,17 @@ export class TransactionIntakeApplicationService {
       externalListingId: command.externalListingId,
       productUrl: command.productUrl,
     }));
-    const assertionSource = assertionSourceForIntakeSource(command.intakeSourceType);
-    const fieldProvenance = Object.fromEntries(populatedItemFields(command.item).map((field) => [field, {
-      source: assertionSource,
-      confidence: 'ASSERTED' as const,
-      importedAt,
-      sourceReference: command.externalOrderId ?? command.productUrl,
-      extractionMethod: command.parserVersion,
-      sourceArtifactSha256: command.originalArtifactSha256,
-    }]));
+    const fieldProvenance = Object.fromEntries(populatedItemFields(command.item).map((field) => {
+      const userEntered = intakeFieldWasConfirmed(field, command.confirmed);
+      return [field, {
+        source: userEntered ? 'SELLER_ENTERED' as const : assertionSourceForIntakeSource(command.intakeSourceType),
+        confidence: 'ASSERTED' as const,
+        importedAt,
+        sourceReference: command.externalOrderId ?? command.productUrl,
+        extractionMethod: userEntered ? CONFIRMED_FIELDS_V1 : (command.extractionMethod ?? command.parserVersion),
+        sourceArtifactSha256: command.originalArtifactSha256,
+      }];
+    }));
     let context;
     let draft;
     try {

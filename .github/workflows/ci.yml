@@ -72,6 +72,9 @@ jobs:
       - name: Canonical domain contract tests
         run: npm run test:domain
 
+      - name: Screenshot and PDF intake extraction
+        run: npm run test:intake-extract
+
       - name: Shared application service tests
         run: npm run test:application
 

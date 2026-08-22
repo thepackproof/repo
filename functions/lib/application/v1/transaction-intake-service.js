@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.TransactionIntakeApplicationService = exports.CONSUMER_INTAKE_INTEGRATION_ID = void 0;
+exports.intakeFieldWasConfirmed = intakeFieldWasConfirmed;
 exports.overlayIntakeItem = overlayIntakeItem;
 exports.pendingIntakeFromContext = pendingIntakeFromContext;
 exports.isConsumerIntakeSourceType = isConsumerIntakeSourceType;
@@ -8,6 +9,7 @@ const commerce_1 = require("../../domain/v1/commerce");
 const compatibility_1 = require("../../domain/v1/compatibility");
 const common_1 = require("../../domain/v1/common");
 const transaction_intake_parsers_1 = require("../../domain/v1/transaction-intake-parsers");
+const transaction_intake_extraction_1 = require("../../domain/v1/transaction-intake-extraction");
 const runtime_1 = require("../../domain/v1/runtime");
 const transactions_1 = require("../../domain/v1/transactions");
 const consumer_transaction_service_1 = require("./consumer-transaction-service");
@@ -58,6 +60,23 @@ function mergeOption(options, option) {
     const next = options.filter((entry) => entry.name.toLowerCase() !== option.name.toLowerCase());
     next.push(option);
     return next;
+}
+function intakeFieldWasConfirmed(field, confirmed) {
+    if (!confirmed)
+        return false;
+    if (field === 'item.title')
+        return Boolean(confirmed.title?.trim());
+    if (field === 'item.description')
+        return confirmed.description != null;
+    if (field === 'item.sku')
+        return Boolean(confirmed.sku?.trim());
+    if (field === 'item.selectedOptions')
+        return Boolean(confirmed.variant?.trim());
+    if (field === 'item.quantity')
+        return confirmed.quantity != null;
+    if (field === 'item.amount')
+        return confirmed.priceMinor != null;
+    return false;
 }
 function overlayIntakeItem(base, confirmed) {
     if (!confirmed)
@@ -126,19 +145,25 @@ class TransactionIntakeApplicationService {
         this.repository = repository;
         this.now = now;
     }
-    preview(artifactText, intakeSourceType) {
+    preview(artifactText, intakeSourceType, artifactBytes) {
         if (!commerce_1.consumerIntakeSourceTypes.includes(intakeSourceType)) {
             throw new errors_1.ApplicationError('INVALID_ARGUMENT', 'UNSUPPORTED_INTAKE_SOURCE', 'This intake adapter is not a consumer correspondence source.');
         }
         try {
-            return (0, transaction_intake_parsers_1.parseCommerceArtifact)(artifactText, intakeSourceType);
+            return (0, transaction_intake_extraction_1.extractIntakeArtifact)({ artifactText, intakeSourceType, artifactBytes });
         }
         catch (error) {
             return domainError(error);
         }
     }
     async ingestArtifact(command) {
-        if (command.artifactText !== null) {
+        if (command.artifactBytes?.length) {
+            const digest = (0, transaction_intake_extraction_1.sha256ArtifactBytes)(command.artifactBytes);
+            if (digest !== command.originalArtifactSha256) {
+                throw new errors_1.ApplicationError('INVALID_ARGUMENT', 'ARTIFACT_HASH_MISMATCH', 'The original artifact hash does not match the supplied file bytes.');
+            }
+        }
+        else if (command.artifactText !== null) {
             const digest = (0, merchant_transaction_service_1.sha256)(command.artifactText);
             if (digest !== command.originalArtifactSha256) {
                 throw new errors_1.ApplicationError('INVALID_ARGUMENT', 'ARTIFACT_HASH_MISMATCH', 'The original artifact hash does not match the supplied correspondence text.');
@@ -146,7 +171,11 @@ class TransactionIntakeApplicationService {
         }
         let parsed;
         try {
-            parsed = (0, transaction_intake_parsers_1.parseCommerceArtifact)(command.artifactText, command.intakeSourceType);
+            parsed = (0, transaction_intake_extraction_1.extractIntakeArtifact)({
+                artifactText: command.artifactText,
+                artifactBytes: command.artifactBytes,
+                intakeSourceType: command.intakeSourceType,
+            });
         }
         catch (error) {
             return domainError(error);
@@ -169,6 +198,8 @@ class TransactionIntakeApplicationService {
             intakeSourceType: command.intakeSourceType,
             platformIdentifier: parsed.platformIdentifier,
             parserVersion: parsed.parserVersion,
+            extractionMethod: parsed.extractionMethod,
+            confirmed: command.confirmed,
             originalArtifactSha256: command.originalArtifactSha256,
             item,
             externalOrderId,
@@ -197,15 +228,17 @@ class TransactionIntakeApplicationService {
             externalListingId: command.externalListingId,
             productUrl: command.productUrl,
         }));
-        const assertionSource = (0, commerce_1.assertionSourceForIntakeSource)(command.intakeSourceType);
-        const fieldProvenance = Object.fromEntries(populatedItemFields(command.item).map((field) => [field, {
-                source: assertionSource,
-                confidence: 'ASSERTED',
-                importedAt,
-                sourceReference: command.externalOrderId ?? command.productUrl,
-                extractionMethod: command.parserVersion,
-                sourceArtifactSha256: command.originalArtifactSha256,
-            }]));
+        const fieldProvenance = Object.fromEntries(populatedItemFields(command.item).map((field) => {
+            const userEntered = intakeFieldWasConfirmed(field, command.confirmed);
+            return [field, {
+                    source: userEntered ? 'SELLER_ENTERED' : (0, commerce_1.assertionSourceForIntakeSource)(command.intakeSourceType),
+                    confidence: 'ASSERTED',
+                    importedAt,
+                    sourceReference: command.externalOrderId ?? command.productUrl,
+                    extractionMethod: userEntered ? transaction_intake_parsers_1.CONFIRMED_FIELDS_V1 : (command.extractionMethod ?? command.parserVersion),
+                    sourceArtifactSha256: command.originalArtifactSha256,
+                }];
+        }));
         let context;
         let draft;
         try {
