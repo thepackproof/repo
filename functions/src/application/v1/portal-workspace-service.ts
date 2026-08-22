@@ -1,3 +1,4 @@
+import { recordVisibleToActor, recordsVisibleToActor } from './authorization-boundary';
 import { ApplicationError } from './errors';
 import type { ApplicationEvent } from './events';
 import type {
@@ -131,10 +132,6 @@ function notFound(): ApplicationError {
   return new ApplicationError('NOT_FOUND', 'TRANSACTION_NOT_FOUND', 'The requested PackProof was not found.');
 }
 
-function forbidden(): ApplicationError {
-  return new ApplicationError('FORBIDDEN', 'PORTAL_ACCESS_DENIED', 'You are not authorized to access this PackProof.');
-}
-
 export function protocolFromEvidence(records: readonly StoredEvidenceRecord[]): PortalProtocolPresence {
   const outbound = records.filter((record) => !record.returnPassportId);
   const ready = (predicate: (record: StoredEvidenceRecord) => boolean): boolean => outbound.some((record) => predicate(record) && evidenceReadyForWorkflow({
@@ -224,7 +221,7 @@ export class PortalWorkspaceApplicationService {
 
   async listTransactions(principal: PortalPrincipal, limit = 50): Promise<PortalTransactionDto[]> {
     const records = await this.repository.listForParticipant(principal.actorId, Math.min(Math.max(limit, 1), 50));
-    return records.map((record) => toPortalTransactionDto(record));
+    return recordsVisibleToActor(records, principal.actorId).map((record) => toPortalTransactionDto(record));
   }
 
   async getTransaction(principal: PortalPrincipal, transactionId: string): Promise<PortalTransactionDto> {
@@ -340,12 +337,11 @@ export class PortalWorkspaceApplicationService {
   }
 
   private async requireParticipant(principal: PortalPrincipal, transactionId: string): Promise<PortalWorkspaceRecord> {
-    const record = await this.repository.findForParticipant(transactionId, principal.actorId);
-    if (!record) {
-      // Distinguish missing vs unauthorized only after a participant-scoped read.
-      throw notFound();
-    }
-    if (!record.participantIds.includes(principal.actorId)) throw forbidden();
+    const record = recordVisibleToActor(
+      await this.repository.findForParticipant(transactionId, principal.actorId),
+      principal.actorId,
+    );
+    if (!record) throw notFound();
     return record;
   }
 }

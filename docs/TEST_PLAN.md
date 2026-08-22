@@ -40,6 +40,7 @@ npm.cmd run test:api:firestore
 npm.cmd run test:api:functions
 npm.cmd run test:domain
 npm.cmd run test:application
+npm.cmd run test:authorization
 npm.cmd run test:ux-flow
 npm.cmd --prefix portal ci
 npm.cmd --prefix portal test
@@ -63,6 +64,7 @@ npx.cmd expo-doctor
 | AUTO-11 | Merchant API Firestore integration | Real emulator transactions/queries preserve one stable retry ID, exact replay, failed-attempt recovery, org isolation, credential revocation, no raw credential/key storage, rate counters, and recomputable audit hashes |
 | AUTO-12 | Firebase Function/Hosting configuration smoke | The compiled Firebase entrypoint loads; the Gen 2 HTTP export metadata, region, Secret Manager declaration, resource settings, and Hosting rewrite target are correct |
 | AUTO-13 | Web portal independent build | `portal/` typecheck, Next Action/invariant tests, and Vite build pass without compiling the Expo app; portal source does not import Firestore or Storage |
+| AUTO-15 | Portal authorization attack matrix | `npm run test:authorization` — User B session cannot read User A transaction, evidence, or Proof IDs; guessed/copied IDs, expired token, App Check, suspended/pending-deletion, and cross-organization Proof lookups are denied without leaking titles or identifiers |
 
 ## Merchant API deployment acceptance
 

@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.getPackProofPassport = void 0;
 const https_1 = require("firebase-functions/v2/https");
 const config_1 = require("./config");
+const authorization_boundary_1 = require("./application/v1/authorization-boundary");
 const passport_projection_1 = require("./application/v1/passport-projection");
 const passport_1 = require("./domain/v1/passport");
 const merchant_evidence_repository_1 = require("./infrastructure/firebase/v1/merchant-evidence-repository");
@@ -15,16 +16,13 @@ exports.getPackProofPassport = (0, https_1.onCall)(callOptions, async (request) 
     if (!transactionId && !passportId)
         throw new https_1.HttpsError('invalid-argument', 'A transactionId or passportId is required.');
     const repository = new merchant_evidence_repository_1.FirestoreMerchantEvidenceRepository(config_1.db);
-    const transaction = transactionId
+    const transaction = (0, authorization_boundary_1.recordVisibleToActor)(transactionId
         ? await repository.loadTransaction(transactionId)
         : (0, passport_1.isPassportResourceId)(passportId) || (0, passport_1.isPassportDisplayId)(passportId)
             ? await repository.loadTransactionByPassportIdentity(passportId)
-            : await repository.loadTransaction(passportId);
+            : await repository.loadTransaction(passportId), uid);
     if (!transaction)
         throw new https_1.HttpsError('not-found', 'This Proof was not found.');
-    if (!transaction.participantIds.includes(uid)) {
-        throw new https_1.HttpsError('permission-denied', 'You are not a participant in this transaction.');
-    }
     const [records, timeline, returns] = await Promise.all([
         repository.listEvidence(transaction.id),
         repository.listTimeline(transaction.id),

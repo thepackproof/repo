@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.PortalWorkspaceApplicationService = exports.nativeCaptureHandoffActions = void 0;
 exports.protocolFromEvidence = protocolFromEvidence;
 exports.toPortalTransactionDto = toPortalTransactionDto;
+const authorization_boundary_1 = require("./authorization-boundary");
 const errors_1 = require("./errors");
 const merchant_evidence_service_1 = require("./merchant-evidence-service");
 const merchant_transaction_service_1 = require("./merchant-transaction-service");
@@ -28,9 +29,6 @@ const EMPTY_PROTOCOL = {
 };
 function notFound() {
     return new errors_1.ApplicationError('NOT_FOUND', 'TRANSACTION_NOT_FOUND', 'The requested PackProof was not found.');
-}
-function forbidden() {
-    return new errors_1.ApplicationError('FORBIDDEN', 'PORTAL_ACCESS_DENIED', 'You are not authorized to access this PackProof.');
 }
 function protocolFromEvidence(records) {
     const outbound = records.filter((record) => !record.returnPassportId);
@@ -117,7 +115,7 @@ class PortalWorkspaceApplicationService {
     }
     async listTransactions(principal, limit = 50) {
         const records = await this.repository.listForParticipant(principal.actorId, Math.min(Math.max(limit, 1), 50));
-        return records.map((record) => toPortalTransactionDto(record));
+        return (0, authorization_boundary_1.recordsVisibleToActor)(records, principal.actorId).map((record) => toPortalTransactionDto(record));
     }
     async getTransaction(principal, transactionId) {
         const record = await this.requireParticipant(principal, transactionId);
@@ -221,13 +219,9 @@ class PortalWorkspaceApplicationService {
         return this.linkBaseUrl().replace(/\/$/, '') || 'https://packproof.link';
     }
     async requireParticipant(principal, transactionId) {
-        const record = await this.repository.findForParticipant(transactionId, principal.actorId);
-        if (!record) {
-            // Distinguish missing vs unauthorized only after a participant-scoped read.
+        const record = (0, authorization_boundary_1.recordVisibleToActor)(await this.repository.findForParticipant(transactionId, principal.actorId), principal.actorId);
+        if (!record)
             throw notFound();
-        }
-        if (!record.participantIds.includes(principal.actorId))
-            throw forbidden();
         return record;
     }
 }

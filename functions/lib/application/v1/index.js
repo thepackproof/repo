@@ -19,6 +19,7 @@ __exportStar(require("./connect-callback"), exports);
 __exportStar(require("./connect-callback-retry-policy"), exports);
 __exportStar(require("./connect-handoff-service"), exports);
 __exportStar(require("./consumer-transaction-service"), exports);
+__exportStar(require("./authorization-boundary"), exports);
 __exportStar(require("./errors"), exports);
 __exportStar(require("./events"), exports);
 __exportStar(require("./merchant-ports"), exports);

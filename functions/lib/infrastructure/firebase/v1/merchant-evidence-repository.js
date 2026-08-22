@@ -4,6 +4,7 @@ exports.FirestorePortalWorkspaceRepository = exports.FirestoreMerchantConnectAda
 const firestore_1 = require("firebase-admin/firestore");
 const errors_1 = require("../../../application/v1/errors");
 const commerce_1 = require("../../../domain/v1/commerce");
+const authorization_boundary_1 = require("../../../application/v1/authorization-boundary");
 const merchant_transaction_service_1 = require("../../../application/v1/merchant-transaction-service");
 const shipping_tracker_1 = require("../../../shipping-tracker");
 const outbox_1 = require("./outbox");
@@ -226,11 +227,7 @@ function toCommerce(id, data) {
     };
 }
 function principalCanAccess(transaction, principal) {
-    if (transaction.organizationId && transaction.organizationId === principal.organizationId)
-        return true;
-    if (transaction.integrationId && principal.integrationId && transaction.integrationId === principal.integrationId)
-        return true;
-    return false;
+    return (0, authorization_boundary_1.merchantCanAccessTransaction)(transaction, principal);
 }
 function toEvidence(transactionId, id, data) {
     const createdAt = dateValue(data.createdAt, new Date(0));
