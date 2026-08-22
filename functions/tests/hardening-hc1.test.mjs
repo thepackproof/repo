@@ -323,3 +323,76 @@ test('portal list and get share the same hydrated proof and protocol', async () 
   assert.equal(listed[0].proof.availability, 'AVAILABLE');
   assert.equal(listed[0].protocol.sellerReferenceComplete, true);
 });
+
+test('simultaneous first Proof requests converge on one identity', async () => {
+  const facts = {
+    transaction: transaction({
+      commerceContextId: commerceContext().id,
+      sourceTrustLevel: 'MERCHANT_SERVER_ATTESTED',
+      merchantReference: 'order-1',
+    }),
+    artifacts: [artifact()],
+    timeline: [],
+    returns: [],
+    commerce: commerceContext(),
+  };
+  let stored = null;
+  let binds = 0;
+  let chain = Promise.resolve();
+  const service = new ProofApplicationService({
+    async bindPassportIdentity(_id, identity) {
+      const previous = chain;
+      let release;
+      chain = new Promise((resolve) => {
+        release = resolve;
+      });
+      await previous;
+      try {
+        binds += 1;
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        if (stored) return stored;
+        stored = {
+          passportId: identity.passportId,
+          displayId: identity.displayId,
+          issuedAt: identity.issuedAt,
+        };
+        return stored;
+      } finally {
+        release();
+      }
+    },
+  }, () => 'https://packproof.link', () => now);
+
+  const proofs = await Promise.all([
+    service.getCurrentProof(facts),
+    service.getCurrentProof(facts),
+    service.getCurrentProof(facts),
+  ]);
+  const ids = new Set(proofs.map((proof) => proof.identity.passportId));
+  assert.equal(ids.size, 1);
+  assert.equal(stored.passportId, proofs[0].identity.passportId);
+  assert.equal(binds, 3);
+});
+
+test('corrupted or quarantined evidence never makes Proof AVAILABLE', () => {
+  const eligibleTxn = transaction({
+    commerceContextId: commerceContext().id,
+    sourceTrustLevel: 'MERCHANT_SERVER_ATTESTED',
+    merchantReference: 'order-1',
+  });
+  const cases = [
+    artifact({ finalization: 'QUARANTINED', clientHashMatched: false, serverFinalized: true }),
+    artifact({ finalization: 'FAILED', serverFinalized: false, serverVerified: false, sha256: null, manifestSha256: null }),
+    artifact({ finalization: 'UPLOADED', serverFinalized: false, serverVerified: false, manifestSha256: null }),
+    artifact({ finalization: 'FINALIZED', clientHashMatched: false }),
+  ];
+  for (const corrupted of cases) {
+    const result = evaluateProofAvailabilityFromFacts({
+      transaction: eligibleTxn,
+      artifacts: [corrupted],
+      commerce: commerceContext(),
+    });
+    assert.notEqual(result.availability, 'AVAILABLE', corrupted.finalization);
+    assert.equal(result.availability, 'NOT_ELIGIBLE', corrupted.finalization);
+  }
+});

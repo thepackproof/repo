@@ -25,6 +25,12 @@ P0 workspace projection, Proof service, lifecycle-independent availability, and 
 
 P1 trust, intake assertions, digest assurance, golden workspace fixtures, queue fail-closed script, Proof property script, architecture lint, `0.9.6.0` identity, and `release-manifest.hc1.json`.
 
+Additional P1 reliability on this branch after the initial seam close:
+
+- Concurrent first Proof GET/bind requests converge on one identity (`functions/tests/hardening-hc1.test.mjs`).
+- Corrupted / quarantined / incomplete evidence never yields `AVAILABLE`.
+- Phase 8 Portal UX: when Proof is `AVAILABLE` and capture is not required, **View Proof** is the primary Home/Workspace CTA; Open becomes Details.
+
 P2 scaffolding only: operation log, feature flags, claims vocabulary expansion, and the operations notes linked from [`README.md`](README.md). Thresholds, live drills, and production environment protection are not claimed.
 
 ## Intentionally not done

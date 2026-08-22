@@ -33,7 +33,14 @@ export function WorkspacePage() {
       <p className="lede">{next.headline} {next.instruction}</p>
       <div className="row">
         {captureOnPhone ? <Link className="btn" to={`/packproofs/${item.id}/handoff`}>Continue on phone</Link> : null}
-        {workspace.proof.availability === 'AVAILABLE' ? <Link className="btn secondary" to={`/packproofs/${item.id}/proof`}>View Proof</Link> : null}
+        {workspace.proof.availability === 'AVAILABLE' ? (
+          <Link
+            className={captureOnPhone ? 'btn secondary' : 'btn'}
+            to={`/packproofs/${item.id}/proof`}
+          >
+            View Proof
+          </Link>
+        ) : null}
       </div>
       <nav className="tabs" aria-label="Workspace">
         <NavLink to={`/packproofs/${item.id}`} end>Overview</NavLink>

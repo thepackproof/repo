@@ -7,16 +7,23 @@ export function TaskCard({ item, viewerId }: { item: PortalTransaction; viewerId
   const workspace = workspaceFromPortal(item, viewerId);
   const next = workspace.nextAction;
   const captureOnPhone = Boolean(next.primaryAction && CAPTURE_PRIMARY_ACTIONS.has(next.primaryAction.kind));
+  const proofAvailable = workspace.proof.availability === 'AVAILABLE';
+  const proofIsPrimary = proofAvailable && !captureOnPhone;
+  const meta = [item.source?.platform, item.source?.externalOrderId ? `Order ${item.source.externalOrderId}` : null]
+    .filter(Boolean)
+    .join(' • ');
   return (
     <article className="card">
       <p className="eyebrow">{next.humanStateLabel}</p>
       <h2>{item.title}</h2>
-      <p className="meta">{[item.source?.platform, item.source?.externalOrderId ? `Order ${item.source.externalOrderId}` : null].filter(Boolean).join(' • ') || next.inboxSentence}</p>
-      <p>{next.headline}</p>
+      <p className="meta">{meta || next.inboxSentence}</p>
+      <p>{proofIsPrimary ? 'View Proof' : next.headline}</p>
       <div className="row" style={{ marginTop: 12 }}>
         {captureOnPhone ? <Link className="btn" to={`/packproofs/${item.id}/handoff`}>Continue on phone</Link> : null}
-        {workspace.proof.availability === 'AVAILABLE' ? <Link className="btn secondary" to={`/packproofs/${item.id}/proof`}>View Proof</Link> : null}
-        <Link className="btn ghost" to={`/packproofs/${item.id}`}>Open</Link>
+        {proofAvailable ? (
+          <Link className={proofIsPrimary ? 'btn' : 'btn secondary'} to={`/packproofs/${item.id}/proof`}>View Proof</Link>
+        ) : null}
+        <Link className="btn ghost" to={`/packproofs/${item.id}`}>{proofIsPrimary ? 'Details' : 'Open'}</Link>
       </div>
     </article>
   );
