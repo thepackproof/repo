@@ -9,14 +9,16 @@ import { TaskSession } from '@/components/task-session';
 import { callFunction, subscribeEvents, subscribeEvidence, subscribeReturnPassports, subscribeTransaction } from '@/lib/api';
 import { readableError } from '@/lib/format';
 import { packageSealProtocolStatus } from '@/lib/package-seal-protocol';
-import { displayCarrierName, hrefForPrimaryAction, PACK_SESSION_ACTIONS, resolveNextRequiredAction, toHref, type NextRequiredAction } from '@/lib/ux-flow';
+import { displayCarrierName, evidenceProcessingForTransaction, hrefForPrimaryAction, PACK_SESSION_ACTIONS, resolveNextRequiredAction, toHref, type NextRequiredAction } from '@/lib/ux-flow';
 import { useAuth } from '@/providers/auth-provider';
+import { useOfflineEvidence } from '@/providers/offline-evidence-provider';
 import type { EvidenceRecord, PackProofTransaction, ReturnPassport, TimelineEvent } from '@/types/models';
 
 export default function TaskScreen() {
   const { id, fromShare } = useLocalSearchParams<{ id: string; fromShare?: string }>();
   const router = useRouter();
   const { user } = useAuth();
+  const { items: queueItems } = useOfflineEvidence();
   const [item, setItem] = useState<PackProofTransaction | null>(null);
   const [evidence, setEvidence] = useState<EvidenceRecord[]>([]);
   const [events, setEvents] = useState<TimelineEvent[]>([]);
@@ -52,8 +54,9 @@ export default function TaskScreen() {
       returnPassport: activeReturn,
       returnProtocol,
       inviteSentAt,
+      evidenceProcessing: evidenceProcessingForTransaction(item.id, queueItems),
     });
-  }, [item, user, protocol, activeReturn, returnProtocol, inviteSentAt]);
+  }, [item, user, protocol, activeReturn, returnProtocol, inviteSentAt, queueItems]);
 
   const goHome = () => router.replace('/(tabs)');
   const run = async (action: () => Promise<void>) => {

@@ -7,6 +7,7 @@ import { deleteFile, decryptFile, encryptFile } from 'packproof-secure-file';
 import { EvidenceFinalizationPendingError, uploadQueuedEvidence } from '@/lib/api';
 import { auth } from '@/lib/firebase';
 import { classifyQueueAttentionReason, type QueueAttentionReason } from '@/lib/queue-attention';
+import { recoverInFlightQueueState } from '../../shared/ux/evidence-resume.ts';
 import { canDiscardQueuedEvidence, isStaleQueueTempFileName, shouldDeleteOriginalAfterEncryption } from '@/lib/queue-temp-lifecycle';
 import type { EvidenceType } from '@/types/models';
 import type { CaptureManifestInput } from '@/types/telemetry';
@@ -309,6 +310,29 @@ export async function getQueuedEvidenceStatus(uploaderId?: string | null): Promi
   };
 }
 
+export function subscribeQueuedEvidence(
+  uploaderId: string | null,
+  listener: (items: QueuedEvidence[], unreadableIds: string[]) => void,
+): () => void {
+  let active = true;
+  const emit = () => {
+    if (!uploaderId) {
+      if (active) listener([], []);
+      return;
+    }
+    readQueueSnapshot()
+      .then((snapshot) => {
+        if (active) {
+          listener(snapshot.items.filter((item) => item.uploaderId === uploaderId), snapshot.unreadableIds);
+        }
+      })
+      .catch(() => { if (active) listener([], ['unreadable']); });
+  };
+  listeners.add(emit);
+  emit();
+  return () => { active = false; listeners.delete(emit); };
+}
+
 export function subscribeQueuedEvidenceStatus(uploaderId: string | null, listener: (status: QueueStatus) => void): () => void {
   let active = true;
   const emit = () => getQueuedEvidenceStatus(uploaderId)
@@ -336,6 +360,12 @@ export async function syncEvidenceQueue(options: {
     const network = await NetInfo.fetch();
     const snapshot = await readQueueSnapshot();
     const items = snapshot.items;
+    for (const item of items) {
+      const recovered = recoverInFlightQueueState(item.state);
+      if (recovered !== item.state) {
+        await transition(item, recovered as QueueState, 'PROCESS_DEATH_RESUME').catch(() => undefined);
+      }
+    }
     const currentUid = auth.currentUser?.uid ?? null;
     if (!network.isConnected || network.isInternetReachable === false) {
       return {

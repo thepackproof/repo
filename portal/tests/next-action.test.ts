@@ -56,6 +56,18 @@ test('portal and mobile share the Next Action Engine for packing', () => {
   assert.equal(CAPTURE_PRIMARY_ACTIONS.has(next.primaryAction?.kind ?? 'EDIT_TERMS'), true);
 });
 
+test('queued upload failure does not keep the packing capture CTA', () => {
+  const next = resolveNextRequiredAction({
+    transaction: transaction(),
+    viewerId: 'seller',
+    protocol,
+    evidenceProcessing: { phase: 'UPLOAD_FAILED' },
+  });
+  assert.equal(next.primaryAction, null);
+  assert.match(next.instruction, /do not need to recapture/i);
+  assert.equal(next.canLeaveWhileProcessing, true);
+});
+
 test('home groups records that need the viewer', () => {
   const grouped = groupHomeInbox([transaction()], (item) => resolveNextRequiredAction({
     transaction: item,

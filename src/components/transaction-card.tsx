@@ -3,26 +3,33 @@ import { useRouter } from 'expo-router';
 import { Card } from './ui';
 import { colors } from '@/constants/brand';
 import { formatMoney } from '@/lib/format';
-import { resolveNextRequiredAction, viewerRole, type NextRequiredAction } from '@/lib/ux-flow';
+import { evidenceProcessingForTransaction, resolveNextRequiredAction, viewerRole, type EvidenceResumeObservation, type NextRequiredAction } from '@/lib/ux-flow';
 import type { PackProofTransaction } from '@/types/models';
 
-export function transactionUx(transaction: PackProofTransaction, uid: string): NextRequiredAction {
+export function transactionUx(
+  transaction: PackProofTransaction,
+  uid: string,
+  queueItems: readonly EvidenceResumeObservation[] = [],
+): NextRequiredAction {
   return resolveNextRequiredAction({
     transaction,
     viewerId: uid,
+    evidenceProcessing: evidenceProcessingForTransaction(transaction.id, queueItems),
   });
 }
 
 export function TransactionCard({
   transaction,
   uid,
+  queueItems = [],
 }: {
   transaction: PackProofTransaction;
   uid: string;
+  queueItems?: readonly EvidenceResumeObservation[];
 }) {
   const router = useRouter();
   const role = viewerRole(transaction, uid);
-  const ux = transactionUx(transaction, uid);
+  const ux = transactionUx(transaction, uid, queueItems);
 
   return (
     <Pressable onPress={() => router.push({ pathname: '/transaction/[id]', params: { id: transaction.id } })}>

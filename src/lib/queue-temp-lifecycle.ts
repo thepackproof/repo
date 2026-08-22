@@ -1,3 +1,8 @@
+import { queueCrashResumePolicy, type QueueCrashPhase } from '../../shared/ux/evidence-resume.ts';
+
+export type { QueueCrashPhase } from '../../shared/ux/evidence-resume.ts';
+export { recoverInFlightQueueState, recaptureIsRequired } from '../../shared/ux/evidence-resume.ts';
+
 const QUEUE_TEMP_SUFFIXES = ['.json', '.read.json', '.upload'] as const;
 
 export function isStaleQueueTempFileName(name: string): boolean {
@@ -23,16 +28,19 @@ export function canDiscardQueuedEvidence(state: string): boolean {
   return state === 'QUEUED' || state === 'FAILED_RETRYABLE';
 }
 
-export type QueueCrashPhase = 'ENCRYPTING' | 'DECRYPTING_FOR_UPLOAD' | 'UPLOADING' | 'AWAITING_FINALIZATION';
-
 export function queueCrashRecovery(phase: QueueCrashPhase): {
   retainCiphertext: boolean;
   scrubPlaintextTemp: boolean;
   treatUnreadableMetadataAsVisibleFault: boolean;
+  recapture: boolean;
+  resumePhase: 'UPLOAD_FAILED' | 'FINALIZATION_FAILED';
 } {
+  const policy = queueCrashResumePolicy(phase);
   return {
-    retainCiphertext: true,
-    scrubPlaintextTemp: phase !== 'AWAITING_FINALIZATION',
+    retainCiphertext: policy.retainCiphertext,
+    scrubPlaintextTemp: policy.scrubPlaintextTemp,
     treatUnreadableMetadataAsVisibleFault: true,
+    recapture: policy.recapture,
+    resumePhase: policy.resumePhase,
   };
 }

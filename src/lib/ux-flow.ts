@@ -27,6 +27,17 @@ export {
   viewerRole,
 } from '../../shared/ux/next-action.ts';
 
+export {
+  evidenceProcessingForTransaction,
+  evidenceProcessingFromQueue,
+  evidenceProcessingFromQueueItems,
+  recoverInFlightQueueState,
+} from '../../shared/ux/evidence-resume.ts';
+
+export type {
+  EvidenceResumeObservation,
+} from '../../shared/ux/evidence-resume.ts';
+
 export type {
   ActionRequiredBy,
   ConsumerState,

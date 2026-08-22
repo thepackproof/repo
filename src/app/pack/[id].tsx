@@ -8,8 +8,9 @@ import { TaskSession } from '@/components/task-session';
 import { callFunction, subscribeEvidence, subscribeReturnPassports, subscribeTransaction } from '@/lib/api';
 import { readableError } from '@/lib/format';
 import { packageSealProtocolStatus } from '@/lib/package-seal-protocol';
-import { displayCarrierName, resolveNextRequiredAction, toHref } from '@/lib/ux-flow';
+import { displayCarrierName, evidenceProcessingForTransaction, resolveNextRequiredAction, toHref } from '@/lib/ux-flow';
 import { useAuth } from '@/providers/auth-provider';
+import { useOfflineEvidence } from '@/providers/offline-evidence-provider';
 import type { EvidenceRecord, EvidenceType, PackProofTransaction, ReturnPassport } from '@/types/models';
 
 type Beat = 'prep' | 'label' | 'tracking' | 'done';
@@ -28,6 +29,7 @@ export default function PackSession() {
   }>();
   const router = useRouter();
   const { user } = useAuth();
+  const { items: queueItems } = useOfflineEvidence();
   const [item, setItem] = useState<PackProofTransaction | null>(null);
   const [evidence, setEvidence] = useState<EvidenceRecord[]>([]);
   const [returnPassports, setReturnPassports] = useState<ReturnPassport[]>([]);
@@ -65,8 +67,9 @@ export default function PackSession() {
       protocol: activeReturn ? returnProtocol : protocol,
       returnPassport: activeReturn,
       returnProtocol,
+      evidenceProcessing: evidenceProcessingForTransaction(item.id, queueItems),
     });
-  }, [item, user, protocol, activeReturn, returnProtocol]);
+  }, [item, user, protocol, activeReturn, returnProtocol, queueItems]);
 
   const returning = Boolean(activeReturn && (ux?.primaryAction?.kind === 'RECORD_RETURN_PACKING' || ux?.primaryAction?.kind === 'RECORD_RETURN_SEAL' || ux?.primaryAction?.kind === 'ADD_RETURN_SHIPMENT'));
   const liveProtocol = returning ? (returnProtocol ?? protocol) : protocol;
@@ -106,8 +109,22 @@ export default function PackSession() {
 
   const goHome = () => router.replace('/(tabs)');
 
-  if (!id || !item || !user) return <LoadingScreen />;
+  if (!id || !item || !user || !ux) return <LoadingScreen />;
   const identity = item.title;
+
+  if (ux.humanState === 'EVIDENCE_PROCESSING') {
+    return (
+      <TaskSession
+        identity={identity}
+        art={<TaskArt kind="check" />}
+        title={ux.headline}
+        sentence={ux.instruction}
+        onClose={goHome}
+        closeLabel="Done"
+        primary={{ label: 'Done', onPress: goHome }}
+      />
+    );
+  }
 
   if (beat === 'done' || item.status === 'SHIPPED') {
     return (

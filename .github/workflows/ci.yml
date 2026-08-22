@@ -56,6 +56,7 @@ jobs:
         run: |
           npm run test:android-release-config
           npm run test:queue-attention
+          npm run test:evidence-resume
           npm run test:runtime-display
           npm run test:package-seal-protocol
           npm run test:capture-workflow
