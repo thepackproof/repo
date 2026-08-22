@@ -1,0 +1,8 @@
+From: orders@myshopify.com
+Subject: Your order is confirmed
+
+Thank you for your order
+Order #A12B34
+Item: Shopify mug
+Price: $18.00
+via Shopify

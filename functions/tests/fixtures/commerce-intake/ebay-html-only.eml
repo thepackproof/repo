@@ -1,0 +1,12 @@
+From: eBay <ebay@ebay.com>
+Subject: You sold Safe listing
+MIME-Version: 1.0
+Content-Type: text/html; charset=UTF-8
+
+<html><head><style>body{color:red}</style></head><body>
+<script>window.steal="secret"</script>
+<p>Congratulations! You sold an item.</p>
+<p>Item: Safe listing</p>
+<p>Sold for: $120.00</p>
+<p>Order number: 11-22222-33333</p>
+</body></html>

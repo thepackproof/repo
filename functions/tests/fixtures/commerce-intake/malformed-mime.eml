@@ -1,0 +1,9 @@
+From: broken@example.test
+Subject: Receipt
+Content-Type: multipart/mixed; boundary="never-closed"
+
+--never-closed
+Content-Type: text/plain
+
+this part has no headers-body split and never closes
+Item: Should not be guessed from garbage

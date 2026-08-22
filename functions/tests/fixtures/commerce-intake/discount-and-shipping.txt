@@ -1,0 +1,7 @@
+Order number: PROMO-77
+Item: Canvas tote
+Price: $40.00
+Discount: $8.00
+Shipping: $6.00
+Total: $38.00
+Quantity: 1

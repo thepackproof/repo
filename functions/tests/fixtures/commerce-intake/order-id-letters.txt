@@ -1,0 +1,4 @@
+Order number: EBAY-A12B34
+Item: Letter-id headphones
+Price: $80.00
+Quantity: 1

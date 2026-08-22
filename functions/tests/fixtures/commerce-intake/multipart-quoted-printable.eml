@@ -1,0 +1,19 @@
+From: eBay <ebay@ebay.com>
+Subject: You sold QP Multipart
+MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary="qp-boundary"
+
+--qp-boundary
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: quoted-printable
+
+Congratulations! You sold an item.
+Item: QP=20Multipart=20Clock
+Sold for: $33.00
+Order number: 44-55555-66666
+
+--qp-boundary
+Content-Type: text/html; charset=UTF-8
+
+<html><p>Item: HTML fallback</p></html>
+--qp-boundary--

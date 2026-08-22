@@ -93,6 +93,7 @@
     "test:api:firestore": "npx --yes firebase-tools@15.25.1 emulators:exec --only firestore --project packproof-api-test \"npm --prefix functions run test:api:firestore:inner\"",
     "test:api:functions": "npm --prefix functions run build && node functions/tests/firebase-function-smoke.mjs",
     "test:domain": "npm --prefix functions run test:domain",
+    "test:intake": "npm --prefix functions run test:intake",
     "test:application": "npm --prefix functions run test:application",
     "test:enterprise": "npm --prefix functions run build && node --test functions/tests/enterprise-v1.test.mjs functions/tests/enterprise-edge.test.mjs functions/tests/evidence-finalization.test.mjs functions/tests/enterprise-console-wms.test.mjs functions/tests/edge-authentication.test.mjs functions/tests/edge-persistent-queue.test.mjs",
     "test:application:firestore": "npx --yes firebase-tools@15.25.1 emulators:exec --only firestore --project packproof-application-test \"npm --prefix functions run test:application:firestore:inner\"",

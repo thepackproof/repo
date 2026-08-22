@@ -1,0 +1,8 @@
+Order number: MULTI-1001
+Item: Widget A
+Price: $10.00
+Item: Widget B
+Price: $20.00
+Shipping: $5.00
+Total: $35.00
+Quantity: 1

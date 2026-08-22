@@ -1,0 +1,19 @@
+From: eBay <ebay@ebay.com>
+Subject: You sold Multipart Camera
+MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary="packproof-boundary-1"
+
+--packproof-boundary-1
+Content-Type: text/plain; charset=UTF-8
+
+Congratulations! You sold an item.
+Item: Multipart Camera
+Sold for: $210.00
+Order number: 22-33333-44444
+Quantity: 1
+
+--packproof-boundary-1
+Content-Type: text/html; charset=UTF-8
+
+<html><p>Item: HTML should lose to plain</p><p>Sold for: $999.00</p></html>
+--packproof-boundary-1--
