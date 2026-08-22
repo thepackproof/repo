@@ -72,6 +72,9 @@ jobs:
       - name: Canonical domain contract tests
         run: npm run test:domain
 
+      - name: Release-candidate source journey
+        run: npm run test:rc-e2e
+
       - name: Shared application service tests
         run: npm run test:application
 
