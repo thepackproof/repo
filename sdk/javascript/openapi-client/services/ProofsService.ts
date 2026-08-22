@@ -13,7 +13,7 @@ export class ProofsService {
     constructor(public readonly httpRequest: BaseHttpRequest) {}
     /**
      * Canonical JSON Proof
-     * Alias of GET /v1/portal/transactions/{transactionId}/passport. Returns the live Proof projection.
+     * Alias of GET /v1/portal/transactions/{transactionId}/passport. Returns the live Proof projection and binds a stable Proof identity the first time eligibility passes. List and workspace hydration do not bind.
      * @returns PassportResponse The live Proof aggregation. It does not authenticate items, prove custody, decide fraud or fault, or guarantee a dispute outcome.
      * @throws ApiError
      */
@@ -42,7 +42,7 @@ export class ProofsService {
     }
     /**
      * Retrieve the live Proof
-     * Preferred alias of GET /v1/transactions/{transactionId}/passport. Returns the canonical Proof aggregation.
+     * Preferred alias of GET /v1/transactions/{transactionId}/passport. Returns the canonical Proof aggregation and binds a stable Proof identity the first time eligibility passes. Workspace list hydration does not bind.
      * @returns PassportResponse The live Proof aggregation. It does not authenticate items, prove custody, decide fraud or fault, or guarantee a dispute outcome.
      * @throws ApiError
      */

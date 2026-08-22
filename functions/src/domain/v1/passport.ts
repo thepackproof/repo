@@ -645,9 +645,17 @@ export function selectPassportDisplayCommerce(commerce: PassportCommerceInput | 
   return commerce;
 }
 
+export function canAuthoritativelyBindOrder(
+  trust: PassportCommerceInput['trustLevel'] | PassportTransactionInput['sourceTrustLevel'] | null | undefined,
+): boolean {
+  return isAuthoritativeCommerceTrust(trust);
+}
+
 export function canAttributePassportOrderToTransaction(transaction: Pick<PassportTransactionInput, 'sourceTrustLevel' | 'externalOrderId' | 'merchantReference' | 'sourcePlatform'>): boolean {
-  if (transaction.sourceTrustLevel === 'PAGE_DECLARED' && !transaction.externalOrderId) return false;
-  return Boolean(transaction.externalOrderId || transaction.merchantReference || transaction.sourcePlatform);
+  if (transaction.sourceTrustLevel === 'PAGE_DECLARED') return false;
+  if (isUserProvidedCommerceArtifact(transaction.sourceTrustLevel ?? null)) return false;
+  if (canAuthoritativelyBindOrder(transaction.sourceTrustLevel) && Boolean(transaction.merchantReference || transaction.externalOrderId || transaction.sourcePlatform)) return true;
+  return Boolean(transaction.merchantReference);
 }
 
 export function passportHasAuthoritativeOrderSource(input: {
@@ -657,10 +665,9 @@ export function passportHasAuthoritativeOrderSource(input: {
   sourceTrustLevel?: PassportTransactionInput['sourceTrustLevel'];
   externalOrderId: string | null;
 }): boolean {
-  if (input.commerceContextId && isAuthoritativeCommerceTrust(input.commerceTrustLevel ?? null)) return true;
-  if (input.externalOrderId) return true;
-  if (input.sourceTrustLevel === 'PAGE_DECLARED' || isUserProvidedCommerceArtifact(input.sourceTrustLevel ?? input.commerceTrustLevel ?? null)) return false;
-  return Boolean(input.merchantReference);
+  if (input.commerceContextId && canAuthoritativelyBindOrder(input.commerceTrustLevel ?? null)) return true;
+  if (canAuthoritativelyBindOrder(input.sourceTrustLevel ?? null) && input.merchantReference) return true;
+  return false;
 }
 
 export function passportHasIdentifiedCommerceSource(input: {
@@ -670,11 +677,15 @@ export function passportHasIdentifiedCommerceSource(input: {
   sourceTrustLevel?: PassportTransactionInput['sourceTrustLevel'];
   externalOrderId: string | null;
 }): boolean {
-  if (input.commerceContextId && isAuthoritativeCommerceTrust(input.commerceTrustLevel ?? null)) return true;
+  if (input.commerceContextId && canAuthoritativelyBindOrder(input.commerceTrustLevel ?? null)) return true;
   if (input.commerceContextId && isUserProvidedCommerceArtifact(input.commerceTrustLevel ?? null)) return true;
-  if (input.externalOrderId) return true;
   if (input.sourceTrustLevel === 'PAGE_DECLARED') return false;
-  return Boolean(input.merchantReference);
+  if (isUserProvidedCommerceArtifact(input.sourceTrustLevel ?? null)) return Boolean(input.commerceContextId);
+  if (canAuthoritativelyBindOrder(input.sourceTrustLevel ?? null) && input.merchantReference) return true;
+  if (input.merchantReference && !isUserProvidedCommerceArtifact(input.sourceTrustLevel ?? null)) {
+    return true;
+  }
+  return false;
 }
 
 export function normalizePassportReviewQuery(query: PassportReviewQuery | null | undefined): PassportReviewQuery | null {
@@ -712,7 +723,7 @@ export function evaluatePassportEligibility(input: {
   if (!passportHasIdentifiedCommerceSource(input)) {
     failures.push({
       code: 'NO_COMMERCE_SOURCE',
-      message: 'An attested commerce context, user-provided commerce artifact, Connect external order identifier, or merchant reference is required. PAGE_DECLARED listing data remains draft lineage only.',
+      message: 'An attested commerce context, user-provided commerce artifact, or merchant-attested reference is required. An order number alone never establishes a commerce source. PAGE_DECLARED listing data remains draft lineage only.',
     });
   }
   if (input.displayedUnattributedFacts > 0) {
@@ -728,6 +739,17 @@ export function evaluatePassportEligibility(input: {
     });
   }
   return failures.length ? { ok: false, failures } : { ok: true };
+}
+
+export type ProofAvailability = 'NOT_ELIGIBLE' | 'ELIGIBLE_NOT_ISSUED' | 'AVAILABLE';
+
+export function evaluateProofAvailability(input: Parameters<typeof evaluatePassportEligibility>[0] & {
+  passportId?: string | null;
+}): { availability: ProofAvailability; eligibility: ReturnType<typeof evaluatePassportEligibility> } {
+  const eligibility = evaluatePassportEligibility(input);
+  if (!eligibility.ok) return { availability: 'NOT_ELIGIBLE', eligibility };
+  if (input.passportId) return { availability: 'AVAILABLE', eligibility };
+  return { availability: 'ELIGIBLE_NOT_ISSUED', eligibility };
 }
 
 function artifactSource(artifact: PassportArtifactInput): PassportArtifact['source'] {
@@ -1167,7 +1189,13 @@ export function aggregatePassport(input: PassportAggregatorInput): PackProofPass
   const trackingMismatch = input.artifacts.some((item) => item.carrierTrackingMatchStatus === 'MISMATCH');
   const inventory = inventoryCategories.map((category) => {
     const row = inventoryStateFor(category, {
-      hasCommerceSource: Boolean((commerce?.id && commerceContextMayAppearAsPassportOrderContext(commerce.trustLevel)) || input.transaction.externalOrderId || (input.transaction.merchantReference && input.transaction.sourceTrustLevel !== 'PAGE_DECLARED')),
+      hasCommerceSource: passportHasIdentifiedCommerceSource({
+        merchantReference: input.transaction.merchantReference,
+        commerceContextId: input.transaction.commerceContextId,
+        commerceTrustLevel: commerce?.trustLevel ?? null,
+        sourceTrustLevel: input.transaction.sourceTrustLevel ?? null,
+        externalOrderId: input.transaction.externalOrderId,
+      }),
       unattributed: false,
       identifierArtifacts,
       conditionArtifacts: input.artifacts.filter((item) => CONDITION.has(item.type)),

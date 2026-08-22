@@ -6,6 +6,7 @@ const package_seal_protocol_1 = require("../../package-seal-protocol");
 const errors_1 = require("./errors");
 const merchant_transaction_service_1 = require("./merchant-transaction-service");
 const passport_projection_1 = require("./passport-projection");
+const proof_application_service_1 = require("./proof-application-service");
 const passport_1 = require("../../domain/v1/passport");
 const REPORT_URL_TTL_MS = 15 * 60 * 1000;
 const ACTIVE_RETURN_STATUSES = ['REQUESTED', 'AUTHORIZED', 'PACKED', 'IN_TRANSIT', 'RECEIVED_REVIEW', 'DISPUTED'];
@@ -609,36 +610,14 @@ class MerchantEvidenceApplicationService {
         const commerce = transaction.commerceContextId
             ? await this.repository.findCommerceContext(transaction.commerceContextId)
             : null;
-        (0, passport_projection_1.assertPassportEligible)(transaction, records, commerce);
-        const issuedAt = this.now();
-        const identity = (0, passport_projection_1.boundOrIssuedIdentity)(transaction, issuedAt);
-        if (identity.bind) {
-            const bound = await this.repository.bindPassportIdentity(transaction.id, {
-                passportId: identity.passportId,
-                displayId: identity.displayId,
-                issuedAt: identity.issuedAt,
-            });
-            identity.passportId = bound.passportId;
-            identity.displayId = bound.displayId;
-            identity.issuedAt = bound.issuedAt;
-        }
-        return (0, passport_projection_1.projectPassport)({
+        const proofs = this.proofService();
+        return proofs.getCurrentProof({
             transaction,
             artifacts: records,
-            shipment: transaction.shipment,
-            delivery: transaction.delivery,
-            returns,
             timeline,
+            returns,
             commerce,
-            identity: {
-                passportId: identity.passportId,
-                displayId: identity.displayId,
-                issuedAt: identity.issuedAt.toISOString(),
-            },
-            verificationBaseUrl: this.verificationBaseUrl(),
-            reviewQuery,
-            now: issuedAt.toISOString(),
-        });
+        }, reviewQuery);
     }
     async getPassport(principal, transactionId, reviewQuery = null) {
         this.authorization.requireScope(principal, 'evidence:read');
@@ -666,7 +645,7 @@ class MerchantEvidenceApplicationService {
             requestFingerprint: (0, merchant_transaction_service_1.sha256)((0, merchant_transaction_service_1.canonicalize)((0, passport_1.passportSnapshotFingerprintPayload)(transactionId, reviewQuery))),
             leaseSeconds: 900,
         }, async () => {
-            const stored = await this.repository.createPassportSnapshot(transactionId, (version) => (0, passport_projection_1.nextSnapshot)(passport, version, this.now()));
+            const stored = await this.repository.createPassportSnapshot(transactionId, (version) => this.proofService().nextSnapshot(passport, version));
             await this.audit.append({
                 eventId: `passport_snapshot_${stored.snapshotId}`,
                 organizationId: principal.organizationId,
@@ -677,7 +656,7 @@ class MerchantEvidenceApplicationService {
                 requestId,
                 metadata: { apiVersion: 'v1', passportId: stored.passportId, snapshotId: stored.snapshotId, snapshotVersion: stored.snapshotVersion },
             });
-            return (0, passport_projection_1.snapshotDto)(stored);
+            return this.proofService().snapshotDto(stored);
         });
         return { snapshot: execution.value, replayed: execution.replayed };
     }
@@ -690,7 +669,7 @@ class MerchantEvidenceApplicationService {
         const record = await this.repository.findPassportSnapshot(transaction.id, snapshotId);
         if (!record)
             throw notFound('PASSPORT_SNAPSHOT_NOT_FOUND', 'The requested Passport snapshot was not found.');
-        return (0, passport_projection_1.snapshotDto)(record);
+        return this.proofService().snapshotDto(record);
     }
     async createPassportExport(principal, passportIdentity, snapshotId, idempotencyKey, requestId) {
         this.authorization.requireScope(principal, 'evidence:read');
@@ -741,9 +720,12 @@ class MerchantEvidenceApplicationService {
         if (execution.replayed && value.stored.pdfStoragePath) {
             const expiresAt = new Date(this.now().getTime() + REPORT_URL_TTL_MS);
             const downloadUrl = await this.urls.sign(value.stored.pdfStoragePath, expiresAt);
-            return { export: (0, passport_projection_1.exportDto)(value.stored, { url: downloadUrl, expiresAt: expiresAt.toISOString() }), replayed: true };
+            return { export: this.proofService().exportDto(value.stored, { url: downloadUrl, expiresAt: expiresAt.toISOString() }), replayed: true };
         }
-        return { export: (0, passport_projection_1.exportDto)(value.stored, { url: value.downloadUrl, expiresAt: value.expiresAt }), replayed: execution.replayed };
+        return { export: this.proofService().exportDto(value.stored, { url: value.downloadUrl, expiresAt: value.expiresAt }), replayed: execution.replayed };
+    }
+    proofService() {
+        return new proof_application_service_1.ProofApplicationService(this.repository, () => this.verificationBaseUrl(), this.now);
     }
 }
 exports.MerchantEvidenceApplicationService = MerchantEvidenceApplicationService;

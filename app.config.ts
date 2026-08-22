@@ -1,7 +1,7 @@
 import type { ExpoConfig } from 'expo/config';
 
 const value = (name: string, fallback = '') => process.env[name]?.trim() || fallback;
-const productVersion = '0.9.5.0';
+const productVersion = '0.9.6.0';
 const facebookEnabled = process.env.EXPO_PUBLIC_ENABLE_FACEBOOK_AUTH?.trim().toLowerCase() === 'true';
 const facebookAppId = value('FACEBOOK_APP_ID');
 const facebookClientToken = value('FACEBOOK_CLIENT_TOKEN');

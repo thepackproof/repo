@@ -3,29 +3,37 @@ import { useRouter } from 'expo-router';
 import { Card } from './ui';
 import { colors } from '@/constants/brand';
 import { formatMoney } from '@/lib/format';
-import { resolveNextRequiredAction, viewerRole, type NextRequiredAction } from '@/lib/ux-flow';
+import { viewerRole, type NextRequiredAction } from '@/lib/ux-flow';
+import { workspaceFromSlice, type WorkspaceSlice } from '@/lib/workspace';
 import type { PackProofTransaction } from '@/types/models';
 
-export function transactionUx(transaction: PackProofTransaction, uid: string): NextRequiredAction {
-  return resolveNextRequiredAction({
-    transaction,
-    viewerId: uid,
-  });
+export function transactionUx(
+  transaction: PackProofTransaction,
+  uid: string,
+  slice: WorkspaceSlice,
+): NextRequiredAction {
+  return workspaceFromSlice(transaction, uid, slice).nextAction;
 }
 
 export function TransactionCard({
   transaction,
   uid,
+  slice,
 }: {
   transaction: PackProofTransaction;
   uid: string;
+  slice: WorkspaceSlice;
 }) {
   const router = useRouter();
   const role = viewerRole(transaction, uid);
-  const ux = transactionUx(transaction, uid);
+  const workspace = workspaceFromSlice(transaction, uid, slice);
+  const completed = workspace.lifecycle.consumerState === 'complete';
+  const href = completed && workspace.proof.availability === 'AVAILABLE'
+    ? { pathname: '/passport/[id]' as const, params: { id: transaction.id } }
+    : { pathname: '/transaction/[id]' as const, params: { id: transaction.id } };
 
   return (
-    <Pressable onPress={() => router.push({ pathname: '/transaction/[id]', params: { id: transaction.id } })}>
+    <Pressable onPress={() => router.push(href)}>
       <Card style={styles.card}>
         <View style={styles.top}>
           <View style={styles.copy}>
@@ -33,7 +41,9 @@ export function TransactionCard({
             <Text numberOfLines={2} style={styles.title}>{transaction.title}</Text>
           </View>
         </View>
-        <Text style={styles.sentence}>{ux.headline}</Text>
+        <Text style={styles.sentence}>
+          {completed && workspace.proof.availability === 'AVAILABLE' ? 'View Proof' : workspace.nextAction.headline}
+        </Text>
       </Card>
     </Pressable>
   );

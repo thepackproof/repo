@@ -1,6 +1,8 @@
 # Launch Readiness
 
-The authoritative PackProof launch and demonstration execution plan is [`../agent.md`](../agent.md).
+Development sequencing during Hardening Candidate 1 is [`architecture/HARDENING_AND_RELEASE_ARCHITECTURE_PLAN.md`](architecture/HARDENING_AND_RELEASE_ARCHITECTURE_PLAN.md).
+
+The authoritative PackProof launch and demonstration **claim** plan remains [`../agent.md`](../agent.md).
 
 This file previously contained a short phase checklist whose scope and sequencing were superseded on 2026-08-13. Agents must not use the previous checklist as an execution plan.
 

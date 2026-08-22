@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.TransactionIntakeApplicationService = exports.CONSUMER_INTAKE_INTEGRATION_ID = void 0;
+exports.sellerEnteredIntakeFields = sellerEnteredIntakeFields;
 exports.overlayIntakeItem = overlayIntakeItem;
 exports.pendingIntakeFromContext = pendingIntakeFromContext;
 exports.isConsumerIntakeSourceType = isConsumerIntakeSourceType;
@@ -12,6 +13,7 @@ const runtime_1 = require("../../domain/v1/runtime");
 const transactions_1 = require("../../domain/v1/transactions");
 const consumer_transaction_service_1 = require("./consumer-transaction-service");
 const errors_1 = require("./errors");
+const feature_flags_1 = require("./feature-flags");
 const merchant_transaction_service_1 = require("./merchant-transaction-service");
 exports.CONSUMER_INTAKE_INTEGRATION_ID = 'int_consumerIntake01';
 function intakePlatform(platformIdentifier) {
@@ -58,6 +60,28 @@ function mergeOption(options, option) {
     const next = options.filter((entry) => entry.name.toLowerCase() !== option.name.toLowerCase());
     next.push(option);
     return next;
+}
+function sellerEnteredIntakeFields(parsed, item, confirmed, parsedOrderId, orderId) {
+    if (!confirmed)
+        return [];
+    const fields = [];
+    if (confirmed.title?.trim() && confirmed.title.trim() !== parsed.title)
+        fields.push('item.title');
+    if (confirmed.description != null && confirmed.description !== parsed.description)
+        fields.push('item.description');
+    if (confirmed.sku?.trim() && confirmed.sku.trim() !== (parsed.sku ?? ''))
+        fields.push('item.sku');
+    if (confirmed.variant?.trim())
+        fields.push('item.selectedOptions');
+    if (confirmed.quantity && confirmed.quantity !== parsed.quantity)
+        fields.push('item.quantity');
+    if (confirmed.priceMinor != null && confirmed.priceMinor !== parsed.amount?.minorUnits)
+        fields.push('item.amount');
+    if (confirmed.orderNumber?.trim() && confirmed.orderNumber.trim() !== (parsedOrderId ?? ''))
+        fields.push('source.externalOrderId');
+    if (item.title !== parsed.title && !fields.includes('item.title') && confirmed.title?.trim())
+        fields.push('item.title');
+    return fields;
 }
 function overlayIntakeItem(base, confirmed) {
     if (!confirmed)
@@ -153,6 +177,7 @@ class TransactionIntakeApplicationService {
         }
         const item = overlayIntakeItem(parsed.item, command.confirmed);
         const externalOrderId = command.confirmed?.orderNumber?.trim() || parsed.externalOrderId;
+        const sellerEnteredFields = sellerEnteredIntakeFields(parsed.item, item, command.confirmed, parsed.externalOrderId, externalOrderId);
         if (!item.title.trim()) {
             throw new errors_1.ApplicationError('INVALID_ARGUMENT', 'INTAKE_TITLE_REQUIRED', 'Add the item name to import this purchase.', [{
                     field: 'title',
@@ -174,12 +199,14 @@ class TransactionIntakeApplicationService {
             externalOrderId,
             externalListingId: parsed.externalListingId,
             productUrl: parsed.productUrl,
+            sellerEnteredFields,
         });
     }
     async ingest(command) {
         if (!commerce_1.consumerIntakeSourceTypes.includes(command.intakeSourceType)) {
             throw new errors_1.ApplicationError('INVALID_ARGUMENT', 'UNSUPPORTED_INTAKE_SOURCE', 'This intake adapter is not a consumer correspondence source.');
         }
+        (0, feature_flags_1.assertIntakeEnabled)(command.intakeSourceType);
         const timestamp = this.now();
         const importedAt = timestamp.toISOString();
         const expiresAt = new Date(timestamp.getTime() + 30 * 86_400_000);
@@ -198,14 +225,37 @@ class TransactionIntakeApplicationService {
             productUrl: command.productUrl,
         }));
         const assertionSource = (0, commerce_1.assertionSourceForIntakeSource)(command.intakeSourceType);
-        const fieldProvenance = Object.fromEntries(populatedItemFields(command.item).map((field) => [field, {
-                source: assertionSource,
+        const sellerEntered = new Set(command.sellerEnteredFields ?? []);
+        const fieldProvenance = Object.fromEntries(populatedItemFields(command.item).map((field) => {
+            const importedAssertionId = `asrt_${(0, merchant_transaction_service_1.sha256)(`${commerceContextId}\n${field}\nimported`).slice(0, 24)}`;
+            const sellerAssertionId = `asrt_${(0, merchant_transaction_service_1.sha256)(`${commerceContextId}\n${field}\nseller`).slice(0, 24)}`;
+            const corrected = sellerEntered.has(field);
+            return [field, {
+                    source: corrected ? 'SELLER_ENTERED' : assertionSource,
+                    confidence: 'ASSERTED',
+                    importedAt,
+                    sourceReference: command.externalOrderId ?? command.productUrl,
+                    extractionMethod: corrected ? 'PARTICIPANT_CONFIRMED' : command.parserVersion,
+                    sourceArtifactSha256: corrected ? null : command.originalArtifactSha256,
+                    assertionId: corrected ? sellerAssertionId : importedAssertionId,
+                    supersedesAssertionId: corrected ? importedAssertionId : null,
+                }];
+        }));
+        if (command.externalOrderId) {
+            const importedAssertionId = `asrt_${(0, merchant_transaction_service_1.sha256)(`${commerceContextId}\nsource.externalOrderId\nimported`).slice(0, 24)}`;
+            const sellerAssertionId = `asrt_${(0, merchant_transaction_service_1.sha256)(`${commerceContextId}\nsource.externalOrderId\nseller`).slice(0, 24)}`;
+            const corrected = sellerEntered.has('source.externalOrderId');
+            fieldProvenance['source.externalOrderId'] = {
+                source: corrected ? 'SELLER_ENTERED' : assertionSource,
                 confidence: 'ASSERTED',
                 importedAt,
-                sourceReference: command.externalOrderId ?? command.productUrl,
-                extractionMethod: command.parserVersion,
-                sourceArtifactSha256: command.originalArtifactSha256,
-            }]));
+                sourceReference: command.externalOrderId,
+                extractionMethod: corrected ? 'PARTICIPANT_CONFIRMED' : command.parserVersion,
+                sourceArtifactSha256: corrected ? null : command.originalArtifactSha256,
+                assertionId: corrected ? sellerAssertionId : importedAssertionId,
+                supersedesAssertionId: corrected ? importedAssertionId : null,
+            };
+        }
         let context;
         let draft;
         try {

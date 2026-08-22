@@ -1,0 +1,42 @@
+{
+  "object": "packproof_release_manifest",
+  "schemaVersion": 1,
+  "producerVersion": "hc1-release-manifest@1",
+  "milestone": "HC-1",
+  "packageVersion": "0.9.6.0",
+  "gitCommitSha": "db69eef11890fc5d566795d92d40740a21f82308",
+  "generatedAt": "2026-08-22T05:58:54.597Z",
+  "packages": {
+    "app": "0.9.6.0",
+    "functions": "0.9.6.0",
+    "portal": "0.9.6.0"
+  },
+  "lockfiles": {
+    "root": "fd37e09096223388ea19586c43e1f50fd34f61b75faa89b004142f9c69d00c53",
+    "functions": "c91094d0998a8836b707d27a66df199a14e1f1df18b946f20692f025a56e3212",
+    "portal": "b8d9fcf63d4f509a2f925beee642edc12aee055325e07c4e258428c964f5f02e"
+  },
+  "rules": {
+    "firestore": "b123f58dd8f2e865c3be534409c1b054ea697fdeba6fed1220f4de4635f3ba36",
+    "storage": "39d838868df72891785cea902f6834d1b9e5b6271cdb90e42a7f05383be75b32"
+  },
+  "openapi": "e05ad4c052198545da8779adcd67b6b83efc2256f40065a1c9411bf5891788f2",
+  "runtimes": {
+    "nodeEngine": "22",
+    "expo": "~57.0.11",
+    "reactNative": "0.86.2"
+  },
+  "android": {
+    "versionName": "0.9.6.0",
+    "versionCode": 7,
+    "packageName": "com.packproof.app"
+  },
+  "firebaseProjects": {
+    "sandbox": "packproof-4cf53",
+    "production": "thepackproof-prod"
+  },
+  "notes": [
+    "AAB/APK SHA-256, signing certificate, and Functions revision are filled at candidate freeze.",
+    "This file is SOURCE_CHECKED identity, not device or live-backend evidence."
+  ]
+}

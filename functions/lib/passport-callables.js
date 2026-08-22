@@ -3,7 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.getPackProofPassport = void 0;
 const https_1 = require("firebase-functions/v2/https");
 const config_1 = require("./config");
-const passport_projection_1 = require("./application/v1/passport-projection");
+const proof_application_service_1 = require("./application/v1/proof-application-service");
 const passport_1 = require("./domain/v1/passport");
 const merchant_evidence_repository_1 = require("./infrastructure/firebase/v1/merchant-evidence-repository");
 const helpers_1 = require("./helpers");
@@ -30,41 +30,19 @@ exports.getPackProofPassport = (0, https_1.onCall)(callOptions, async (request) 
         repository.listTimeline(transaction.id),
         repository.listReturns(transaction.id),
     ]);
+    const commerce = transaction.commerceContextId ? await repository.findCommerceContext(transaction.commerceContextId) : null;
+    const proofs = new proof_application_service_1.ProofApplicationService(repository, () => config_1.connectLinkBaseUrl.value());
     try {
-        (0, passport_projection_1.assertPassportEligible)(transaction, records);
+        return await proofs.getCurrentProof({
+            transaction,
+            artifacts: records,
+            timeline,
+            returns,
+            commerce,
+        });
     }
     catch (error) {
         throw new https_1.HttpsError('failed-precondition', error instanceof Error ? error.message : 'This transaction does not yet qualify for a Proof.');
     }
-    const issuedAt = new Date();
-    const identity = (0, passport_projection_1.boundOrIssuedIdentity)(transaction, issuedAt);
-    if (identity.bind) {
-        const bound = await repository.bindPassportIdentity(transaction.id, {
-            passportId: identity.passportId,
-            displayId: identity.displayId,
-            issuedAt: identity.issuedAt,
-        });
-        identity.passportId = bound.passportId;
-        identity.displayId = bound.displayId;
-        identity.issuedAt = bound.issuedAt;
-    }
-    const commerce = transaction.commerceContextId ? await repository.findCommerceContext(transaction.commerceContextId) : null;
-    return (0, passport_projection_1.projectPassport)({
-        transaction,
-        artifacts: records,
-        shipment: transaction.shipment,
-        delivery: transaction.delivery,
-        returns,
-        timeline,
-        commerce,
-        identity: {
-            passportId: identity.passportId,
-            displayId: identity.displayId,
-            issuedAt: identity.issuedAt.toISOString(),
-        },
-        verificationBaseUrl: config_1.connectLinkBaseUrl.value(),
-        reviewQuery: null,
-        now: issuedAt.toISOString(),
-    });
 });
 //# sourceMappingURL=passport-callables.js.map

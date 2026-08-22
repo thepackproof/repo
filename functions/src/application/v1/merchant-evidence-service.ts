@@ -31,15 +31,8 @@ import type {
 } from './merchant-evidence-types';
 import { canonicalize, MerchantAuthorizationPolicy, sha256 } from './merchant-transaction-service';
 import type { MerchantPrincipal } from './merchant-types';
-import {
-  assertPassportEligible,
-  boundOrIssuedIdentity,
-  exportDto,
-  looksLikePassportIdentity,
-  nextSnapshot,
-  projectPassport,
-  snapshotDto,
-} from './passport-projection';
+import { looksLikePassportIdentity } from './passport-projection';
+import { ProofApplicationService } from './proof-application-service';
 import {
   passportSnapshotFingerprintPayload,
   type PackProofPassportExportV1,
@@ -744,36 +737,14 @@ export class MerchantEvidenceApplicationService {
     const commerce = transaction.commerceContextId
       ? await this.repository.findCommerceContext(transaction.commerceContextId)
       : null;
-    assertPassportEligible(transaction, records, commerce);
-    const issuedAt = this.now();
-    const identity = boundOrIssuedIdentity(transaction, issuedAt);
-    if (identity.bind) {
-      const bound = await this.repository.bindPassportIdentity(transaction.id, {
-        passportId: identity.passportId,
-        displayId: identity.displayId,
-        issuedAt: identity.issuedAt,
-      });
-      identity.passportId = bound.passportId;
-      identity.displayId = bound.displayId;
-      identity.issuedAt = bound.issuedAt;
-    }
-    return projectPassport({
+    const proofs = this.proofService();
+    return proofs.getCurrentProof({
       transaction,
       artifacts: records,
-      shipment: transaction.shipment,
-      delivery: transaction.delivery,
-      returns,
       timeline,
+      returns,
       commerce,
-      identity: {
-        passportId: identity.passportId,
-        displayId: identity.displayId,
-        issuedAt: identity.issuedAt.toISOString(),
-      },
-      verificationBaseUrl: this.verificationBaseUrl(),
-      reviewQuery,
-      now: issuedAt.toISOString(),
-    });
+    }, reviewQuery);
   }
 
   async getPassport(principal: MerchantPrincipal, transactionId: string, reviewQuery: PassportReviewQuery | null = null): Promise<PackProofPassportV1> {
@@ -805,7 +776,7 @@ export class MerchantEvidenceApplicationService {
         leaseSeconds: 900,
       },
       async () => {
-        const stored = await this.repository.createPassportSnapshot(transactionId, (version) => nextSnapshot(passport, version, this.now()));
+        const stored = await this.repository.createPassportSnapshot(transactionId, (version) => this.proofService().nextSnapshot(passport, version));
         await this.audit.append({
           eventId: `passport_snapshot_${stored.snapshotId}`,
           organizationId: principal.organizationId,
@@ -816,7 +787,7 @@ export class MerchantEvidenceApplicationService {
           requestId,
           metadata: { apiVersion: 'v1', passportId: stored.passportId, snapshotId: stored.snapshotId, snapshotVersion: stored.snapshotVersion },
         });
-        return snapshotDto(stored);
+        return this.proofService().snapshotDto(stored);
       },
     );
     return { snapshot: execution.value, replayed: execution.replayed };
@@ -829,7 +800,7 @@ export class MerchantEvidenceApplicationService {
     if (!transaction) throw notFound('PASSPORT_NOT_FOUND', 'The requested Proof was not found.');
     const record = await this.repository.findPassportSnapshot(transaction.id, snapshotId);
     if (!record) throw notFound('PASSPORT_SNAPSHOT_NOT_FOUND', 'The requested Passport snapshot was not found.');
-    return snapshotDto(record);
+    return this.proofService().snapshotDto(record);
   }
 
   async createPassportExport(principal: MerchantPrincipal, passportIdentity: string, snapshotId: string, idempotencyKey: string, requestId: string): Promise<{ export: PackProofPassportExportV1; replayed: boolean }> {
@@ -881,8 +852,12 @@ export class MerchantEvidenceApplicationService {
     if (execution.replayed && value.stored.pdfStoragePath) {
       const expiresAt = new Date(this.now().getTime() + REPORT_URL_TTL_MS);
       const downloadUrl = await this.urls.sign(value.stored.pdfStoragePath, expiresAt);
-      return { export: exportDto(value.stored, { url: downloadUrl, expiresAt: expiresAt.toISOString() }), replayed: true };
+      return { export: this.proofService().exportDto(value.stored, { url: downloadUrl, expiresAt: expiresAt.toISOString() }), replayed: true };
     }
-    return { export: exportDto(value.stored, { url: value.downloadUrl, expiresAt: value.expiresAt }), replayed: execution.replayed };
+    return { export: this.proofService().exportDto(value.stored, { url: value.downloadUrl, expiresAt: value.expiresAt }), replayed: execution.replayed };
+  }
+
+  private proofService(): ProofApplicationService {
+    return new ProofApplicationService(this.repository, () => this.verificationBaseUrl(), this.now);
   }
 }

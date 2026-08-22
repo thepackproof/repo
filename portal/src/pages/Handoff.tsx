@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { CAPTURE_PRIMARY_ACTIONS, resolveNextRequiredAction } from '@packproof/ux';
-import { createMobileHandoff, getTransaction, toUxTransaction, type PortalMobileHandoff, type PortalTransaction } from '../api';
+import { CAPTURE_PRIMARY_ACTIONS } from '@packproof/ux';
+import { createMobileHandoff, getTransaction, type PortalMobileHandoff, type PortalTransaction } from '../api';
+import { workspaceFromPortal } from '../workspace';
 import { useAuth } from '../auth';
 import { QrPanel } from '../QrPanel';
 
@@ -19,11 +20,7 @@ export function HandoffPage() {
       .then(async (result) => {
         if (cancelled || !user) return;
         setItem(result.data);
-        const next = resolveNextRequiredAction({
-          transaction: toUxTransaction(result.data),
-          viewerId: user.uid,
-          protocol: result.data.protocol,
-        });
+        const next = workspaceFromPortal(result.data, user.uid).nextAction;
         const action = next.primaryAction?.kind;
         if (!action || !CAPTURE_PRIMARY_ACTIONS.has(action)) {
           setMessage(next.headline || 'Nothing needs phone capture on this PackProof right now.');

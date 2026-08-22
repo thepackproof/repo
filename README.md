@@ -14,8 +14,9 @@ The source includes:
 
 - [`docs/WHITEPAPER_COMPLIANCE.md`](docs/WHITEPAPER_COMPLIANCE.md), which translates the 7 August 2026 technical white paper into release gates;
 - [`docs/CLAIMS_REGISTER.json`](docs/CLAIMS_REGISTER.json), which records bounded, prohibited, research-only, and runtime-dependent claims;
-- [`docs/EVIDENCE_FORMAT_V2.md`](docs/EVIDENCE_FORMAT_V2.md), which specifies canonicalization, hashing, bundle binding, manifest authentication, and layered assurance; and
-- [`docs/architecture/ARCHITECTURE_CONTRACT.md`](docs/architecture/ARCHITECTURE_CONTRACT.md), which governs the incremental migration to one commerce, mobile, API, evidence, event, and integration core; and
+- [`docs/EVIDENCE_FORMAT_V2.md`](docs/EVIDENCE_FORMAT_V2.md), which specifies canonicalization, hashing, bundle binding, manifest authentication, and layered assurance;
+- [`docs/architecture/ARCHITECTURE_CONTRACT.md`](docs/architecture/ARCHITECTURE_CONTRACT.md), which governs the incremental migration to one commerce, mobile, API, evidence, event, and integration core;
+- [`docs/architecture/HARDENING_AND_RELEASE_ARCHITECTURE_PLAN.md`](docs/architecture/HARDENING_AND_RELEASE_ARCHITECTURE_PLAN.md), the current HC-1 development sequence (new product surfaces are frozen until its release-gate statements are true); and
 - a production-source claim-language test (`npm run test:claims`).
 
 These controls are not certification, scientific validation, a penetration test, laboratory accreditation, or a legal opinion.

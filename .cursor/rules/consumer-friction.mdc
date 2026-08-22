@@ -12,7 +12,7 @@ Before adding a consumer-facing tap, field, decision, permission, screen, wait, 
 
 - Can PackProof derive, pre-populate, or sequence this instead?
 - Does the user need this word, or is it domain jargon (`Passport`, `evidence packet`, `substrate`, `identifier region`, `attestation`, `READY_TO_PACK`)?
-- Is there already a next-action path in `src/lib/ux-flow.ts`? Do not re-interpret lifecycle in a screen.
+- Is there already a next-action path on the workspace projection (HC-1) or in `src/lib/ux-flow.ts`? Do not re-interpret lifecycle in a screen. Do not call the resolver without canonical protocol state.
 
 Rules:
 

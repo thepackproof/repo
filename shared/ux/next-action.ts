@@ -190,10 +190,13 @@ export type NextRequiredAction = {
   canLeaveWhileProcessing: boolean;
 };
 
+export type ProofAvailability = 'NOT_ELIGIBLE' | 'ELIGIBLE_NOT_ISSUED' | 'AVAILABLE';
+
 export type UxFlowInput = {
   transaction: PackProofTransaction;
   viewerId: string;
-  protocol?: PackageSealProtocolStatus | null;
+  protocol: PackageSealProtocolStatus;
+  proof?: { availability: ProofAvailability } | null;
   returnPassport?: Pick<
     ReturnPassport,
     'id' | 'status' | 'initiatedBy' | 'returningParticipantId' | 'recipientId' | 'completedBy' | 'updatedAt'
@@ -234,7 +237,8 @@ export const CAPTURE_PRIMARY_ACTIONS = new Set<UxPrimaryActionKind>([
   'RECORD_RETURN_UNBOXING',
 ]);
 
-const EMPTY_PROTOCOL: PackageSealProtocolStatus = {
+/** Explicit all-false protocol for fixtures that truly have no evidence. Never use as a missing-data default. */
+export const ABSENT_PROTOCOL: PackageSealProtocolStatus = {
   hasPackingVideo: false,
   hasSealReference: false,
   hasArrivalPhoto: false,
@@ -269,8 +273,18 @@ function hasConfirmed(ids: string[] | undefined, uid: string | null | undefined)
   return Boolean(uid && ids?.includes(uid));
 }
 
-function passportReady(status: TransactionStatus, passportId?: string | null): boolean {
-  return Boolean(passportId) || ['PACKED', 'SHIPPED', 'BUYER_REVIEW', 'COMPLETED'].includes(status);
+export function proofCanBeViewed(availability: ProofAvailability | null | undefined): boolean {
+  return availability === 'AVAILABLE';
+}
+
+export function integrityBannerLabel(banner: string): string {
+  if (banner === 'AUTHENTIC_PACKPROOF') return 'Authentic PackProof record';
+  if (banner === 'PACKPROOF_RECORD_WITH_LIMITATIONS') return 'PackProof record with limitations';
+  return banner.replaceAll('_', ' ');
+}
+
+function proofReady(input: UxFlowInput): boolean {
+  return proofCanBeViewed(input.proof?.availability);
 }
 
 function progressStageFor(status: TransactionStatus, saleType: 'SHIPPED' | 'LOCAL_HANDOFF'): ProgressStage {
@@ -353,7 +367,7 @@ function finish(
 ): NextRequiredAction {
   const status = input.transaction.status;
   const saleType = input.transaction.terms.saleType;
-  const ready = passportReady(status, input.transaction.passportId);
+  const ready = proofReady(input);
   const completedContext = draft.completedContext
     ?? draft.prerequisites.filter((item) => item.complete).map((item) => item.label);
   const step = stepOf(status, draft.primaryAction?.kind, saleType);
@@ -472,7 +486,7 @@ function resolveReturn(
   const returning = active.returningParticipantId === input.viewerId;
   const recipient = active.recipientId === input.viewerId;
   const requester = active.initiatedBy === input.viewerId;
-  const protocol = input.returnProtocol ?? EMPTY_PROTOCOL;
+  const protocol = input.returnProtocol ?? ABSENT_PROTOCOL;
   const stage = progressStageFor(input.transaction.status, input.transaction.terms.saleType);
 
   if (active.status === 'REQUESTED') {
@@ -683,14 +697,15 @@ function resolveStatus(input: UxFlowInput, role: ParticipantRole, protocol: Pack
   }
 
   if (status === 'ARCHIVED' || status === 'COMPLETED') {
+    const canView = proofReady(input);
     return {
       humanState: 'COMPLETE',
       headline: 'PackProof complete',
       description: 'This PackProof is finished.',
-      instruction: 'The finished record is ready when you need it.',
-      nextHappens: 'You can view or share it where permitted.',
+      instruction: canView ? 'The finished record is ready when you need it.' : 'This PackProof is finished.',
+      nextHappens: canView ? 'You can view or share it where permitted.' : 'No further packing or shipping steps are required.',
       actionRequiredBy: 'NONE',
-      primaryAction: { kind: 'OPEN_PASSPORT', label: 'View Proof' },
+      primaryAction: canView ? { kind: 'OPEN_PASSPORT', label: 'View Proof' } : null,
       secondaryAction: null,
       progressStage: 'COMPLETE',
       waitingReason: 'NONE',
@@ -698,10 +713,12 @@ function resolveStatus(input: UxFlowInput, role: ParticipantRole, protocol: Pack
       waitingOnTask: null,
       lockedExplanation: null,
       prerequisites: [],
-      notificationCopy: notify('PackProof complete', 'Your Proof is ready.'),
+      notificationCopy: canView
+        ? notify('PackProof complete', 'Your Proof is ready.')
+        : notify('PackProof complete', 'This PackProof is finished.'),
       inboxBucket: 'COMPLETED',
-      inboxSentence: 'Your Proof is ready.',
-      noActionRequired: false,
+      inboxSentence: canView ? 'Your Proof is ready.' : 'This PackProof is finished.',
+      noActionRequired: !canView,
     };
   }
 
@@ -714,7 +731,7 @@ function resolveStatus(input: UxFlowInput, role: ParticipantRole, protocol: Pack
       nextHappens: 'Completion stays paused until the concern is resolved.',
       actionRequiredBy: 'YOU',
       primaryAction: null,
-      secondaryAction: passportReady(status, transaction.passportId) ? { kind: 'OPEN_PASSPORT', label: 'View Proof' } : null,
+      secondaryAction: proofReady(input) ? { kind: 'OPEN_PASSPORT', label: 'View Proof' } : null,
       progressStage: stage,
       waitingReason: 'NONE',
       waitingOnName: null,
@@ -919,18 +936,30 @@ function resolveStatus(input: UxFlowInput, role: ParticipantRole, protocol: Pack
           inboxSentence: 'Photograph the arrived package.',
         });
       }
+      if (!protocol.hasUnboxingVideo) {
+        return actionView({
+          humanState: 'DELIVERY_REVIEW',
+          headline: 'Record the unboxing',
+          description: 'Arrival photo is saved. Keep the opening in one take.',
+          instruction: 'Start with the sealed package and keep recording until the contents are visible.',
+          nextHappens: 'Then you can finish this PackProof.',
+          primaryAction: { kind: 'RECORD_UNBOXING', label: 'Record unboxing', captureType: 'UNBOXING_VIDEO' },
+          secondaryAction: { kind: 'MARK_RECEIVED', label: 'Skip video' },
+          progressStage: 'DELIVERY',
+          completedContext: ['Arrival photo'],
+          notificationCopy: notify('Record the unboxing', 'Keep the opening in one continuous take.'),
+          inboxSentence: 'Record unboxing of the arrived package.',
+        });
+      }
       return actionView({
-        humanState: 'DELIVERY_REVIEW',
-        headline: 'Record the unboxing',
-        description: 'Arrival photo is saved. Keep the opening in one take.',
-        instruction: 'Start with the sealed package and keep recording until the contents are visible.',
-        nextHappens: 'Then you can finish this PackProof.',
-        primaryAction: { kind: 'RECORD_UNBOXING', label: 'Record unboxing', captureType: 'UNBOXING_VIDEO' },
-        secondaryAction: { kind: 'MARK_RECEIVED', label: 'Skip video' },
-        progressStage: 'DELIVERY',
-        completedContext: ['Arrival photo'],
-        notificationCopy: notify('Record the unboxing', 'Keep the opening in one continuous take.'),
-        inboxSentence: 'Record unboxing of the arrived package.',
+        headline: 'Finish',
+        description: 'Delivery has been recorded.',
+        instruction: 'Confirm that everything looks complete.',
+        nextHappens: 'When both of you confirm, this PackProof is finished.',
+        primaryAction: { kind: 'COMPLETE_TRANSACTION', label: 'Finish' },
+        progressStage: 'COMPLETE',
+        notificationCopy: notify('Finish this PackProof', 'Confirm that everything looks complete.'),
+        inboxSentence: 'Finish this PackProof.',
       });
     }
     return {
@@ -1004,7 +1033,7 @@ function applyProcessing(
     return {
       ...view,
       humanState: 'EVIDENCE_PROCESSING',
-      headline: securing ? 'Evidence securely saved' : 'Evidence saved securely',
+      headline: securing ? 'Finishing your Proof' : 'Your recording is safe',
       description: securing
         ? 'PackProof is finishing the record. You can leave.'
         : 'Uploading when your connection is available. You can leave.',
@@ -1016,9 +1045,9 @@ function applyProcessing(
       waitingReason: 'EVIDENCE_PROCESSING',
       waitingOnName: 'PackProof',
       waitingOnTask: securing ? 'secure the evidence record' : 'upload the evidence',
-      notificationCopy: notify(securing ? 'Evidence saved' : 'Uploading evidence', 'You can leave. PackProof will keep going.'),
+      notificationCopy: notify(securing ? 'Finishing your Proof' : 'Your recording is safe', 'You can leave. PackProof will keep going.'),
       inboxBucket: 'IN_PROGRESS',
-      inboxSentence: securing ? 'PackProof is saving your evidence.' : 'Uploading packing evidence.',
+      inboxSentence: securing ? 'Finishing your Proof.' : 'Your recording is safe.',
       noActionRequired: true,
     };
   }
@@ -1038,21 +1067,21 @@ function applyProcessing(
   }
   return {
     ...view,
-    headline: 'We could not use that recording',
+    headline: 'Evidence needs attention',
     description: 'Your previous work was not saved as finished evidence.',
     instruction: 'Record the step again from the start.',
     nextHappens: 'A new capture replaces the failed one.',
     lockedExplanation: 'Recapture this step. A retry of the old file will not work.',
-    notificationCopy: notify('Please recapture', 'That recording could not be used. Try again.'),
+    notificationCopy: notify('Evidence needs attention', 'That recording could not be used. Try again.'),
     inboxBucket: 'NEEDS_ATTENTION',
-    inboxSentence: 'Please recapture this step.',
+    inboxSentence: 'Evidence needs attention.',
     noActionRequired: false,
   };
 }
 
 export function resolveNextRequiredAction(input: UxFlowInput): NextRequiredAction {
   const role = roleOf(input.transaction, input.viewerId);
-  const protocol = input.protocol ?? EMPTY_PROTOCOL;
+  const protocol = input.protocol;
   const fromReturn = input.transaction.status === 'DISPUTED' ? null : resolveReturn(input, role);
   const draft = applyProcessing(fromReturn ?? resolveStatus(input, role, protocol), input.evidenceProcessing);
   return finish(input, role, draft);

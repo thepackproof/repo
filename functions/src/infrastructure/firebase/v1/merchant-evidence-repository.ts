@@ -333,7 +333,13 @@ function toReturn(transactionId: string, id: string, data: DocumentData): Mercha
     labelEvidenceMatchStatus: matchStatus(shipping?.labelEvidenceMatchStatus),
     createdAt: createdAt.toISOString(),
     updatedAt: updatedAt.toISOString(),
-  };
+    initiatedBy: optionalString(data.initiatedBy) ?? '',
+    returningParticipantId: optionalString(data.returningParticipantId) ?? '',
+    recipientId: optionalString(data.recipientId) ?? '',
+    completedBy: Array.isArray(data.completedBy)
+      ? data.completedBy.filter((value: unknown): value is string => typeof value === 'string')
+      : [],
+  } as MerchantReturnPassportDto;
 }
 
 function toTimeline(transactionId: string, id: string, data: DocumentData): MerchantTimelineEventDto {

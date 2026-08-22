@@ -201,6 +201,16 @@ const eligible = passport.evaluatePassportEligibility({
   displayedUnattributedFacts: 0,
 });
 assert.equal(eligible.ok, true);
+const packedUnavailable = resolve('PACKED', 'seller', { proof: { availability: 'NOT_ELIGIBLE' } });
+assert.equal(packedUnavailable.passportReady, false);
+assert.notEqual(packedUnavailable.secondaryAction?.kind, 'OPEN_PASSPORT');
+const packedAvailable = resolve('PACKED', 'seller', { proof: { availability: 'AVAILABLE' } });
+assert.equal(packedAvailable.passportReady, true);
+assert.equal(packedAvailable.secondaryAction?.kind, 'OPEN_PASSPORT');
+const completedUnavailable = resolve('COMPLETED', 'seller', { proof: { availability: 'NOT_ELIGIBLE' } });
+assert.equal(completedUnavailable.primaryAction, null);
+const completedAvailable = resolve('COMPLETED', 'seller', { proof: { availability: 'AVAILABLE' } });
+assert.equal(completedAvailable.primaryAction?.kind, 'OPEN_PASSPORT');
 
 // RC-S-08 — Proof identity is stable ppt_ / PP-
 const identity = passport.issuePassportIdentity(TX_ID);

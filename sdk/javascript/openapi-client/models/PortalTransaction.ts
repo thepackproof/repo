@@ -2,6 +2,7 @@
 /* istanbul ignore file */
 /* tslint:disable */
 /* eslint-disable */
+import type { PortalProofAvailability } from './PortalProofAvailability';
 import type { PortalProtocol } from './PortalProtocol';
 export type PortalTransaction = {
     id: string;
@@ -29,6 +30,7 @@ export type PortalTransaction = {
     passportDisplayId: string | null;
     source: any | null;
     protocol: PortalProtocol;
+    proof: PortalProofAvailability;
     lockedAt: string | null;
     createdAt: string;
     updatedAt: string;

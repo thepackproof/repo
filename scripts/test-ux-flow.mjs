@@ -197,7 +197,7 @@ const reviewWaiting = resolve('BUYER_REVIEW', 'BUYER', {}, { completedBy: ['buye
 assert.equal(reviewWaiting.inboxBucket, 'WAITING');
 assert.equal(reviewWaiting.primaryAction, null);
 
-const complete = resolve('COMPLETED', 'SELLER');
+const complete = resolve('COMPLETED', 'SELLER', { proof: { availability: 'AVAILABLE' } });
 assert.equal(complete.humanState, 'COMPLETE');
 assert.equal(complete.headline, 'PackProof complete');
 assert.equal(complete.consumerState, 'complete');
@@ -206,6 +206,10 @@ assert.equal(complete.primaryAction?.label, 'View Proof');
 assert.equal(complete.inboxBucket, 'COMPLETED');
 assert.equal(complete.progressSteps.every((step) => step.state === 'done'), true);
 assert.match(complete.instruction, /finished record/i);
+
+const completeWithoutProof = resolve('COMPLETED', 'SELLER');
+assert.equal(completeWithoutProof.primaryAction, null);
+assert.equal(completeWithoutProof.inboxBucket, 'COMPLETED');
 
 const cancelled = resolve('CANCELLED', 'BUYER');
 assert.equal(cancelled.humanState, 'CANCELLED');
@@ -216,7 +220,7 @@ assert.equal(disputed.humanState, 'CONCERN_OPEN');
 
 const processing = resolve('TERMS_LOCKED', 'SELLER', { evidenceProcessing: { phase: 'SECURING' } }, { confirmedBy: ['seller', 'buyer'] });
 assert.equal(processing.humanState, 'EVIDENCE_PROCESSING');
-assert.equal(processing.headline, 'Evidence securely saved');
+assert.equal(processing.headline, 'Finishing your Proof');
 assert.match(processing.instruction, /notify you/i);
 assert.equal(processing.primaryAction, null);
 assert.equal(processing.inboxBucket, 'IN_PROGRESS');
@@ -249,6 +253,7 @@ assert.equal(localHandoff.progressSteps.some((step) => step.label === 'Handoff')
 const returnRequested = resolveNextRequiredAction({
   transaction: tx({ status: 'COMPLETED' }),
   viewerId: 'seller',
+  protocol,
   returnPassport: {
     id: 'ret_1',
     status: 'REQUESTED',

@@ -9,6 +9,7 @@ import { HomeTaskTile, HomeWaitTile } from '@/components/task-session';
 import { transactionUx } from '@/components/transaction-card';
 import { colors } from '@/constants/brand';
 import { useTransactions } from '@/hooks/use-transactions';
+import { useWorkspaceSlices } from '@/hooks/use-workspace-slices';
 import { usePendingIntakes } from '@/hooks/use-pending-intakes';
 import { useAuth } from '@/providers/auth-provider';
 import { useOfflineEvidence } from '@/providers/offline-evidence-provider';
@@ -21,11 +22,13 @@ export default function HomeScreen() {
   const router = useRouter();
   const { user, profile } = useAuth();
   const { items } = useTransactions(user?.uid);
+  const slices = useWorkspaceSlices(user?.uid, items);
+  const hydrated = items.filter((item) => slices[item.id]);
   const { items: pendingIntakes } = usePendingIntakes(user?.uid);
   const { queuedCount, attentionCount, attentionReason, syncNow, retryAttention } = useOfflineEvidence();
   const [joinOpen, setJoinOpen] = useState(false);
   const [inviteCode, setInviteCode] = useState('');
-  const grouped = user ? groupHomeInbox(items, (item) => transactionUx(item, user.uid)) : {
+  const grouped = user ? groupHomeInbox(hydrated, (item) => transactionUx(item, user.uid, slices[item.id])) : {
     needsAttention: [],
     waiting: [],
   };
@@ -88,7 +91,7 @@ export default function HomeScreen() {
               />
             ))}
             {grouped.needsAttention.map((item) => {
-              const ux = transactionUx(item, user!.uid);
+              const ux = transactionUx(item, user!.uid, slices[item.id]);
               const href = ux.primaryAction
                 ? hrefForPrimaryAction(ux.primaryAction.kind, item.id)
                 : { pathname: '/task/[id]' as const, params: { id: item.id } };
@@ -107,7 +110,7 @@ export default function HomeScreen() {
             {grouped.waiting.length ? (
               <View style={styles.waiting}>
                 {grouped.waiting.map((item) => {
-                  const ux = transactionUx(item, user!.uid);
+                  const ux = transactionUx(item, user!.uid, slices[item.id]);
                   return (
                     <HomeWaitTile
                       key={item.id}

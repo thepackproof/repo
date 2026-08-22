@@ -12,7 +12,14 @@ process.env.FIREBASE_CONFIG = JSON.stringify({
 });
 
 const require = createRequire(import.meta.url);
-const { claimParticipantInvitation, getMyEvidenceSession, packproofApi, redeemEvidenceSession } = require('../lib/index.js');
+const {
+  claimParticipantInvitation,
+  getMyEvidenceSession,
+  getMyTransactionWorkspace,
+  getMyTransactionWorkspaces,
+  packproofApi,
+  redeemEvidenceSession,
+} = require('../lib/index.js');
 const endpoint = packproofApi?.__endpoint;
 
 assert.equal(typeof packproofApi, 'function', 'packproofApi must be a Firebase function export.');
@@ -28,6 +35,10 @@ for (const callable of [claimParticipantInvitation, getMyEvidenceSession, redeem
   assert.equal(typeof callable, 'function');
   assert.equal(callable.__endpoint?.platform, 'gcfv2');
   assert.ok(callable.__endpoint?.secretEnvironmentVariables?.some(({ key }) => key === 'PARTICIPANT_HANDOFF_SIGNING_SECRET'));
+}
+for (const callable of [getMyTransactionWorkspace, getMyTransactionWorkspaces]) {
+  assert.equal(typeof callable, 'function');
+  assert.equal(callable.__endpoint?.platform, 'gcfv2');
 }
 const participantCallableSource = await readFile(new URL('../src/participant-capture-callables.ts', import.meta.url), 'utf8');
 assert.equal((participantCallableSource.match(/enforceAppCheck:\s*true/g) ?? []).length, 3);

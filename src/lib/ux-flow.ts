@@ -6,6 +6,7 @@ import {
 } from '../../shared/ux/next-action.ts';
 
 export {
+  ABSENT_PROTOCOL,
   CAMERA_SESSION_ACTIONS,
   CAPTURE_PRIMARY_ACTIONS,
   DIRECT_CAPTURE_ACTIONS,
@@ -20,12 +21,20 @@ export {
   groupByInboxBucket,
   groupHomeInbox,
   groupLibrary,
+  integrityBannerLabel,
   orderLabel,
   otherLabel,
+  proofCanBeViewed,
   resolveNextRequiredAction,
   roleFromViewer,
   viewerRole,
 } from '../../shared/ux/next-action.ts';
+
+export {
+  WORKSPACE_PROJECTION_VERSION,
+  evidenceProcessingStateFromPhase,
+  projectTransactionWorkspace,
+} from '../../shared/ux/workspace-projection.ts';
 
 export type {
   ActionRequiredBy,
@@ -34,16 +43,25 @@ export type {
   HumanState,
   InboxBucket,
   NextRequiredAction,
+  PackageSealProtocolStatus,
+  PackProofTransaction,
   ParticipantRole,
   ProgressStage,
   ProgressStep,
   ProgressStepState,
+  ProofAvailability,
   UxAction,
   UxFlowInput,
   UxPrimaryActionKind,
   UxSecondaryActionKind,
   WaitingReason,
 } from '../../shared/ux/next-action.ts';
+
+export type {
+  TransactionWorkspaceProjectionV1,
+  WorkspaceEvidenceProcessingState,
+  WorkspaceProjectionInput,
+} from '../../shared/ux/workspace-projection.ts';
 
 export type PrimaryActionHref =
   | { pathname: '/task/[id]'; params: { id: string; fromShare?: string } }

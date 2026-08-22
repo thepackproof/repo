@@ -3,7 +3,7 @@ name: PackProof quality gates
 on:
   pull_request:
   push:
-    branches: [master, 'cursor/**']
+    branches: [master, 'cursor/**', 'hardening/**']
 
 permissions:
   contents: read
@@ -49,6 +49,10 @@ jobs:
           npm --prefix functions run build
           npm --prefix portal run typecheck
           npm run test:ux-flow
+          npm run test:hardening-contracts
+          npm run test:architecture
+          npm run test:queue-fail-closed
+          npm run test:release-manifest
           npm --prefix portal test
           npm --prefix portal run build
 
@@ -70,7 +74,9 @@ jobs:
         run: npm run test:api
 
       - name: Canonical domain contract tests
-        run: npm run test:domain
+        run: |
+          npm run test:domain
+          node scripts/test-proof-properties.mjs
 
       - name: Release-candidate source journey
         run: npm run test:rc-e2e

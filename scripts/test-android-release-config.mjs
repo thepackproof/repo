@@ -12,6 +12,7 @@ const result = spawnSync(process.execPath, [expoCli, 'config', '--type', 'public
     EXPO_PUBLIC_ENABLE_FACEBOOK_AUTH: 'false',
     EXPO_PUBLIC_ENABLE_TIKTOK_AUTH: 'false',
     EXPO_PUBLIC_ENABLE_REVENUECAT_BILLING: 'false',
+    ANDROID_PACKAGE_NAME: 'com.packproof.app',
   },
 });
 
@@ -23,7 +24,7 @@ if (result.status !== 0) {
 const config = JSON.parse(result.stdout);
 assert.equal(config.android?.package, 'com.packproof.app');
 assert.equal(config.android?.versionCode, 7);
-assert.equal(config.version, '0.9.5.0');
+assert.equal(config.version, '0.9.6.0');
 assert.equal(config.android?.allowBackup, false);
 
 const forbiddenReleasePermissions = [

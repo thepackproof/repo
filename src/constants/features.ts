@@ -6,4 +6,6 @@ export const featureFlags = {
   billing: enabled(process.env.EXPO_PUBLIC_ENABLE_REVENUECAT_BILLING) && Boolean(process.env.EXPO_PUBLIC_REVENUECAT_GOOGLE_API_KEY?.trim()),
   /** 15-frame research capture. Ordinary users never see this surface. */
   researchMode: enabled(process.env.EXPO_PUBLIC_ENABLE_RESEARCH_MODE),
+  receiptIntake: process.env.EXPO_PUBLIC_DISABLE_RECEIPT_INTAKE?.trim().toLowerCase() !== 'true',
+  browserExtensionIntake: process.env.EXPO_PUBLIC_DISABLE_BROWSER_EXTENSION_INTAKE?.trim().toLowerCase() !== 'true',
 };
