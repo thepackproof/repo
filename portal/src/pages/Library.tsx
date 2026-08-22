@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { groupLibrary } from '@packproof/ux';
 import { listTransactions, type PortalTransaction } from '../api';
-import { workspaceFromPortal } from '../workspace';
+import { workspaceOf } from '../workspace';
 import { useAuth } from '../auth';
 
 export function LibraryPage() {
@@ -18,13 +18,13 @@ export function LibraryPage() {
     return () => { cancelled = true; };
   }, []);
 
-  const grouped = user ? groupLibrary(items, (item) => workspaceFromPortal(item, user.uid).nextAction) : { active: [], completed: [] };
+  const grouped = user ? groupLibrary(items, (item) => workspaceOf(item).nextAction) : { active: [], completed: [] };
 
   return (
     <>
       <p className="eyebrow">Library</p>
       <h1>PackProofs</h1>
-      <p className="lede">Your records. Workflow decisions come from the same Next Action Engine as Android.</p>
+      <p className="lede">Your records. Next Action and Proof availability come from the same server workspace as Android.</p>
       {error ? <p className="error">{error}</p> : null}
       <section className="stack">
         {grouped.active.map((item) => (
@@ -39,9 +39,14 @@ export function LibraryPage() {
           <h1 style={{ marginTop: 36, fontSize: 22 }}>Completed</h1>
           <section className="stack">
             {grouped.completed.map((item) => (
-              <Link key={item.id} className="card" to={`/packproofs/${item.id}/proof`} style={{ textDecoration: 'none', color: 'inherit' }}>
+              <Link
+                key={item.id}
+                className="card"
+                to={workspaceOf(item).proof.availability === 'AVAILABLE' ? `/packproofs/${item.id}/proof` : `/packproofs/${item.id}`}
+                style={{ textDecoration: 'none', color: 'inherit' }}
+              >
                 <h2>{item.title}</h2>
-                <p className="meta">View Proof</p>
+                <p className="meta">{workspaceOf(item).proof.availability === 'AVAILABLE' ? 'View Proof' : workspaceOf(item).nextAction.headline}</p>
               </Link>
             ))}
           </section>

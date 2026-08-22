@@ -337,6 +337,19 @@ class FirestoreMerchantEvidenceRepository {
     constructor(firestore) {
         this.firestore = firestore;
     }
+    workspaceSummaryRef(transactionId) {
+        return this.firestore.collection('transactionWorkspaces').doc(transactionId);
+    }
+    getAll(refs) {
+        return this.firestore.getAll(...refs);
+    }
+    async putWorkspaceSummary(summary) {
+        await this.workspaceSummaryRef(summary.transactionId).set({
+            ...summary,
+            object: 'transaction_workspace_summary',
+            schemaVersion: 1,
+        });
+    }
     async findAccessibleTransaction(transactionId, principal) {
         const snap = await this.firestore.collection('transactions').doc(transactionId).get();
         if (!snap.exists)
@@ -818,6 +831,21 @@ class FirestorePortalWorkspaceRepository {
     }
     bindPassportIdentity(transactionId, identity) {
         return this.evidence.bindPassportIdentity(transactionId, identity);
+    }
+    async listWorkspaceSummaries(ids) {
+        if (!ids.length)
+            return [];
+        const refs = ids.slice(0, 50).map((id) => this.evidence.workspaceSummaryRef(id));
+        const snaps = await this.evidence.getAll(refs);
+        return snaps.flatMap((snap) => {
+            if (!snap.exists)
+                return [];
+            const data = snap.data();
+            return data?.transactionId ? [data] : [];
+        });
+    }
+    putWorkspaceSummary(summary) {
+        return this.evidence.putWorkspaceSummary(summary);
     }
 }
 exports.FirestorePortalWorkspaceRepository = FirestorePortalWorkspaceRepository;

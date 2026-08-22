@@ -72,6 +72,8 @@ function project(status, role, protocol, proof, extras = {}) {
     returnProtocol: extras.returnProtocol,
   });
   assert.equal(mobile.projectionVersion, WORKSPACE_PROJECTION_VERSION);
+  assert.equal(mobile.sourceTransactionRevision, transaction.updatedAt);
+  assert.equal(mobile.display.title, transaction.title);
   assert.deepEqual(mobile.nextAction.primaryAction, portal.nextAction.primaryAction);
   assert.deepEqual(mobile.nextAction.primaryAction, engine.primaryAction);
   assert.equal(mobile.proof.availability, proof.availability);

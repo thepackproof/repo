@@ -222,13 +222,33 @@ test('Proof application service is the only bind path and GET bind is explicit',
     commerce: commerceContext(),
   };
   let binds = 0;
+  let stored = null;
   const service = new ProofApplicationService({
     async bindPassportIdentity(_id, identity) {
       binds += 1;
+      stored = identity;
       return identity;
     },
   }, () => 'https://packproof.link', () => now);
-  await service.getCurrentProof(facts);
+  await assert.rejects(
+    () => service.getCurrentProof(facts),
+    (error) => error.code === 'PROOF_IDENTITY_NOT_BOUND',
+  );
+  assert.equal(binds, 0);
+  const issued = await service.issueProofIdentity(facts);
+  assert.equal(issued.availability, 'AVAILABLE');
+  assert.equal(binds, 1);
+  const boundFacts = {
+    ...facts,
+    transaction: {
+      ...facts.transaction,
+      passportId: stored.passportId,
+      passportDisplayId: stored.displayId,
+      passportIssuedAt: stored.issuedAt,
+    },
+  };
+  const proof = await service.getCurrentProof(boundFacts);
+  assert.equal(proof.identity.passportId, stored.passportId);
   assert.equal(binds, 1);
   await assert.rejects(
     () => service.getCurrentProof(facts, null, { bindIdentity: false }),
@@ -320,6 +340,9 @@ test('portal list and get share the same hydrated proof and protocol', async () 
   const detail = await service.getHydratedForActor('seller-1', record.id);
   assert.deepEqual(listed[0].protocol, detail.protocol);
   assert.deepEqual(listed[0].proof, detail.proof);
+  assert.deepEqual(listed[0].workspace.nextAction, detail.workspace.nextAction);
+  assert.deepEqual(listed[0].workspace.proof, detail.workspace.proof);
+  assert.equal(listed[0].workspace.viewer.role, detail.workspace.viewer.role);
   assert.equal(listed[0].proof.availability, 'AVAILABLE');
   assert.equal(listed[0].protocol.sellerReferenceComplete, true);
 });
@@ -363,15 +386,36 @@ test('simultaneous first Proof requests converge on one identity', async () => {
     },
   }, () => 'https://packproof.link', () => now);
 
-  const proofs = await Promise.all([
-    service.getCurrentProof(facts),
-    service.getCurrentProof(facts),
-    service.getCurrentProof(facts),
+  const firstAccess = await Promise.all([
+    service.issueProofIdentity(facts),
+    service.issueProofIdentity(facts),
+    service.issueProofIdentity(facts),
   ]);
-  const ids = new Set(proofs.map((proof) => proof.identity.passportId));
+  const ids = new Set(firstAccess.map((item) => item.passportId));
   assert.equal(ids.size, 1);
-  assert.equal(stored.passportId, proofs[0].identity.passportId);
+  assert.equal(stored.passportId, firstAccess[0].passportId);
+  assert.match(stored.passportId, /^ppt_/);
+  assert.match(stored.displayId, /^PP-/);
   assert.equal(binds, 3);
+
+  const lostThenRetry = await service.issueProofIdentity(facts);
+  assert.equal(lostThenRetry.passportId, stored.passportId);
+  const boundFacts = {
+    ...facts,
+    transaction: {
+      ...facts.transaction,
+      passportId: stored.passportId,
+      passportDisplayId: stored.displayId,
+      passportIssuedAt: stored.issuedAt,
+    },
+  };
+  const proofs = await Promise.all([
+    service.getCurrentProof(boundFacts),
+    service.getCurrentProof(boundFacts),
+  ]);
+  assert.equal(proofs[0].identity.passportId, stored.passportId);
+  assert.equal(proofs[1].identity.passportId, stored.passportId);
+  assert.equal(proofs[0].identity.displayId, stored.displayId);
 });
 
 test('corrupted or quarantined evidence never makes Proof AVAILABLE', () => {

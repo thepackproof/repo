@@ -58,6 +58,12 @@ for (const path of portal) {
     if (/resolveNextRequiredAction\(/.test(line) && !path.endsWith('workspace.ts') && !path.includes('tests')) {
       add(path, 'portal UI cannot call resolveNextRequiredAction', line);
     }
+    if (/projectTransactionWorkspace\(/.test(line) && !path.includes('tests')) {
+      add(path, 'portal UI cannot project a workspace locally', line);
+    }
+    if (/workspaceFromPortal|workspaceFromSlice/.test(line)) {
+      add(path, 'portal UI cannot reconstruct workspace from slices', line);
+    }
   }
 }
 
@@ -73,6 +79,12 @@ for (const path of mobileUi) {
     }
     if (/resolveNextRequiredAction\(/.test(line)) {
       add(path, 'mobile UI cannot call resolveNextRequiredAction', line);
+    }
+    if (/projectTransactionWorkspace\(/.test(line)) {
+      add(path, 'mobile UI cannot project a workspace locally', line);
+    }
+    if (/workspaceFromSlice/.test(line)) {
+      add(path, 'mobile UI cannot reconstruct workspace from slices', line);
     }
   }
 }

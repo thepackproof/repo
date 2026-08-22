@@ -4,26 +4,52 @@ import type { AccessibleMerchantTransaction, StoredEvidenceRecord } from './merc
 import type { MerchantReturnPassportDto } from './merchant-evidence-types';
 import type { PortalProtocolPresence, PortalWorkspaceRecord } from './portal-workspace-service';
 import { evaluateProofAvailabilityFromFacts } from './proof-application-service';
+import type { PackProofTransaction, TransactionStatus } from '../../ux/next-action';
 
-export function protocolFromEvidence(records: readonly StoredEvidenceRecord[]): PortalProtocolPresence {
-  const outbound = records.filter((record) => !record.returnPassportId);
-  const ready = (predicate: (record: StoredEvidenceRecord) => boolean): boolean => outbound.some((record) => predicate(record) && evidenceReadyForWorkflow({
+export function protocolFromEvidence(
+  records: readonly StoredEvidenceRecord[],
+  options: { returnPassportId?: string | null } = {},
+): PortalProtocolPresence {
+  const scoped = options.returnPassportId
+    ? records.filter((record) => record.returnPassportId === options.returnPassportId)
+    : records.filter((record) => !record.returnPassportId);
+  const ready = (predicate: (record: StoredEvidenceRecord) => boolean): boolean => scoped.some((record) => predicate(record) && evidenceReadyForWorkflow({
     ...record,
     assurance: record.assurance ?? undefined,
   }));
-  const hasPackingVideo = ready((record) => isOutboundPackingEvidenceType(record.type));
-  const hasSealReference = ready((record) => isOutboundSealEvidenceType(record.type));
-  const hasArrivalPhoto = ready((record) => record.type === 'DELIVERY_PHOTO');
-  const hasUnboxingVideo = ready((record) => record.type === 'UNBOXING_VIDEO');
+  const hasPackingVideo = ready((record) => (
+    options.returnPassportId ? record.type === 'RETURN_PACKING_VIDEO' : isOutboundPackingEvidenceType(record.type)
+  ));
+  const hasSealReference = ready((record) => (
+    options.returnPassportId ? record.type === 'RETURN_SHIPPING_LABEL' : isOutboundSealEvidenceType(record.type)
+  ));
+  const hasArrivalPhoto = options.returnPassportId ? false : ready((record) => record.type === 'DELIVERY_PHOTO');
+  const hasUnboxingVideo = ready((record) => (
+    options.returnPassportId ? record.type === 'RETURN_UNBOXING_VIDEO' : record.type === 'UNBOXING_VIDEO'
+  ));
   return {
     hasPackingVideo,
     hasSealReference,
     hasArrivalPhoto,
     hasUnboxingVideo,
     sellerReferenceComplete: hasPackingVideo && hasSealReference,
-    buyerArrivalComplete: hasArrivalPhoto && hasUnboxingVideo,
-    outboundComplete: hasPackingVideo && hasSealReference && hasArrivalPhoto && hasUnboxingVideo,
+    buyerArrivalComplete: options.returnPassportId ? hasUnboxingVideo : hasArrivalPhoto && hasUnboxingVideo,
+    outboundComplete: options.returnPassportId
+      ? hasPackingVideo && hasSealReference && hasUnboxingVideo
+      : hasPackingVideo && hasSealReference && hasArrivalPhoto && hasUnboxingVideo,
   };
+}
+
+export function evidenceProcessingFromRecords(records: readonly StoredEvidenceRecord[]): {
+  phase: 'SECURING' | null;
+  pendingCount: number;
+} {
+  const pending = records.filter((record) => !record.serverFinalized && !record.serverVerified);
+  return pending.length ? { phase: 'SECURING', pendingCount: pending.length } : { phase: null, pendingCount: 0 };
+}
+
+export function inviteSentAtFromTimeline(events: readonly { type: string; occurredAt: string }[]): string | null {
+  return events.find((event) => event.type === 'INVITE_CREATED')?.occurredAt ?? null;
 }
 
 export type WorkspaceProofSlice = {
@@ -42,13 +68,13 @@ export type WorkspaceReturnSlice = {
   updatedAt: string;
 } | null;
 
-export function toWorkspaceTransaction(record: PortalWorkspaceRecord | AccessibleMerchantTransaction) {
+export function toWorkspaceTransaction(record: PortalWorkspaceRecord | AccessibleMerchantTransaction): PackProofTransaction {
   return {
     id: record.id,
     sellerId: record.sellerId ?? '',
     buyerId: record.buyerId,
     participantIds: record.participantIds,
-    status: (record.consumerStatus || record.status) as string,
+    status: (record.consumerStatus || record.status) as TransactionStatus,
     title: record.title,
     category: record.category ?? '',
     description: record.description,

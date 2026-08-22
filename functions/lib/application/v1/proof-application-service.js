@@ -39,13 +39,43 @@ class ProofApplicationService {
     evaluateAvailability(facts) {
         return evaluateProofAvailabilityFromFacts(facts);
     }
+    async issueProofIdentity(facts) {
+        return (0, operation_log_1.withOperationLog)('proof.issueIdentity', () => this.issueProofIdentityInner(facts), {
+            transactionIdHash: facts.transaction.id.slice(-8),
+        });
+    }
     async getCurrentProof(facts, reviewQuery = null, options = {}) {
         return (0, operation_log_1.withOperationLog)('proof.getCurrent', () => this.getCurrentProofInner(facts, reviewQuery, options), {
             transactionIdHash: facts.transaction.id.slice(-8),
         });
     }
+    async issueProofIdentityInner(facts) {
+        const availability = this.evaluateAvailability(facts);
+        if (availability.availability === 'NOT_ELIGIBLE') {
+            throw (0, passport_projection_1.passportNotReady)(availability.eligibility.ok ? [] : availability.eligibility.failures);
+        }
+        (0, passport_projection_1.assertPassportEligible)(facts.transaction, facts.artifacts, facts.commerce);
+        const issuedAt = this.now();
+        const identity = (0, passport_projection_1.boundOrIssuedIdentity)(facts.transaction, issuedAt);
+        if (identity.bind) {
+            const bound = await this.binder.bindPassportIdentity(facts.transaction.id, {
+                passportId: identity.passportId,
+                displayId: identity.displayId,
+                issuedAt: identity.issuedAt,
+            });
+            identity.passportId = bound.passportId;
+            identity.displayId = bound.displayId;
+            identity.issuedAt = bound.issuedAt;
+        }
+        return {
+            availability: 'AVAILABLE',
+            passportId: identity.passportId,
+            displayId: identity.displayId,
+            eligibility: availability.eligibility,
+        };
+    }
     async getCurrentProofInner(facts, reviewQuery = null, options = {}) {
-        const bindIdentity = options.bindIdentity !== false;
+        const bindIdentity = options.bindIdentity === true;
         const availability = this.evaluateAvailability(facts);
         if (availability.availability === 'NOT_ELIGIBLE') {
             throw (0, passport_projection_1.passportNotReady)(availability.eligibility.ok ? [] : availability.eligibility.failures);

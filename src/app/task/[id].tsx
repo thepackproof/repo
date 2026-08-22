@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Alert, StyleSheet, View } from 'react-native';
 import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
 import { Choice, Field, LoadingScreen } from '@/components/ui';
@@ -6,22 +6,18 @@ import { DealFacts } from '@/components/deal-facts';
 import { InviteShare } from '@/components/invite-share';
 import { TaskArt } from '@/components/task-art';
 import { TaskSession } from '@/components/task-session';
-import { callFunction, subscribeEvents, subscribeEvidence, subscribeReturnPassports, subscribeTransaction } from '@/lib/api';
+import { callFunction, subscribeReturnPassports, subscribeTransaction } from '@/lib/api';
 import { readableError } from '@/lib/format';
-import { packageSealProtocolStatus } from '@/lib/package-seal-protocol';
-import { useWorkspaceSlice } from '@/hooks/use-workspace-slices';
-import { displayCarrierName, hrefForPrimaryAction, PACK_SESSION_ACTIONS, toHref, type NextRequiredAction } from '@/lib/ux-flow';
-import { workspaceFromSlice } from '@/lib/workspace';
+import { useWorkspace } from '@/hooks/use-workspace-slices';
+import { displayCarrierName, hrefForPrimaryAction, PACK_SESSION_ACTIONS, toHref } from '@/lib/ux-flow';
 import { useAuth } from '@/providers/auth-provider';
-import type { EvidenceRecord, PackProofTransaction, ReturnPassport, TimelineEvent } from '@/types/models';
+import type { PackProofTransaction, ReturnPassport } from '@/types/models';
 
 export default function TaskScreen() {
   const { id, fromShare } = useLocalSearchParams<{ id: string; fromShare?: string }>();
   const router = useRouter();
   const { user } = useAuth();
   const [item, setItem] = useState<PackProofTransaction | null>(null);
-  const [evidence, setEvidence] = useState<EvidenceRecord[]>([]);
-  const [events, setEvents] = useState<TimelineEvent[]>([]);
   const [returnPassports, setReturnPassports] = useState<ReturnPassport[]>([]);
   const [busy, setBusy] = useState(false);
   const [carrier, setCarrier] = useState('USPS');
@@ -31,28 +27,13 @@ export default function TaskScreen() {
   useEffect(() => {
     if (!id) return;
     const unsubTransaction = subscribeTransaction(id, setItem, (error) => Alert.alert('Could not load PackProof', readableError(error)));
-    const unsubEvidence = subscribeEvidence(id, setEvidence);
-    const unsubEvents = subscribeEvents(id, setEvents);
     const unsubReturns = subscribeReturnPassports(id, setReturnPassports);
-    return () => { unsubTransaction(); unsubEvidence(); unsubEvents(); unsubReturns(); };
+    return () => { unsubTransaction(); unsubReturns(); };
   }, [id]);
 
   const activeReturn = returnPassports.find((passport) => !['COMPLETED', 'CANCELLED'].includes(passport.status)) ?? null;
-  const returnProtocol = useMemo(
-    () => (activeReturn ? packageSealProtocolStatus(evidence, { returnPassportId: activeReturn.id }) : null),
-    [activeReturn, evidence],
-  );
-  const inviteSentAt = events.find((event) => event.type === 'INVITE_CREATED')?.createdAt ?? null;
-  const slice = useWorkspaceSlice(id, item ? String(item.updatedAt) : undefined);
-
-  const ux = useMemo<NextRequiredAction | null>(() => {
-    if (!item || !user || !slice) return null;
-    return workspaceFromSlice(item, user.uid, slice, {
-      returnPassport: activeReturn,
-      returnProtocol,
-      inviteSentAt,
-    }).nextAction;
-  }, [item, user, slice, activeReturn, returnProtocol, inviteSentAt]);
+  const workspace = useWorkspace(id, item ? String(item.updatedAt) : undefined);
+  const ux = workspace?.nextAction ?? null;
 
   const goHome = () => router.replace('/(tabs)');
   const run = async (action: () => Promise<void>) => {

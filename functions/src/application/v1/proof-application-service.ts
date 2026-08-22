@@ -80,14 +80,46 @@ export class ProofApplicationService {
     return evaluateProofAvailabilityFromFacts(facts);
   }
 
+  async issueProofIdentity(facts: Pick<ProofFactBundle, 'transaction' | 'artifacts' | 'commerce'>): Promise<ProofAvailabilityResult> {
+    return withOperationLog('proof.issueIdentity', () => this.issueProofIdentityInner(facts), {
+      transactionIdHash: facts.transaction.id.slice(-8),
+    });
+  }
+
   async getCurrentProof(facts: ProofFactBundle, reviewQuery: PassportReviewQuery | null = null, options: { bindIdentity?: boolean } = {}): Promise<PackProofPassportV1> {
     return withOperationLog('proof.getCurrent', () => this.getCurrentProofInner(facts, reviewQuery, options), {
       transactionIdHash: facts.transaction.id.slice(-8),
     });
   }
 
+  private async issueProofIdentityInner(facts: Pick<ProofFactBundle, 'transaction' | 'artifacts' | 'commerce'>): Promise<ProofAvailabilityResult> {
+    const availability = this.evaluateAvailability(facts);
+    if (availability.availability === 'NOT_ELIGIBLE') {
+      throw passportNotReady(availability.eligibility.ok ? [] : availability.eligibility.failures);
+    }
+    assertPassportEligible(facts.transaction, facts.artifacts, facts.commerce);
+    const issuedAt = this.now();
+    const identity = boundOrIssuedIdentity(facts.transaction, issuedAt);
+    if (identity.bind) {
+      const bound = await this.binder.bindPassportIdentity(facts.transaction.id, {
+        passportId: identity.passportId,
+        displayId: identity.displayId,
+        issuedAt: identity.issuedAt,
+      });
+      identity.passportId = bound.passportId;
+      identity.displayId = bound.displayId;
+      identity.issuedAt = bound.issuedAt;
+    }
+    return {
+      availability: 'AVAILABLE',
+      passportId: identity.passportId,
+      displayId: identity.displayId,
+      eligibility: availability.eligibility,
+    };
+  }
+
   private async getCurrentProofInner(facts: ProofFactBundle, reviewQuery: PassportReviewQuery | null = null, options: { bindIdentity?: boolean } = {}): Promise<PackProofPassportV1> {
-    const bindIdentity = options.bindIdentity !== false;
+    const bindIdentity = options.bindIdentity === true;
     const availability = this.evaluateAvailability(facts);
     if (availability.availability === 'NOT_ELIGIBLE') {
       throw passportNotReady(availability.eligibility.ok ? [] : availability.eligibility.failures);

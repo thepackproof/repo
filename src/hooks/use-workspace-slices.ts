@@ -1,21 +1,20 @@
 import { useEffect, useMemo, useState } from 'react';
 import { callFunction } from '@/lib/api';
-import type { WorkspaceSlice } from '@/lib/workspace';
+import type { TransactionWorkspaceProjectionV1 } from '@/lib/ux-flow';
 import type { PackProofTransaction } from '@/types/models';
 
 type WorkspaceListResponse = {
   object: 'transaction_workspace_list';
   schemaVersion: 1;
-  workspaces: WorkspaceSlice[];
+  workspaces: TransactionWorkspaceProjectionV1[];
 };
 
-type WorkspaceSliceResponse = {
-  object: 'transaction_workspace_slice';
-  schemaVersion: 1;
-} & WorkspaceSlice;
+type WorkspaceResponse = {
+  object: 'transaction_workspace';
+} & TransactionWorkspaceProjectionV1;
 
-export function useWorkspaceSlices(uid: string | undefined, items: readonly PackProofTransaction[]) {
-  const [slices, setSlices] = useState<Record<string, WorkspaceSlice>>({});
+export function useWorkspaces(uid: string | undefined, items: readonly PackProofTransaction[]) {
+  const [workspaces, setWorkspaces] = useState<Record<string, TransactionWorkspaceProjectionV1>>({});
   const revision = items.map((item) => `${item.id}:${String(item.updatedAt)}`).join('|');
   const ids = useMemo(() => items.map((item) => item.id), [revision]);
 
@@ -25,38 +24,38 @@ export function useWorkspaceSlices(uid: string | undefined, items: readonly Pack
     void callFunction<{ transactionIds: string[] }, WorkspaceListResponse>('getMyTransactionWorkspaces', { transactionIds: ids })
       .then((result) => {
         if (cancelled) return;
-        const next: Record<string, WorkspaceSlice> = {};
+        const next: Record<string, TransactionWorkspaceProjectionV1> = {};
         for (const workspace of result.workspaces) next[workspace.transactionId] = workspace;
-        setSlices(next);
+        setWorkspaces(next);
       })
       .catch(() => {
-        if (!cancelled) setSlices({});
+        if (!cancelled) setWorkspaces({});
       });
     return () => { cancelled = true; };
   }, [uid, revision, ids]);
 
-  return slices;
+  return workspaces;
 }
 
-export function useWorkspaceSlice(transactionId?: string, revision?: string) {
-  const [slice, setSlice] = useState<WorkspaceSlice | null>(null);
+export function useWorkspace(transactionId?: string, revision?: string) {
+  const [workspace, setWorkspace] = useState<TransactionWorkspaceProjectionV1 | null>(null);
   useEffect(() => {
     if (!transactionId) return;
     let cancelled = false;
-    void callFunction<{ transactionId: string }, WorkspaceSliceResponse>('getMyTransactionWorkspace', { transactionId })
+    void callFunction<{ transactionId: string }, WorkspaceResponse>('getMyTransactionWorkspace', { transactionId })
       .then((result) => {
-        if (!cancelled) {
-          setSlice({
-            transactionId: result.transactionId,
-            protocol: result.protocol,
-            proof: result.proof,
-          });
-        }
+        if (cancelled) return;
+        setWorkspace(result);
       })
       .catch(() => {
-        if (!cancelled) setSlice(null);
+        if (!cancelled) setWorkspace(null);
       });
     return () => { cancelled = true; };
   }, [transactionId, revision]);
-  return slice;
+  return workspace;
 }
+
+/** @deprecated Use useWorkspaces. */
+export const useWorkspaceSlices = useWorkspaces;
+/** @deprecated Use useWorkspace. */
+export const useWorkspaceSlice = useWorkspace;

@@ -78,6 +78,7 @@ export type PortalTransaction = {
     passportId: string | null;
     displayId: string | null;
   };
+  workspace: import('@packproof/ux').TransactionWorkspaceProjectionV1;
   lockedAt: string | null;
   createdAt: string;
   updatedAt: string;
@@ -113,6 +114,17 @@ export function getTimeline(id: string) {
 
 export function getPassport(id: string) {
   return portalFetch<{ data: Record<string, unknown> }>(`/v1/portal/transactions/${encodeURIComponent(id)}/proof`);
+}
+
+export function issueProofIdentity(id: string) {
+  return portalFetch<{ data: {
+    availability: 'AVAILABLE';
+    passportId: string | null;
+    displayId: string | null;
+  } }>(`/v1/portal/transactions/${encodeURIComponent(id)}/proof/identity`, {
+    method: 'POST',
+    body: JSON.stringify({ schemaVersion: 1 }),
+  });
 }
 
 export function getSession() {

@@ -1,0 +1,112 @@
+{
+  "info": {
+    "name": "PackProof API sandbox demonstration",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Repeatable sandbox journey: create a transaction, read the workspace, observe status, retrieve Proof JSON and PDF. This collection does not decide claims, authenticity, custody, or fault."
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "https://YOUR_DEMO_HOST" },
+    { "key": "apiKey", "value": "pp_sk_sandbox_replace_me" },
+    { "key": "transactionId", "value": "" },
+    { "key": "idempotencyKey", "value": "demo-create-1" }
+  ],
+  "item": [
+    {
+      "name": "successful request — POST transaction",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{apiKey}}" },
+          { "key": "Idempotency-Key", "value": "{{idempotencyKey}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": "{{baseUrl}}/v1/transactions",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"schemaVersion\": 1,\n  \"merchantReference\": \"demo-order-1\",\n  \"title\": \"Demo camera\",\n  \"source\": { \"trustLevel\": \"MERCHANT_SERVER_ATTESTED\" }\n}\n"
+        }
+      }
+    },
+    {
+      "name": "idempotent retry — same Idempotency-Key",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{apiKey}}" },
+          { "key": "Idempotency-Key", "value": "{{idempotencyKey}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": "{{baseUrl}}/v1/transactions",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"schemaVersion\": 1,\n  \"merchantReference\": \"demo-order-1\",\n  \"title\": \"Demo camera\",\n  \"source\": { \"trustLevel\": \"MERCHANT_SERVER_ATTESTED\" }\n}\n"
+        }
+      }
+    },
+    {
+      "name": "invalid credential",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer pp_sk_invalid" }],
+        "url": "{{baseUrl}}/v1/health"
+      }
+    },
+    {
+      "name": "GET workspace",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{apiKey}}" }],
+        "url": "{{baseUrl}}/v1/transactions/{{transactionId}}/workspace"
+      }
+    },
+    {
+      "name": "unauthorized transaction",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{apiKey}}" }],
+        "url": "{{baseUrl}}/v1/transactions/txn_not_yours_00000000000000000000/workspace"
+      }
+    },
+    {
+      "name": "not-yet-eligible Proof",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{apiKey}}" }],
+        "url": "{{baseUrl}}/v1/transactions/{{transactionId}}/proof"
+      }
+    },
+    {
+      "name": "issue Proof identity",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{apiKey}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": "{{baseUrl}}/v1/transactions/{{transactionId}}/proof/identity",
+        "body": { "mode": "raw", "raw": "{ \"schemaVersion\": 1 }\n" }
+      }
+    },
+    {
+      "name": "completed Proof",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{apiKey}}" }],
+        "url": "{{baseUrl}}/v1/transactions/{{transactionId}}/proof"
+      }
+    },
+    {
+      "name": "PDF Proof snapshot export",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{apiKey}}" },
+          { "key": "Idempotency-Key", "value": "demo-snapshot-1" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": "{{baseUrl}}/v1/transactions/{{transactionId}}/proof/snapshots",
+        "body": { "mode": "raw", "raw": "{ \"schemaVersion\": 1 }\n" }
+      }
+    }
+  ]
+}

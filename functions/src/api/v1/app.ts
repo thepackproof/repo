@@ -423,6 +423,17 @@ export function createApiV1App(dependencies: ApiAppDependencies): express.Expres
     res.status(200).json({ data: transaction });
   }));
 
+  merchantRouter.get('/transactions/:transactionId/workspace', asyncHandler(async (req, res) => {
+    res.locals.operation = 'getTransactionWorkspace';
+    const principal = res.locals.principal!;
+    await enforcePrincipalRateLimit(dependencies.rateLimiter, principal, ratePolicies.transactionRead, res);
+    const workspace = await dependencies.merchantEvidenceService.getWorkspace(
+      principal,
+      parseAccessibleTransactionId(req.params.transactionId),
+    );
+    res.status(200).json({ data: workspace });
+  }));
+
   merchantRouter.post('/transactions/:transactionId/participant-invitations', asyncHandler(async (req, res) => {
     res.locals.operation = 'createParticipantInvitation';
     requireJson(req);
@@ -538,6 +549,18 @@ export function createApiV1App(dependencies: ApiAppDependencies): express.Expres
       parseAccessibleTransactionId(req.params.transactionId),
     );
     res.status(200).json({ data: reviewPackage });
+  }));
+
+  merchantRouter.post(['/transactions/:transactionId/passport/identity', '/transactions/:transactionId/proof/identity'], asyncHandler(async (req, res) => {
+    res.locals.operation = 'issueProofIdentity';
+    requireJson(req);
+    const principal = res.locals.principal!;
+    await enforcePrincipalRateLimit(dependencies.rateLimiter, principal, ratePolicies.evidenceRead, res);
+    const identity = await dependencies.merchantEvidenceService.issueProofIdentity(
+      principal,
+      parseAccessibleTransactionId(req.params.transactionId),
+    );
+    res.status(200).json({ data: identity });
   }));
 
   merchantRouter.get(['/transactions/:transactionId/passport', '/transactions/:transactionId/proof'], asyncHandler(async (req, res) => {

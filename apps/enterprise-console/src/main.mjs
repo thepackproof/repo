@@ -20,6 +20,7 @@ if (!existsSync(library)) {
 const command = process.argv[2] ?? 'status';
 if (command === 'status' || command === '--help' || command === '-h') {
   console.log('PackProof Enterprise™ console');
+  console.log('Enterprise Pilot — Observe Mode');
   console.log('Operators may view station and queue health.');
   console.log('Administrators may not alter finalized evidence.');
   console.log('');

@@ -1,10 +1,10 @@
 import { Link } from 'react-router-dom';
 import { CAPTURE_PRIMARY_ACTIONS, groupHomeInbox } from '@packproof/ux';
 import type { PortalTransaction } from './api';
-import { workspaceFromPortal } from './workspace';
+import { workspaceOf } from './workspace';
 
-export function TaskCard({ item, viewerId }: { item: PortalTransaction; viewerId: string }) {
-  const workspace = workspaceFromPortal(item, viewerId);
+export function TaskCard({ item }: { item: PortalTransaction; viewerId: string }) {
+  const workspace = workspaceOf(item);
   const next = workspace.nextAction;
   const captureOnPhone = Boolean(next.primaryAction && CAPTURE_PRIMARY_ACTIONS.has(next.primaryAction.kind));
   const proofAvailable = workspace.proof.availability === 'AVAILABLE';
@@ -30,7 +30,7 @@ export function TaskCard({ item, viewerId }: { item: PortalTransaction; viewerId
 }
 
 export function HomeQueue({ items, viewerId }: { items: PortalTransaction[]; viewerId: string }) {
-  const grouped = groupHomeInbox(items, (item) => workspaceFromPortal(item, viewerId).nextAction);
+  const grouped = groupHomeInbox(items, (item) => workspaceOf(item).nextAction);
   if (!grouped.needsAttention.length && !grouped.waiting.length) {
     return (
       <div className="card">

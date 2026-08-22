@@ -3,7 +3,7 @@ import { Link, NavLink, Outlet, useOutletContext, useParams } from 'react-router
 import { CAPTURE_PRIMARY_ACTIONS } from '@packproof/ux';
 import { getTimeline, getTransaction, listEvidence, type PortalTransaction } from '../api';
 import { useAuth } from '../auth';
-import { workspaceFromPortal } from '../workspace';
+import { workspaceOf } from '../workspace';
 
 export function WorkspacePage() {
   const { id = '' } = useParams();
@@ -22,9 +22,15 @@ export function WorkspacePage() {
   if (error) return <p className="error">{error}</p>;
   if (!item || !user) return <p className="meta">Loading…</p>;
 
-  const workspace = workspaceFromPortal(item, user.uid);
+  const workspace = workspaceOf(item);
   const next = workspace.nextAction;
   const captureOnPhone = Boolean(next.primaryAction && CAPTURE_PRIMARY_ACTIONS.has(next.primaryAction.kind));
+  const proofAvailable = workspace.proof.availability === 'AVAILABLE';
+  const primaryLabel = proofAvailable && !captureOnPhone
+    ? 'View Proof'
+    : captureOnPhone
+      ? 'Continue on phone'
+      : next.primaryAction?.label ?? next.inboxCta ?? 'Continue PackProof';
 
   return (
     <>
@@ -32,14 +38,16 @@ export function WorkspacePage() {
       <h1>{item.title}</h1>
       <p className="lede">{next.headline} {next.instruction}</p>
       <div className="row">
-        {captureOnPhone ? <Link className="btn" to={`/packproofs/${item.id}/handoff`}>Continue on phone</Link> : null}
-        {workspace.proof.availability === 'AVAILABLE' ? (
+        {captureOnPhone ? <Link className="btn" to={`/packproofs/${item.id}/handoff`}>{primaryLabel}</Link> : null}
+        {proofAvailable ? (
           <Link
             className={captureOnPhone ? 'btn secondary' : 'btn'}
             to={`/packproofs/${item.id}/proof`}
           >
             View Proof
           </Link>
+        ) : !captureOnPhone && next.primaryAction ? (
+          <Link className="btn" to={`/packproofs/${item.id}`}>{primaryLabel}</Link>
         ) : null}
       </div>
       <nav className="tabs" aria-label="Workspace">
@@ -54,8 +62,8 @@ export function WorkspacePage() {
 }
 
 export function WorkspaceOverview() {
-  const { item, viewerId } = useOutletContext<{ item: PortalTransaction; viewerId: string }>();
-  const next = workspaceFromPortal(item, viewerId).nextAction;
+  const { item } = useOutletContext<{ item: PortalTransaction; viewerId: string }>();
+  const next = workspaceOf(item).nextAction;
   return (
     <div className="stack">
       <article className="card">

@@ -8,7 +8,7 @@ const merchant_evidence_repository_1 = require("./infrastructure/firebase/v1/mer
 const helpers_1 = require("./helpers");
 const callOptions = { enforceAppCheck: true, invoker: 'public' };
 function workspaceService() {
-    return new portal_workspace_service_1.PortalWorkspaceApplicationService(new merchant_evidence_repository_1.FirestorePortalWorkspaceRepository(new merchant_evidence_repository_1.FirestoreMerchantEvidenceRepository(config_1.db)), { append: async () => undefined }, () => config_1.connectLinkBaseUrl.value());
+    return new portal_workspace_service_1.PortalWorkspaceApplicationService(new merchant_evidence_repository_1.FirestorePortalWorkspaceRepository(new merchant_evidence_repository_1.FirestoreMerchantEvidenceRepository(config_1.db)), { append: async () => undefined }, () => '');
 }
 exports.getMyTransactionWorkspaces = (0, https_1.onCall)(callOptions, async (request) => {
     const uid = (0, helpers_1.requireUid)(request);
@@ -17,18 +17,14 @@ exports.getMyTransactionWorkspaces = (0, https_1.onCall)(callOptions, async (req
         ? rawIds.filter((value) => typeof value === 'string' && value.length >= 10).slice(0, 50)
         : [];
     const service = workspaceService();
-    const listed = await service.listHydratedForActor(uid, 50);
+    const listed = await service.listWorkspaces(uid, 50);
     const selected = transactionIds.length
-        ? listed.filter((item) => transactionIds.includes(item.id))
+        ? listed.filter((item) => transactionIds.includes(item.transactionId))
         : listed;
     return {
         object: 'transaction_workspace_list',
         schemaVersion: 1,
-        workspaces: selected.map((item) => ({
-            transactionId: item.id,
-            protocol: item.protocol,
-            proof: item.proof,
-        })),
+        workspaces: selected,
     };
 });
 exports.getMyTransactionWorkspace = (0, https_1.onCall)(callOptions, async (request) => {
@@ -38,13 +34,10 @@ exports.getMyTransactionWorkspace = (0, https_1.onCall)(callOptions, async (requ
         throw new https_1.HttpsError('invalid-argument', 'A transactionId is required.');
     const service = workspaceService();
     try {
-        const item = await service.getHydratedForActor(uid, transactionId);
+        const workspace = await service.getWorkspace(uid, transactionId);
         return {
-            object: 'transaction_workspace_slice',
-            schemaVersion: 1,
-            transactionId: item.id,
-            protocol: item.protocol,
-            proof: item.proof,
+            object: 'transaction_workspace',
+            ...workspace,
         };
     }
     catch (error) {

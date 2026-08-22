@@ -7,6 +7,17 @@ export type OperationLog = {
   retryCount?: number;
   errorClass?: string | null;
   finalizationState?: string | null;
+  firestoreReads?: number;
+  workspaceCount?: number;
+  summaryHits?: number;
+  hydratedCount?: number;
+  evidenceHydrationMs?: number;
+  commerceHydrationMs?: number;
+  proofEligibilityMs?: number;
+  captureSessionId?: string | null;
+  evidenceId?: string | null;
+  uploadState?: string | null;
+  proofState?: string | null;
 };
 
 export function writeOperationLog(entry: OperationLog): void {

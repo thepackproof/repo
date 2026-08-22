@@ -17,6 +17,7 @@ const {
   getMyEvidenceSession,
   getMyTransactionWorkspace,
   getMyTransactionWorkspaces,
+  issuePackProofIdentity,
   packproofApi,
   redeemEvidenceSession,
 } = require('../lib/index.js');
@@ -36,7 +37,7 @@ for (const callable of [claimParticipantInvitation, getMyEvidenceSession, redeem
   assert.equal(callable.__endpoint?.platform, 'gcfv2');
   assert.ok(callable.__endpoint?.secretEnvironmentVariables?.some(({ key }) => key === 'PARTICIPANT_HANDOFF_SIGNING_SECRET'));
 }
-for (const callable of [getMyTransactionWorkspace, getMyTransactionWorkspaces]) {
+for (const callable of [getMyTransactionWorkspace, getMyTransactionWorkspaces, issuePackProofIdentity]) {
   assert.equal(typeof callable, 'function');
   assert.equal(callable.__endpoint?.platform, 'gcfv2');
 }

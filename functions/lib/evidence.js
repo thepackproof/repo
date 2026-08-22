@@ -14,6 +14,9 @@ const evidence_finalization_1 = require("./evidence-finalization");
 const package_seal_protocol_1 = require("./package-seal-protocol");
 const shipping_tracker_1 = require("./shipping-tracker");
 const validation_1 = require("./validation");
+const errors_1 = require("./application/v1/errors");
+const proof_application_service_1 = require("./application/v1/proof-application-service");
+const merchant_evidence_repository_1 = require("./infrastructure/firebase/v1/merchant-evidence-repository");
 const MAX_EVIDENCE_BYTES = 600 * 1024 * 1024;
 async function sha256File(file) {
     const digest = (0, node_crypto_1.createHash)('sha256');
@@ -382,8 +385,33 @@ exports.onEvidenceUploaded = (0, storage_1.onObjectFinalized)({ timeoutSeconds: 
         await (0, helpers_1.notifyOtherParticipants)(transactionId, uploaderId, integrityAccepted ? 'Evidence saved' : 'Please recapture', integrityAccepted
             ? 'PackProof finished saving the evidence. Open the PackProof to see what happens next.'
             : 'That recording could not be used. Open the PackProof to try this step again.');
+        if (integrityAccepted) {
+            await issueProofIdentityIfEligible(transactionId);
+        }
     }
 });
+async function issueProofIdentityIfEligible(transactionId) {
+    try {
+        const repository = new merchant_evidence_repository_1.FirestoreMerchantEvidenceRepository(config_1.db);
+        const transaction = await repository.loadTransaction(transactionId);
+        if (!transaction)
+            return;
+        const artifacts = await repository.listEvidence(transactionId);
+        const commerce = transaction.commerceContextId
+            ? await repository.findCommerceContext(transaction.commerceContextId)
+            : null;
+        await new proof_application_service_1.ProofApplicationService(repository, () => '', () => new Date()).issueProofIdentity({
+            transaction,
+            artifacts,
+            commerce,
+        });
+    }
+    catch (error) {
+        if (error instanceof errors_1.ApplicationError && error.code === 'PASSPORT_NOT_READY')
+            return;
+        console.warn('issueProofIdentityIfEligible skipped', transactionId, error instanceof Error ? error.message : error);
+    }
+}
 function money(minor, currency) {
     try {
         return new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(minor / 100);

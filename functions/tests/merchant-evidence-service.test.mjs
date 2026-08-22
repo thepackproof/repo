@@ -461,6 +461,12 @@ test('merchant passport service issues a stable identity and refuses ineligible 
     { environment: 'sandbox' }, () => now,
     { verificationBaseUrl: () => 'https://app.packproof.example' },
   );
+  await assert.rejects(
+    () => service.getPassport(orgA, 'txn_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'),
+    (error) => error instanceof ApplicationError && error.code === 'PROOF_IDENTITY_NOT_BOUND',
+  );
+  const identity = await service.issueProofIdentity(orgA, 'txn_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
+  assert.equal(identity.availability, 'AVAILABLE');
   const first = await service.getPassport(orgA, 'txn_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
   assert.equal(first.object, 'packproof_passport');
   assert.match(first.identity.displayId, /^PP-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$/);
@@ -537,6 +543,7 @@ test('PAGE_DECLARED commerce cannot issue a Passport and is omitted from atteste
   attested.seedTransaction(readyTransaction({ commerceContextId: 'ctx_page' }));
   attested.commerce.set('ctx_page', pageOnly.commerce.get('ctx_page'));
   attested.seedEvidence(finalized('PACKING_VIDEO'));
+  await passportService(attested).issueProofIdentity(orgA, 'txn_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
   const issued = await passportService(attested).getPassport(orgA, 'txn_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
   assert.equal(issued.integrity.banner, 'AUTHENTIC_PACKPROOF');
   assert.equal(issued.items[0].expected.sku.value, null);

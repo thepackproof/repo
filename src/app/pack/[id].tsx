@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Alert, Linking, StyleSheet, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCameraPermissions, useMicrophonePermissions } from 'expo-camera';
@@ -8,9 +8,8 @@ import { TaskSession } from '@/components/task-session';
 import { callFunction, subscribeEvidence, subscribeReturnPassports, subscribeTransaction } from '@/lib/api';
 import { readableError } from '@/lib/format';
 import { packageSealProtocolStatus } from '@/lib/package-seal-protocol';
-import { useWorkspaceSlice } from '@/hooks/use-workspace-slices';
+import { useWorkspace } from '@/hooks/use-workspace-slices';
 import { displayCarrierName, toHref } from '@/lib/ux-flow';
-import { workspaceFromSlice } from '@/lib/workspace';
 import { useAuth } from '@/providers/auth-provider';
 import type { EvidenceRecord, EvidenceType, PackProofTransaction, ReturnPassport } from '@/types/models';
 
@@ -53,23 +52,13 @@ export default function PackSession() {
     return () => { unsubTransaction(); unsubEvidence(); unsubReturns(); };
   }, [id]);
 
-  const protocol = useMemo(() => packageSealProtocolStatus(evidence), [evidence]);
+  const workspace = useWorkspace(id, item ? String(item.updatedAt) : undefined);
+  const protocol = workspace?.protocol ?? packageSealProtocolStatus(evidence);
   const activeReturn = returnPassports.find((passport) => !['COMPLETED', 'CANCELLED'].includes(passport.status)) ?? null;
-  const returnProtocol = useMemo(
-    () => (activeReturn ? packageSealProtocolStatus(evidence, { returnPassportId: activeReturn.id }) : null),
-    [activeReturn, evidence],
-  );
-  const slice = useWorkspaceSlice(id, item ? String(item.updatedAt) : undefined);
-  const ux = useMemo(() => {
-    if (!item || !user || !slice) return null;
-    return workspaceFromSlice(item, user.uid, slice, {
-      returnPassport: activeReturn,
-      returnProtocol,
-    }).nextAction;
-  }, [item, user, slice, activeReturn, returnProtocol]);
+  const ux = workspace?.nextAction ?? null;
 
   const returning = Boolean(activeReturn && (ux?.primaryAction?.kind === 'RECORD_RETURN_PACKING' || ux?.primaryAction?.kind === 'RECORD_RETURN_SEAL' || ux?.primaryAction?.kind === 'ADD_RETURN_SHIPMENT'));
-  const liveProtocol = returning ? (returnProtocol ?? protocol) : protocol;
+  const liveProtocol = protocol;
   const beat: Beat = asBeat(typeof beatParam === 'string' ? beatParam : undefined)
     ?? (item?.shipping ? 'done'
       : liveProtocol.sellerReferenceComplete ? 'tracking'

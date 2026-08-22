@@ -51,11 +51,14 @@ jobs:
           npm run test:ux-flow
           npm run test:hardening-contracts
           npm run test:architecture
+          npm run test:ux-sync
           npm run test:queue-fail-closed
           npm run test:queue-fault-matrix
           npm run test:release-manifest
           npm --prefix portal test
           npm --prefix portal run build
+          node --test functions/tests/golden-workspace-journeys.test.mjs
+          node scripts/demo-env.mjs verify --source
 
       - name: Android release configuration gate
         run: |

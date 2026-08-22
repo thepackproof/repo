@@ -4,16 +4,18 @@
 /* eslint-disable */
 import type { CreatePassportExportRequest } from '../models/CreatePassportExportRequest';
 import type { CreatePassportSnapshotRequest } from '../models/CreatePassportSnapshotRequest';
+import type { IssueProofIdentityRequest } from '../models/IssueProofIdentityRequest';
 import type { PassportExportResponse } from '../models/PassportExportResponse';
 import type { PassportResponse } from '../models/PassportResponse';
 import type { PassportSnapshotResponse } from '../models/PassportSnapshotResponse';
+import type { ProofIdentityResponse } from '../models/ProofIdentityResponse';
 import type { CancelablePromise } from '../core/CancelablePromise';
 import type { BaseHttpRequest } from '../core/BaseHttpRequest';
 export class ProofsService {
     constructor(public readonly httpRequest: BaseHttpRequest) {}
     /**
      * Canonical JSON Proof
-     * Alias of GET /v1/portal/transactions/{transactionId}/passport. Returns the live Proof projection and binds a stable Proof identity the first time eligibility passes. List and workspace hydration do not bind.
+     * Alias of GET /v1/portal/transactions/{transactionId}/passport. GET is read-only and never binds identity. List and workspace hydration do not bind.
      * @returns PassportResponse The live Proof aggregation. It does not authenticate items, prove custody, decide fraud or fault, or guarantee a dispute outcome.
      * @throws ApiError
      */
@@ -41,8 +43,41 @@ export class ProofsService {
         });
     }
     /**
+     * Issue or replay the Proof identity
+     * Preferred portal alias of POST /v1/portal/transactions/{transactionId}/passport/identity.
+     * @returns ProofIdentityResponse The bound Proof identity. One ppt_ resource and one PP- display identity exist for the transaction.
+     * @throws ApiError
+     */
+    public issuePortalProofIdentity({
+        transactionId,
+        requestBody,
+    }: {
+        /**
+         * A merchant transaction identifier or an accepted Connect-origin transaction identifier. Possession of the identifier does not grant access.
+         */
+        transactionId: string,
+        requestBody: IssueProofIdentityRequest,
+    }): CancelablePromise<ProofIdentityResponse> {
+        return this.httpRequest.request({
+            method: 'POST',
+            url: '/v1/portal/transactions/{transactionId}/proof/identity',
+            path: {
+                'transactionId': transactionId,
+            },
+            body: requestBody,
+            mediaType: 'application/json',
+            errors: {
+                401: `Missing or invalid authentication.`,
+                404: `The resource was not found in the authenticated organization.`,
+                409: `The request conflicts with idempotency or resource state.`,
+                429: `The operation rate limit was exceeded.`,
+                500: `An internal failure occurred without exposing implementation details.`,
+            },
+        });
+    }
+    /**
      * Retrieve the live Proof
-     * Preferred alias of GET /v1/transactions/{transactionId}/passport. Returns the canonical Proof aggregation and binds a stable Proof identity the first time eligibility passes. Workspace list hydration does not bind.
+     * Preferred alias of GET /v1/transactions/{transactionId}/passport. GET is read-only and never binds identity. Workspace list hydration does not bind.
      * @returns PassportResponse The live Proof aggregation. It does not authenticate items, prove custody, decide fraud or fault, or guarantee a dispute outcome.
      * @throws ApiError
      */
@@ -80,6 +115,43 @@ export class ProofsService {
                 403: `Authenticated but not authorized.`,
                 404: `The resource was not found in the authenticated organization.`,
                 409: `The request conflicts with idempotency or resource state.`,
+                429: `The operation rate limit was exceeded.`,
+                500: `An internal failure occurred without exposing implementation details.`,
+            },
+        });
+    }
+    /**
+     * Issue or replay the Proof identity
+     * Preferred alias of POST /v1/transactions/{transactionId}/passport/identity.
+     * @returns ProofIdentityResponse The bound Proof identity. One ppt_ resource and one PP- display identity exist for the transaction.
+     * @throws ApiError
+     */
+    public issueProofIdentity({
+        transactionId,
+        requestBody,
+    }: {
+        /**
+         * A merchant transaction identifier or an accepted Connect-origin transaction identifier. Possession of the identifier does not grant access.
+         */
+        transactionId: string,
+        requestBody: IssueProofIdentityRequest,
+    }): CancelablePromise<ProofIdentityResponse> {
+        return this.httpRequest.request({
+            method: 'POST',
+            url: '/v1/transactions/{transactionId}/proof/identity',
+            path: {
+                'transactionId': transactionId,
+            },
+            body: requestBody,
+            mediaType: 'application/json',
+            errors: {
+                400: `Invalid request.`,
+                401: `Missing or invalid authentication.`,
+                403: `Authenticated but not authorized.`,
+                404: `The resource was not found in the authenticated organization.`,
+                409: `The request conflicts with idempotency or resource state.`,
+                413: `The request body exceeded 256 KiB.`,
+                415: `The request Content-Type is unsupported.`,
                 429: `The operation rate limit was exceeded.`,
                 500: `An internal failure occurred without exposing implementation details.`,
             },

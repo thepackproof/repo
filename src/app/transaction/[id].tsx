@@ -16,13 +16,11 @@ import { formatActivityTime, humanActivitySentence } from '@/lib/ux-activity';
 import { HUMAN_REVIEW_DISCLAIMER, packageSealProtocolStatus } from '@/lib/package-seal-protocol';
 import { evidenceLabels } from '@/lib/transaction-detail-labels';
 import { formatRuntimeEnum, normalizePhysicalStatus, type PhysicalStatusView } from '@/lib/runtime-display';
-import { useWorkspaceSlice } from '@/hooks/use-workspace-slices';
+import { useWorkspace } from '@/hooks/use-workspace-slices';
 import {
   orderLabel,
   viewerRole,
-  type NextRequiredAction,
 } from '@/lib/ux-flow';
-import { workspaceFromSlice } from '@/lib/workspace';
 import { useAuth } from '@/providers/auth-provider';
 import type { EvidenceRecord, EvidenceType, PackProofTransaction, ReturnPassport, TimelineEvent } from '@/types/models';
 
@@ -62,23 +60,10 @@ export default function TransactionDetail() {
   }, [id, evidence.length]);
 
   const role = item && user ? viewerRole(item, user.uid) : 'SELLER';
-  const protocol = useMemo(() => packageSealProtocolStatus(evidence), [evidence]);
+  const workspace = useWorkspace(id, item ? String(item.updatedAt) : undefined);
+  const protocol = workspace?.protocol ?? packageSealProtocolStatus(evidence);
   const activeReturn = returnPassports.find((passport) => !['COMPLETED', 'CANCELLED'].includes(passport.status)) ?? null;
-  const returnProtocol = useMemo(
-    () => (activeReturn ? packageSealProtocolStatus(evidence, { returnPassportId: activeReturn.id }) : null),
-    [activeReturn, evidence],
-  );
-  const inviteSentAt = events.find((event) => event.type === 'INVITE_CREATED')?.createdAt ?? null;
-  const slice = useWorkspaceSlice(id, item ? String(item.updatedAt) : undefined);
-
-  const ux = useMemo<NextRequiredAction | null>(() => {
-    if (!item || !user || !slice) return null;
-    return workspaceFromSlice(item, user.uid, slice, {
-      returnPassport: activeReturn,
-      returnProtocol,
-      inviteSentAt,
-    }).nextAction;
-  }, [item, user, slice, activeReturn, returnProtocol, inviteSentAt]);
+  const ux = workspace?.nextAction ?? null;
 
   const activityCtx = useMemo(() => (
     item && user

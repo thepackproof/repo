@@ -6,7 +6,7 @@ import { Button, EmptyState, ScreenTitle } from '@/components/ui';
 import { TransactionCard, transactionUx } from '@/components/transaction-card';
 import { colors } from '@/constants/brand';
 import { useTransactions } from '@/hooks/use-transactions';
-import { useWorkspaceSlices } from '@/hooks/use-workspace-slices';
+import { useWorkspaces } from '@/hooks/use-workspace-slices';
 import { useAuth } from '@/providers/auth-provider';
 import { groupLibrary } from '@/lib/ux-flow';
 
@@ -14,10 +14,10 @@ export default function TransactionsScreen() {
   const { user } = useAuth();
   const router = useRouter();
   const { items } = useTransactions(user?.uid);
-  const slices = useWorkspaceSlices(user?.uid, items);
-  const hydrated = items.filter((item) => slices[item.id]);
+  const workspaces = useWorkspaces(user?.uid, items);
+  const hydrated = items.map((item) => workspaces[item.id]).filter(Boolean);
   const [segment, setSegment] = useState<'active' | 'completed'>('active');
-  const grouped = user ? groupLibrary(hydrated, (item) => transactionUx(item, user.uid, slices[item.id])) : {
+  const grouped = user ? groupLibrary(hydrated, (workspace) => transactionUx(workspace)) : {
     active: [],
     completed: [],
   };
@@ -49,7 +49,7 @@ export default function TransactionsScreen() {
         ) : (
           <View style={styles.list}>
             {visible.map((item) => (
-              <TransactionCard key={item.id} transaction={item} uid={user!.uid} slice={slices[item.id]} />
+              <TransactionCard key={item.transactionId} workspace={item} />
             ))}
           </View>
         )}
