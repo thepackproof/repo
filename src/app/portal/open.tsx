@@ -1,32 +1,63 @@
-import { useEffect } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
 import { LoadingScreen } from '@/components/ui';
-import { hrefForPrimaryAction, toHref, type UxPrimaryActionKind } from '@/lib/ux-flow';
+import { subscribeEvidence, subscribeTransaction } from '@/lib/api';
+import { packageSealProtocolStatus } from '@/lib/package-seal-protocol';
+import { hrefForPrimaryAction, portalHandoffFromOpenParams, resolvePortalHandoff, toHref } from '@/lib/ux-flow';
 import { useAuth } from '@/providers/auth-provider';
+import type { EvidenceRecord, PackProofTransaction } from '@/types/models';
 
-const ACTION_KIND: Record<string, UxPrimaryActionKind> = {
-  pack: 'START_PACKING',
-  seal: 'RECORD_SEAL',
-  arrival: 'RECORD_ARRIVAL',
-  unbox: 'RECORD_UNBOXING',
-  'return-unbox': 'RECORD_RETURN_UNBOXING',
-};
+function first(value: string | string[] | undefined): string | undefined {
+  return Array.isArray(value) ? value[0] : value;
+}
 
 export default function PortalOpenHandoff() {
-  const { transaction, action } = useLocalSearchParams<{ transaction?: string; action?: string }>();
+  const params = useLocalSearchParams<{
+    transaction?: string | string[];
+    action?: string | string[];
+    issuedAt?: string | string[];
+    expiresAt?: string | string[];
+  }>();
   const { user, loading } = useAuth();
   const router = useRouter();
+  const [item, setItem] = useState<PackProofTransaction | null | undefined>(undefined);
+  const [evidence, setEvidence] = useState<EvidenceRecord[] | undefined>(undefined);
+  const opened = useRef(false);
+
+  const handoff = useMemo(() => portalHandoffFromOpenParams({
+    transaction: first(params.transaction),
+    action: first(params.action),
+    issuedAt: first(params.issuedAt),
+    expiresAt: first(params.expiresAt),
+  }), [params.action, params.expiresAt, params.issuedAt, params.transaction]);
 
   useEffect(() => {
-    if (loading || !user || !transaction) return;
-    const kind = ACTION_KIND[action ?? 'pack'] ?? 'START_PACKING';
-    router.replace(toHref(hrefForPrimaryAction(kind, transaction)));
-  }, [action, loading, router, transaction, user]);
+    if (!handoff) return;
+    const unsubTransaction = subscribeTransaction(handoff.transactionId, setItem, () => setItem(null));
+    const unsubEvidence = subscribeEvidence(handoff.transactionId, setEvidence);
+    return () => { unsubTransaction(); unsubEvidence(); };
+  }, [handoff]);
+
+  useEffect(() => {
+    if (loading || !user || !handoff || item === undefined || evidence === undefined || opened.current) return;
+    opened.current = true;
+    if (!item) {
+      router.replace('/(tabs)');
+      return;
+    }
+    const resolved = resolvePortalHandoff({
+      handoff,
+      transaction: item,
+      viewerId: user.uid,
+      protocol: packageSealProtocolStatus(evidence),
+    });
+    router.replace(toHref(hrefForPrimaryAction(resolved.action ?? undefined, handoff.transactionId)));
+  }, [evidence, handoff, item, loading, router, user]);
 
   if (loading) return <LoadingScreen />;
-  if (!transaction) return <Redirect href="/(tabs)" />;
+  if (!handoff) return <Redirect href="/(tabs)" />;
   if (!user) {
-    return <Redirect href={{ pathname: '/welcome', params: { redirect: `/portal/open?transaction=${encodeURIComponent(transaction)}&action=${encodeURIComponent(action ?? 'pack')}` } }} />;
+    return <Redirect href={{ pathname: '/welcome', params: { redirect: `/portal/open?transaction=${encodeURIComponent(handoff.transactionId)}` } }} />;
   }
   return <LoadingScreen />;
 }

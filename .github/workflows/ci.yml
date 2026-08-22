@@ -50,6 +50,7 @@ jobs:
           npm run test:authorization
           npm --prefix portal run typecheck
           npm run test:ux-flow
+          npm run test:handoff
           npm --prefix portal test
           npm --prefix portal run build
 

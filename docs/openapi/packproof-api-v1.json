@@ -217,7 +217,7 @@
         "operationId": "createPortalMobileHandoff",
         "tags": ["Portal"],
         "summary": "Issue a native capture handoff",
-        "description": "Returns App Link and custom-scheme URLs so packing or unboxing continues on the PackProof native client. Browser uploads are not native capture and are not accepted.",
+        "description": "Returns a short-lived native handoff object. The URL opens the transaction; native re-evaluates the current Next Action and must not execute a stale mint-time capture hint. Browser uploads are not native capture and are not accepted.",
         "security": [{ "firebaseUserBearer": [], "firebaseAppCheck": [] }],
         "parameters": [{ "$ref": "#/components/parameters/AccessibleTransactionId" }],
         "requestBody": {
@@ -1547,15 +1547,17 @@
           "data": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["object", "schemaVersion", "channel", "transactionId", "action", "captureOnNativeOnly", "universalLink", "appLink", "storeUrl"],
+            "required": ["object", "schemaVersion", "channel", "transactionId", "action", "issuedAt", "expiresAt", "captureOnNativeOnly", "universalLink", "appLink", "storeUrl"],
             "properties": {
               "object": { "const": "portal_mobile_handoff" },
               "schemaVersion": { "const": 1 },
               "channel": { "const": "WEB_PORTAL" },
               "transactionId": { "type": "string" },
-              "action": { "type": "string" },
+              "action": { "type": "string", "description": "Mint-time capture hint. Native re-evaluates the current Next Action after open and must ignore this field when it is stale." },
+              "issuedAt": { "type": "string", "format": "date-time" },
+              "expiresAt": { "type": "string", "format": "date-time", "description": "Hint lifetime. Opening after expiry still evaluates the current transaction state." },
               "captureOnNativeOnly": { "const": true },
-              "universalLink": { "type": "string", "format": "uri" },
+              "universalLink": { "type": "string", "format": "uri", "description": "Opens the transaction on native. The URL does not authorize a capture beat." },
               "appLink": { "type": "string" },
               "storeUrl": { "type": "string", "format": "uri" }
             }

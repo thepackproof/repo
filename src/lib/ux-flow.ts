@@ -26,6 +26,14 @@ export {
   roleFromViewer,
   viewerRole,
 } from '../../shared/ux/next-action.ts';
+export {
+  PORTAL_HANDOFF_ACTION_ALIASES,
+  PORTAL_HANDOFF_TTL_MS,
+  PORTAL_HANDOFF_VERSION,
+  portalHandoffFromOpenParams,
+  portalHandoffIsExpired,
+  resolvePortalHandoff,
+} from '../../shared/ux/portal-handoff.ts';
 
 export type {
   ActionRequiredBy,
@@ -44,6 +52,10 @@ export type {
   UxSecondaryActionKind,
   WaitingReason,
 } from '../../shared/ux/next-action.ts';
+export type {
+  PortalHandoffObject,
+  ResolvedPortalHandoff,
+} from '../../shared/ux/portal-handoff.ts';
 
 export type PrimaryActionHref =
   | { pathname: '/task/[id]'; params: { id: string; fromShare?: string } }

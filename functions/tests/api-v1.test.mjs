@@ -232,9 +232,11 @@ class FakePortalWorkspaceService {
       channel: 'WEB_PORTAL',
       transactionId,
       action,
+      issuedAt: '2026-08-21T16:00:00.000Z',
+      expiresAt: '2026-08-21T16:15:00.000Z',
       captureOnNativeOnly: true,
-      universalLink: `https://packproof.example/portal/open?transaction=${transactionId}&action=pack`,
-      appLink: `packproof://pack/${transactionId}`,
+      universalLink: `https://packproof.example/portal/open?transaction=${transactionId}`,
+      appLink: `packproof://portal/open?transaction=${transactionId}`,
       storeUrl: 'https://play.google.com/store/apps/details?id=com.packproof.app',
     };
   }
@@ -1237,7 +1239,8 @@ describe('PackProof portal HTTP transport', () => {
     assert.equal(handoff.response.status, 200);
     assert.equal(handoff.body.data.captureOnNativeOnly, true);
     assert.equal(handoff.body.data.channel, 'WEB_PORTAL');
-    assert.match(handoff.body.data.universalLink, /\/portal\/open\?/);
+    assert.match(handoff.body.data.universalLink, /\/portal\/open\?transaction=/);
+    assert.equal(/[?&]action=/.test(handoff.body.data.universalLink), false);
     const browserCapture = await jsonRequest('/v1/portal/transactions/legacyTx001234567890/mobile-handoff', {
       method: 'POST',
       headers: { ...headers, 'content-type': 'application/json' },

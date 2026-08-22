@@ -212,7 +212,7 @@ export class PortalService {
     }
     /**
      * Issue a native capture handoff
-     * Returns App Link and custom-scheme URLs so packing or unboxing continues on the PackProof native client. Browser uploads are not native capture and are not accepted.
+     * Returns a short-lived native handoff object. The URL opens the transaction; native re-evaluates the current Next Action and must not execute a stale mint-time capture hint. Browser uploads are not native capture and are not accepted.
      * @returns PortalMobileHandoffResponse Native capture handoff.
      * @throws ApiError
      */
