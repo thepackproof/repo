@@ -1,0 +1,5 @@
+Order number: LONG-0001
+Item: Long receipt mixer
+Price: $22.00
+Quantity: 1
+This is a sanitized footer repeated to keep a long artifact boringly parseable.

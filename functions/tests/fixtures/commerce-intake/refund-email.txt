@@ -1,0 +1,7 @@
+From: Etsy <noreply@etsy.com>
+Subject: A refund was issued
+
+Your order was refunded.
+Order #2233445566
+Item: Handmade leather wallet
+Refund total: $45.00

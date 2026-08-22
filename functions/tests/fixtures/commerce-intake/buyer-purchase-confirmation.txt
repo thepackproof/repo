@@ -1,0 +1,7 @@
+From: eBay <ebay@ebay.com>
+Subject: You purchased a Nintendo Switch 2
+
+You purchased this item. This is a buyer confirmation, not a sold-item notice.
+Item: Nintendo Switch 2
+Order number: 66-77777-88888
+Total: $449.00

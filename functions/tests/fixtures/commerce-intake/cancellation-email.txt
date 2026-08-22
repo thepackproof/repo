@@ -1,0 +1,7 @@
+From: eBay <ebay@ebay.com>
+Subject: Order cancelled
+
+This order was cancelled before shipment.
+Item: Cancelled drone
+Order number: 55-66666-77777
+Total: $199.00

@@ -1,0 +1,4 @@
+Order number:    WS-44001
+Item:   	Compact flash
+Price:   $12.00
+Quantity:  2

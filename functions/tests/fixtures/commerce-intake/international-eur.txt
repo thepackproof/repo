@@ -1,0 +1,4 @@
+Order number: EU-778899
+Item: Leica M6
+Price: EUR 1,890.00
+Quantity: 1

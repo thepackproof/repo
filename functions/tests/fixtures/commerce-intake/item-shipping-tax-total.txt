@@ -1,0 +1,7 @@
+Order number: ORD-447001
+Item: Galaxy S24 Ultra
+Price: $400.00
+Shipping: $18.00
+Sales tax: $29.00
+Total: $447.00
+Quantity: 1

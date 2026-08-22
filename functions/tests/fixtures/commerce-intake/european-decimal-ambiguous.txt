@@ -1,0 +1,3 @@
+Order number: EU-AMBIG
+Item: Ambiguous euro camera
+Total: 1.299,00 EUR

@@ -72,6 +72,9 @@ jobs:
       - name: Canonical domain contract tests
         run: npm run test:domain
 
+      - name: Commerce intake fixture contract tests
+        run: npm run test:intake
+
       - name: Shared application service tests
         run: npm run test:application
 

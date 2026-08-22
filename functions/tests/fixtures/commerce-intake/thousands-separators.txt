@@ -1,0 +1,4 @@
+Order number: A-100200
+Item: Studio strobe kit
+Price: $1,299.00
+Quantity: 1

@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.intakeMissingFieldNames = exports.CONFIRMED_FIELDS_V1 = exports.PDF_IMPORT_V1 = exports.SCREENSHOT_IMPORT_V1 = exports.GENERIC_COMMERCE_TEXT_PARSER_V1 = exports.SHOPIFY_EMAIL_PARSER_V1 = exports.ETSY_EMAIL_PARSER_V1 = exports.EBAY_EMAIL_PARSER_V1 = exports.MAX_INTAKE_ARTIFACT_CHARS = void 0;
+exports.emptyMoneyBreakdown = emptyMoneyBreakdown;
 exports.emptyIntakeItem = emptyIntakeItem;
 exports.missingIntakeFields = missingIntakeFields;
 exports.extractCommerceMessage = extractCommerceMessage;
@@ -15,6 +16,16 @@ exports.SCREENSHOT_IMPORT_V1 = 'SCREENSHOT_IMPORT_V1';
 exports.PDF_IMPORT_V1 = 'PDF_IMPORT_V1';
 exports.CONFIRMED_FIELDS_V1 = 'CONFIRMED_FIELDS_V1';
 exports.intakeMissingFieldNames = ['title', 'price', 'variant', 'orderNumber'];
+function emptyMoneyBreakdown() {
+    return {
+        itemAmount: null,
+        orderSubtotal: null,
+        shippingAmount: null,
+        taxAmount: null,
+        discountAmount: null,
+        orderTotal: null,
+    };
+}
 const EBAY_SENDER = /@(?:ebay\.com|ebay\.[a-z]{2,3})\b/i;
 const ETSY_SENDER = /@etsy\.com\b/i;
 const SHOPIFY_SENDER = /@(?:shopify\.com|myshopify\.com)\b/i;
@@ -60,10 +71,11 @@ function extractCommerceMessage(raw) {
         return { from: '', subject: '', body: stripHtml(decodeQuotedPrintable(normalized)).trim() };
     }
     const headers = normalized.slice(0, headerSplit);
-    const body = decodeQuotedPrintable(unwrapMimeBody(normalized.slice(headerSplit + 2))).trim();
+    const rawBody = normalized.slice(headerSplit + 2);
+    const body = decodeQuotedPrintable(unwrapMimeBody(rawBody, headerValue(headers, 'content-type'))).trim();
     return {
-        from: headerValue(headers, 'from'),
-        subject: headerValue(headers, 'subject'),
+        from: decodeQuotedPrintable(headerValue(headers, 'from')),
+        subject: decodeQuotedPrintable(headerValue(headers, 'subject')),
         body,
     };
 }
@@ -80,7 +92,7 @@ function parseCommerceArtifact(artifactText, intakeSourceType) {
         const parserVersion = intakeSourceType === 'PDF_IMPORT' ? exports.PDF_IMPORT_V1
             : intakeSourceType === 'SCREENSHOT_IMPORT' ? exports.SCREENSHOT_IMPORT_V1
                 : exports.CONFIRMED_FIELDS_V1;
-        return resultOf(parserVersion, null, item, null, null, null);
+        return resultOf(parserVersion, null, item, emptyMoneyBreakdown(), null, null, null);
     }
     const message = extractCommerceMessage(artifactText);
     const combined = `${message.subject}\n${message.body}`;
@@ -95,11 +107,12 @@ function parseCommerceArtifact(artifactText, intakeSourceType) {
         return shopify;
     return parseGenericCommerceText(message, combined);
 }
-function resultOf(parserVersion, platformIdentifier, item, externalOrderId, externalListingId, productUrl) {
+function resultOf(parserVersion, platformIdentifier, item, amounts, externalOrderId, externalListingId, productUrl) {
     return {
         parserVersion,
         platformIdentifier,
         item,
+        amounts,
         externalOrderId,
         externalListingId,
         productUrl,
@@ -112,58 +125,63 @@ function parseEbaySoldMessage(message, combined) {
     const orderNumber = firstMatch(combined, [
         /order(?:\s*(?:number|id|#))[:\s]+(\d{2}-\d{5}-\d{5})/i,
         /order(?:\s*(?:number|id|#))[:\s]+(\d{10,20})/i,
+        /order(?:\s*(?:number|id|#))[:\s]+([A-Z0-9][A-Z0-9-]{5,30})/i,
         /\b(\d{2}-\d{5}-\d{5})\b/,
     ]);
     const listingId = firstMatch(combined, [/listing(?:\s*(?:id|number|#))[:\s]+(\d{8,20})/i]);
+    const amounts = extractMoneyBreakdown(combined);
     const item = itemFromText(combined, {
         title: labeledValue(combined, ['item', 'item title']) ?? titleFromSubject(message.subject, /you sold\s+(.+)$/i),
         quantity: labeledInteger(combined, ['quantity', 'qty']),
-        amount: parseListedMoney(combined, ['sold for', 'sale price', 'price', 'total']),
+        amount: resolveExposedItemAmount(combined, amounts),
     });
-    return resultOf(exports.EBAY_EMAIL_PARSER_V1, 'EBAY', item, orderNumber, listingId, firstHttpsUrl(combined));
+    return resultOf(exports.EBAY_EMAIL_PARSER_V1, 'EBAY', item, amounts, orderNumber, listingId, firstHttpsUrl(combined));
 }
 function parseEtsySoldMessage(message, combined) {
     if (!ETSY_SENDER.test(message.from) && !ETSY_BODY.test(combined))
         return null;
     const orderNumber = firstMatch(combined, [
-        /order\s*#\s*(\d{6,20})/i,
-        /order(?:\s*(?:number|id))[:\s]+(\d{6,20})/i,
+        /order\s*#\s*([A-Z0-9][A-Z0-9-]{5,20})/i,
+        /order(?:\s*(?:number|id))[:\s]+([A-Z0-9][A-Z0-9-]{5,20})/i,
     ]);
+    const amounts = extractMoneyBreakdown(combined);
     const item = itemFromText(combined, {
         title: labeledValue(combined, ['item', 'listing']) ?? titleFromSubject(message.subject, /you made a sale(?: on etsy)?[:\s]+(.+)$/i),
         quantity: labeledInteger(combined, ['quantity', 'qty']),
-        amount: parseListedMoney(combined, ['order total', 'total', 'price', 'sold for']),
+        amount: resolveExposedItemAmount(combined, amounts),
     });
-    return resultOf(exports.ETSY_EMAIL_PARSER_V1, 'ETSY', item, orderNumber, null, firstHttpsUrl(combined));
+    return resultOf(exports.ETSY_EMAIL_PARSER_V1, 'ETSY', item, amounts, orderNumber, null, firstHttpsUrl(combined));
 }
 function parseShopifyOrderMessage(message, combined) {
     const shopifyShaped = SHOPIFY_SENDER.test(message.from) || SHOPIFY_BODY.test(combined) || /via shopify/i.test(combined);
     if (!shopifyShaped)
         return null;
     const orderNumber = firstMatch(combined, [
-        /order\s*#\s*(\d{3,12})/i,
-        /order(?:\s*(?:number|id))[:\s]+#?(\d{3,12})/i,
+        /order\s*#\s*([A-Z0-9][A-Z0-9-]{2,20})/i,
+        /order(?:\s*(?:number|id))[:\s]+#?([A-Z0-9][A-Z0-9-]{2,20})/i,
     ]);
     if (!SHOPIFY_SENDER.test(message.from) && !SHOPIFY_BODY.test(combined) && !orderNumber)
         return null;
+    const amounts = extractMoneyBreakdown(combined);
     const item = itemFromText(combined, {
         title: labeledValue(combined, ['item', 'product']) ?? firstItemLine(combined),
         quantity: labeledInteger(combined, ['quantity', 'qty']),
-        amount: parseListedMoney(combined, ['total', 'subtotal', 'price']),
+        amount: resolveExposedItemAmount(combined, amounts),
     });
-    return resultOf(exports.SHOPIFY_EMAIL_PARSER_V1, 'SHOPIFY', item, orderNumber, null, firstHttpsUrl(combined));
+    return resultOf(exports.SHOPIFY_EMAIL_PARSER_V1, 'SHOPIFY', item, amounts, orderNumber, null, firstHttpsUrl(combined));
 }
 function parseGenericCommerceText(message, combined) {
     const orderNumber = firstMatch(combined, [
         /order(?:\s*(?:number|id|#))[:\s]+([A-Z0-9][A-Z0-9-]{4,30})/i,
         /\b([A-Z]{1,4}-\d{5,20})\b/,
     ]);
+    const amounts = extractMoneyBreakdown(combined);
     const item = itemFromText(combined, {
         title: labeledValue(combined, ['item', 'item title', 'product']) ?? titleFromSubject(message.subject, /(?:sold|order|receipt)[:\s]+(.+)$/i) ?? firstItemLine(combined),
         quantity: labeledInteger(combined, ['quantity', 'qty']),
-        amount: parseListedMoney(combined, ['sold for', 'total', 'price', 'amount']),
+        amount: resolveExposedItemAmount(combined, amounts),
     });
-    return resultOf(exports.GENERIC_COMMERCE_TEXT_PARSER_V1, null, item, orderNumber, null, firstHttpsUrl(combined));
+    return resultOf(exports.GENERIC_COMMERCE_TEXT_PARSER_V1, null, item, amounts, orderNumber, null, firstHttpsUrl(combined));
 }
 function itemFromText(text, extracted) {
     const title = cleanTitle(extracted.title);
@@ -199,17 +217,51 @@ function labeledInteger(text, labels) {
     const match = /(\d{1,6})/.exec(raw);
     return match ? Number.parseInt(match[1], 10) : null;
 }
-function parseListedMoney(text, labels) {
+function extractMoneyBreakdown(text) {
+    return {
+        itemAmount: firstLabeledMoney(text, ['sold for', 'sale price', 'item price', 'item total', 'unit price', 'price']),
+        orderSubtotal: firstLabeledMoney(text, ['order subtotal', 'subtotal']),
+        shippingAmount: firstLabeledMoney(text, ['shipping charge', 'shipping', 'postage', 'delivery']),
+        taxAmount: firstLabeledMoney(text, ['sales tax', 'vat', 'tax']),
+        discountAmount: firstLabeledMoney(text, ['discount', 'coupon', 'promo']),
+        orderTotal: firstLabeledMoney(text, ['order total', 'grand total', 'refund total', 'total']),
+    };
+}
+function looksLikeRefundOrCancellation(text) {
+    return /\b(refund(?:ed)?|cancelled|canceled|cancellation)\b/i.test(text);
+}
+function looksLikeBuyerConfirmation(text) {
+    return /\byou (?:purchased|bought|ordered)\b/i.test(text) && !EBAY_BODY.test(text);
+}
+function hasOrderAddons(amounts) {
+    return Boolean(amounts.shippingAmount || amounts.taxAmount || amounts.discountAmount);
+}
+function resolveExposedItemAmount(text, amounts) {
+    if (looksLikeRefundOrCancellation(text) || looksLikeBuyerConfirmation(text))
+        return null;
+    if (amounts.itemAmount)
+        return amounts.itemAmount;
+    if (hasOrderAddons(amounts))
+        return null;
+    return amounts.orderSubtotal ?? amounts.orderTotal;
+}
+function firstLabeledMoney(text, labels) {
     for (const label of labels) {
         const labeled = labeledValue(text, [label]);
         const parsed = labeled ? parseMoneyToken(labeled) : null;
         if (parsed)
             return parsed;
+        const spaced = new RegExp(`(?:^|\\n)\\s*${escapeRegExp(label)}\\s+((?:USD|EUR|GBP|CAD|AUD|JPY|MXN|US\\$|[$€£¥])\\s*[\\d,]+(?:\\.\\d{1,2})?|[\\d,]+(?:\\.\\d{1,2})?\\s*(?:USD|EUR|GBP|CAD|AUD|JPY|MXN))`, 'im').exec(text);
+        const spacedParsed = spaced?.[1] ? parseMoneyToken(spaced[1]) : null;
+        if (spacedParsed)
+            return spacedParsed;
     }
-    return parseMoneyToken(text);
+    return null;
 }
 function parseMoneyToken(value) {
-    const match = /(?:(USD|EUR|GBP|CAD|AUD|US\$)|([$€£]))\s*([\d,]+(?:\.\d{1,2})?)|([\d,]+(?:\.\d{1,2})?)\s*(USD|EUR|GBP)/i.exec(value);
+    if (/\d{1,3}(?:\.\d{3})+,\d{2}/.test(value) && !/\$\s*[\d,]+(?:\.\d{1,2})?/.test(value))
+        return null;
+    const match = /(?:(USD|EUR|GBP|CAD|AUD|JPY|MXN|US\$)|([$€£¥]))\s*([\d,]+(?:\.\d{1,2})?)|([\d,]+(?:\.\d{1,2})?)\s*(USD|EUR|GBP|CAD|AUD|JPY|MXN)/i.exec(value);
     if (!match)
         return null;
     const currencyToken = (match[1] ?? match[2] ?? match[5] ?? 'USD').toUpperCase();
@@ -219,7 +271,8 @@ function parseMoneyToken(value) {
     const currency = currencyToken === '$' || currencyToken === 'US$' ? 'USD'
         : currencyToken === '€' ? 'EUR'
             : currencyToken === '£' ? 'GBP'
-                : currencyToken;
+                : currencyToken === '¥' ? 'JPY'
+                    : currencyToken;
     const [whole, fraction = '00'] = amount.replace(/,/g, '').split('.');
     const minorUnits = Number.parseInt(whole || '0', 10) * 100 + Number.parseInt(fraction.padEnd(2, '0').slice(0, 2), 10);
     if (!Number.isFinite(minorUnits) || minorUnits < 0)
@@ -269,16 +322,18 @@ function headerValue(headers, name) {
     const match = new RegExp(`^${escapeRegExp(name)}:\\s*(.*(?:\\n[ \\t].*)*)`, 'im').exec(headers);
     return match ? match[1].replace(/\n[ \t]/g, ' ').trim() : '';
 }
-function unwrapMimeBody(body) {
-    const boundary = /boundary="?([^";\n]+)"?/i.exec(body);
+function unwrapMimeBody(body, contentType = '') {
+    const boundary = /boundary="?([^";\n]+)"?/i.exec(`${contentType}\n${body}`);
     if (!boundary)
         return stripHtml(body);
     const parts = body.split(new RegExp(`--${escapeRegExp(boundary[1].trim())}`));
     const plain = parts.find((part) => /content-type:\s*text\/plain/i.test(part));
     const html = parts.find((part) => /content-type:\s*text\/html/i.test(part));
     const chosen = plain ?? html ?? body;
+    const encoding = /content-transfer-encoding:\s*quoted-printable/i.test(chosen) ? 'qp' : 'raw';
     const split = chosen.indexOf('\n\n');
-    return stripHtml(split >= 0 ? chosen.slice(split + 2) : chosen);
+    const payload = split >= 0 ? chosen.slice(split + 2) : chosen;
+    return stripHtml(encoding === 'qp' ? decodeQuotedPrintable(payload) : payload);
 }
 function stripHtml(value) {
     if (!/<[a-z][\s\S]*>/i.test(value))

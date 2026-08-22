@@ -1,0 +1,9 @@
+From: Etsy <noreply@etsy.com>
+Subject: You made a sale on Etsy
+
+You made a sale on Etsy
+Order #2233445566
+Item: Handmade leather wallet
+Quantity: 1
+Total: $45.00
+Color: Tan
