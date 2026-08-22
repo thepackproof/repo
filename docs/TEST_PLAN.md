@@ -41,6 +41,7 @@ npm.cmd run test:api:functions
 npm.cmd run test:domain
 npm.cmd run test:application
 npm.cmd run test:ux-flow
+npm.cmd run test:proof-parity
 npm.cmd --prefix portal ci
 npm.cmd --prefix portal test
 npm.cmd --prefix portal run build
@@ -63,6 +64,7 @@ npx.cmd expo-doctor
 | AUTO-11 | Merchant API Firestore integration | Real emulator transactions/queries preserve one stable retry ID, exact replay, failed-attempt recovery, org isolation, credential revocation, no raw credential/key storage, rate counters, and recomputable audit hashes |
 | AUTO-12 | Firebase Function/Hosting configuration smoke | The compiled Firebase entrypoint loads; the Gen 2 HTTP export metadata, region, Secret Manager declaration, resource settings, and Hosting rewrite target are correct |
 | AUTO-13 | Web portal independent build | `portal/` typecheck, Next Action/invariant tests, and Vite build pass without compiling the Expo app; portal source does not import Firestore or Storage |
+| AUTO-17 | Proof presentation parity | Mobile, portal, and PDF snapshots share Proof ID, transaction, hashes, timestamps, provenance fields, and disclaimers from one canonical object; viewers import `presentProof` |
 
 ## Merchant API deployment acceptance
 

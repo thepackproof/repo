@@ -43,6 +43,39 @@ export function passportQrMatrix(payload: string): { size: number; dark: (row: n
   };
 }
 
+/** Semantic facts the PDF must share with mobile/portal. Field names match ProofParitySnapshot. */
+export function passportPdfParitySnapshot(passport: PackProofPassportV1) {
+  return {
+    passportId: passport.identity.passportId,
+    displayId: passport.identity.displayId,
+    transactionId: passport.identity.transactionId,
+    issuedAt: passport.identity.issuedAt,
+    verificationUrl: passport.identity.verificationUrl,
+    qrPayload: passport.identity.qrPayload,
+    platform: passport.transaction.platform.value ?? null,
+    externalOrderId: passport.transaction.externalOrderId.value ?? null,
+    transactionDate: passport.transaction.transactionDate.value ?? null,
+    sellerReference: passport.transaction.sellerReference.value ?? null,
+    expectedTitle: passport.items[0]?.expected.title.value ?? null,
+    integrityBanner: passport.integrity.banner,
+    integrityCriteria: { ...passport.integrity.criteria },
+    artifactIds: passport.artifacts.map((item) => item.artifactId),
+    artifactDigests: passport.artifacts.map((item) => ({
+      artifactId: item.artifactId,
+      sha256: item.sha256 ?? null,
+      manifestSha256: item.manifestSha256 ?? null,
+      finalizedAt: item.finalizedAt ?? null,
+    })),
+    packingArtifactId: passport.fulfillment.packingArtifactId ?? null,
+    sealArtifactId: passport.fulfillment.sealArtifactId ?? null,
+    provenanceFields: passport.provenance.map((item) => item.field).sort(),
+    disclaimer: passport.limitations.humanReviewDisclaimer,
+    comparisonFootnote: COMPARISON_FOOTNOTE_COPY,
+    pageOneFooter: PASSPORT_PAGE_ONE_FOOTER,
+    doesNotDecideFraudOrFault: passport.limitations.doesNotDecideFraudOrFault,
+  };
+}
+
 export function passportPdfPagePlan(
   passport: PackProofPassportV1,
   stills: readonly PassportPdfStill[] = [],

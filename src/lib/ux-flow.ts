@@ -26,6 +26,12 @@ export {
   roleFromViewer,
   viewerRole,
 } from '../../shared/ux/next-action.ts';
+export {
+  PROOF_COMPARISON_FOOTNOTE,
+  PROOF_PAGE_ONE_FOOTER,
+  presentProof,
+  proofParitySnapshot,
+} from '../../shared/ux/proof-presentation.ts';
 
 export type {
   ActionRequiredBy,
@@ -44,6 +50,11 @@ export type {
   UxSecondaryActionKind,
   WaitingReason,
 } from '../../shared/ux/next-action.ts';
+export type {
+  CanonicalProofLike,
+  ProofParitySnapshot,
+  ProofPresentation,
+} from '../../shared/ux/proof-presentation.ts';
 
 export type PrimaryActionHref =
   | { pathname: '/task/[id]'; params: { id: string; fromShare?: string } }

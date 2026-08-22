@@ -72,6 +72,9 @@ jobs:
       - name: Canonical domain contract tests
         run: npm run test:domain
 
+      - name: Mobile, portal, and PDF Proof parity
+        run: npm run test:proof-parity
+
       - name: Shared application service tests
         run: npm run test:application
 
