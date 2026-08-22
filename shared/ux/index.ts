@@ -20,6 +20,21 @@ export {
   viewerRole,
 } from './next-action';
 
+export {
+  evidenceProcessingForTransaction,
+  evidenceProcessingFromQueue,
+  evidenceProcessingFromQueueItems,
+  isProcessDeathResumeState,
+  queueCrashResumePolicy,
+  recaptureIsRequired,
+  recoverInFlightQueueState,
+} from './evidence-resume';
+
+export type {
+  EvidenceResumeObservation,
+  QueueCrashPhase,
+} from './evidence-resume';
+
 export type {
   ActionRequiredBy,
   ConsumerState,

@@ -17,18 +17,21 @@ import { HUMAN_REVIEW_DISCLAIMER, packageSealProtocolStatus } from '@/lib/packag
 import { evidenceLabels } from '@/lib/transaction-detail-labels';
 import { formatRuntimeEnum, normalizePhysicalStatus, type PhysicalStatusView } from '@/lib/runtime-display';
 import {
+  evidenceProcessingForTransaction,
   orderLabel,
   resolveNextRequiredAction,
   viewerRole,
   type NextRequiredAction,
 } from '@/lib/ux-flow';
 import { useAuth } from '@/providers/auth-provider';
+import { useOfflineEvidence } from '@/providers/offline-evidence-provider';
 import type { EvidenceRecord, EvidenceType, PackProofTransaction, ReturnPassport, TimelineEvent } from '@/types/models';
 
 export default function TransactionDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { user } = useAuth();
+  const { items: queueItems } = useOfflineEvidence();
   const [item, setItem] = useState<PackProofTransaction | null>(null);
   const [evidence, setEvidence] = useState<EvidenceRecord[]>([]);
   const [events, setEvents] = useState<TimelineEvent[]>([]);
@@ -78,8 +81,9 @@ export default function TransactionDetail() {
       returnPassport: activeReturn,
       returnProtocol,
       inviteSentAt,
+      evidenceProcessing: evidenceProcessingForTransaction(item.id, queueItems),
     });
-  }, [item, user, protocol, activeReturn, returnProtocol, inviteSentAt]);
+  }, [item, user, protocol, activeReturn, returnProtocol, inviteSentAt, queueItems]);
 
   const activityCtx = useMemo(() => (
     item && user

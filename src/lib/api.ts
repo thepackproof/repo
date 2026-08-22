@@ -175,6 +175,8 @@ export async function uploadQueuedEvidence(
     connectSessionId: item.connectSessionId,
     manifest: item.manifest,
   });
+  item.uploadId = request.uploadId;
+  item.storagePath = request.storagePath;
   if (request.status === 'READY') {
     await onStateChange?.('UPLOADING');
     const task = putFile(storageRef(fileStorage, request.storagePath), decryptedUri.replace(/^file:\/\//, ''), {

@@ -225,13 +225,25 @@ assert.equal(processing.canLeaveWhileProcessing, true);
 const recapture = resolve('TERMS_LOCKED', 'SELLER', { evidenceProcessing: { phase: 'FAILED_RECAPTURE' } }, { confirmedBy: ['seller', 'buyer'] });
 assert.match(recapture.instruction, /record the step again/i);
 assert.equal(recapture.inboxBucket, 'NEEDS_ATTENTION');
+assert.equal(recapture.primaryAction?.kind, 'START_PACKING');
 
 const retry = resolve('PACKED', 'SELLER', { evidenceProcessing: { phase: 'FAILED_RETRY' } });
 assert.match(retry.instruction, /do not need to recapture/i);
+assert.equal(retry.primaryAction, null);
+assert.equal(retry.canLeaveWhileProcessing, true);
+
+const uploadFailed = resolve('TERMS_LOCKED', 'SELLER', { evidenceProcessing: { phase: 'UPLOAD_FAILED' } }, { confirmedBy: ['seller', 'buyer'] });
+assert.equal(uploadFailed.primaryAction, null);
+assert.match(uploadFailed.instruction, /do not need to recapture/i);
+
+const finalizationFailed = resolve('TERMS_LOCKED', 'SELLER', { evidenceProcessing: { phase: 'FINALIZATION_FAILED' } }, { confirmedBy: ['seller', 'buyer'] });
+assert.equal(finalizationFailed.primaryAction, null);
+assert.match(finalizationFailed.description, /reached PackProof/i);
 
 assert.equal(evidenceProcessingFromProgress(0.2, 'working'), 'UPLOADING');
 assert.equal(evidenceProcessingFromProgress(0.9, 'working'), 'SECURING');
 assert.equal(evidenceProcessingFromProgress(1, 'ready'), 'READY');
+assert.equal(evidenceProcessingFromProgress(0.2, 'retry'), 'UPLOAD_FAILED');
 
 const localHandoff = resolve('TERMS_LOCKED', 'SELLER', {}, {
   terms: {

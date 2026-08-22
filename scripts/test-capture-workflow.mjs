@@ -109,7 +109,11 @@ const decryptCrash = queueCrashRecovery('DECRYPTING_FOR_UPLOAD');
 assert.equal(decryptCrash.retainCiphertext, true);
 assert.equal(decryptCrash.scrubPlaintextTemp, true);
 assert.equal(decryptCrash.treatUnreadableMetadataAsVisibleFault, true);
-assert.equal(queueCrashRecovery('AWAITING_FINALIZATION').scrubPlaintextTemp, false);
+assert.equal(decryptCrash.recapture, false);
+assert.equal(decryptCrash.resumePhase, 'UPLOAD_FAILED');
+assert.equal(queueCrashRecovery('AWAITING_FINALIZATION').scrubPlaintextTemp, true);
+assert.equal(queueCrashRecovery('AWAITING_FINALIZATION').recapture, false);
+assert.equal(queueCrashRecovery('AWAITING_FINALIZATION').resumePhase, 'FINALIZATION_FAILED');
 
 assert.equal(canDiscardQueuedEvidence('QUEUED'), true);
 assert.equal(canDiscardQueuedEvidence('UPLOADING'), false);

@@ -22,10 +22,10 @@ export default function HomeScreen() {
   const { user, profile } = useAuth();
   const { items } = useTransactions(user?.uid);
   const { items: pendingIntakes } = usePendingIntakes(user?.uid);
-  const { queuedCount, attentionCount, attentionReason, syncNow, retryAttention } = useOfflineEvidence();
+  const { queuedCount, attentionCount, attentionReason, items: queueItems, syncNow, retryAttention } = useOfflineEvidence();
   const [joinOpen, setJoinOpen] = useState(false);
   const [inviteCode, setInviteCode] = useState('');
-  const grouped = user ? groupHomeInbox(items, (item) => transactionUx(item, user.uid)) : {
+  const grouped = user ? groupHomeInbox(items, (item) => transactionUx(item, user.uid, queueItems)) : {
     needsAttention: [],
     waiting: [],
   };
@@ -88,7 +88,7 @@ export default function HomeScreen() {
               />
             ))}
             {grouped.needsAttention.map((item) => {
-              const ux = transactionUx(item, user!.uid);
+              const ux = transactionUx(item, user!.uid, queueItems);
               const href = ux.primaryAction
                 ? hrefForPrimaryAction(ux.primaryAction.kind, item.id)
                 : { pathname: '/task/[id]' as const, params: { id: item.id } };
@@ -107,7 +107,7 @@ export default function HomeScreen() {
             {grouped.waiting.length ? (
               <View style={styles.waiting}>
                 {grouped.waiting.map((item) => {
-                  const ux = transactionUx(item, user!.uid);
+                  const ux = transactionUx(item, user!.uid, queueItems);
                   return (
                     <HomeWaitTile
                       key={item.id}

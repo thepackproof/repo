@@ -155,7 +155,13 @@ export type UxAction<K extends string> = {
 
 export type ProgressStep = { id: ProgressStage; label: string; state: ProgressStepState };
 
-export type EvidenceProcessingPhase = 'UPLOADING' | 'SECURING' | 'FAILED_RETRY' | 'FAILED_RECAPTURE';
+export type EvidenceProcessingPhase =
+  | 'UPLOADING'
+  | 'SECURING'
+  | 'UPLOAD_FAILED'
+  | 'FINALIZATION_FAILED'
+  | 'FAILED_RETRY'
+  | 'FAILED_RECAPTURE';
 
 export type ConsumerState = 'action_required' | 'waiting' | 'complete' | 'blocked';
 
@@ -370,7 +376,7 @@ function finish(
     progressSteps: buildProgressSteps(saleType, draft.progressStage, status),
     inboxCta: draft.primaryAction?.label ?? null,
     passportReady: ready,
-    canLeaveWhileProcessing: draft.humanState === 'EVIDENCE_PROCESSING',
+    canLeaveWhileProcessing: draft.humanState === 'EVIDENCE_PROCESSING' || processingAllowsLeave(input.evidenceProcessing?.phase),
     secondaryAction: draft.secondaryAction ?? (ready && draft.primaryAction?.kind !== 'OPEN_PASSPORT'
         ? { kind: 'OPEN_PASSPORT', label: 'View Proof' }
       : null),
@@ -1022,17 +1028,33 @@ function applyProcessing(
       noActionRequired: true,
     };
   }
-  if (processing.phase === 'FAILED_RETRY') {
+  if (processing.phase === 'FAILED_RETRY' || processing.phase === 'UPLOAD_FAILED' || processing.phase === 'FINALIZATION_FAILED') {
+    const finalizing = processing.phase === 'FINALIZATION_FAILED';
     return {
       ...view,
+      humanState: 'EVIDENCE_PROCESSING',
       headline: 'Your recording is safe',
-      description: "We couldn't upload it yet because your connection dropped.",
+      description: finalizing
+        ? 'The file reached PackProof. The evidence record is not finished yet.'
+        : "We couldn't upload it yet because your connection dropped.",
       instruction: "You can leave PackProof. We'll retry automatically. You do not need to recapture.",
-      nextHappens: 'After the upload succeeds, PackProof will continue.',
+      nextHappens: finalizing
+        ? 'After PackProof finishes the record, the next step appears.'
+        : 'After the upload succeeds, PackProof will continue.',
+      actionRequiredBy: 'PACKPROOF',
+      primaryAction: null,
+      secondaryAction: null,
+      waitingReason: 'EVIDENCE_PROCESSING',
+      waitingOnName: 'PackProof',
+      waitingOnTask: finalizing ? 'finish the evidence record' : 'retry the upload',
       lockedExplanation: 'The original capture is still on this device. Do not clear app data or uninstall.',
-      notificationCopy: notify('Your recording is safe', 'We will retry the upload. You do not need to recapture.'),
+      notificationCopy: notify('Your recording is safe', finalizing
+        ? 'PackProof will finish the record. You do not need to recapture.'
+        : 'We will retry the upload. You do not need to recapture.'),
       inboxBucket: 'NEEDS_ATTENTION',
-      inboxSentence: 'Your recording is safe. We will retry the upload.',
+      inboxSentence: finalizing
+        ? 'Your recording is safe. PackProof is finishing the record.'
+        : 'Your recording is safe. We will retry the upload.',
       noActionRequired: false,
     };
   }
@@ -1048,6 +1070,10 @@ function applyProcessing(
     inboxSentence: 'Please recapture this step.',
     noActionRequired: false,
   };
+}
+
+function processingAllowsLeave(phase: EvidenceProcessingPhase | undefined): boolean {
+  return phase === 'UPLOAD_FAILED' || phase === 'FINALIZATION_FAILED' || phase === 'FAILED_RETRY';
 }
 
 export function resolveNextRequiredAction(input: UxFlowInput): NextRequiredAction {
@@ -1078,7 +1104,7 @@ export function groupByInboxBucket<T>(
 
 export function evidenceProcessingFromProgress(progress: number, outcome: 'working' | 'ready' | 'retry' | 'recapture'): EvidenceProcessingPhase | 'READY' {
   if (outcome === 'ready') return 'READY';
-  if (outcome === 'retry') return 'FAILED_RETRY';
+  if (outcome === 'retry') return 'UPLOAD_FAILED';
   if (outcome === 'recapture') return 'FAILED_RECAPTURE';
   return progress >= 0.55 ? 'SECURING' : 'UPLOADING';
 }
