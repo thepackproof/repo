@@ -23,7 +23,45 @@ export function canDiscardQueuedEvidence(state: string): boolean {
   return state === 'QUEUED' || state === 'FAILED_RETRYABLE';
 }
 
+export const QUEUE_STATES = [
+  'CAPTURED',
+  'ENCRYPTING',
+  'QUEUED',
+  'DECRYPTING_FOR_UPLOAD',
+  'GRANT_REQUESTED',
+  'UPLOADING',
+  'AWAITING_FINALIZATION',
+  'FINALIZED',
+] as const;
+export type QueueState = (typeof QUEUE_STATES)[number];
+
 export type QueueCrashPhase = 'ENCRYPTING' | 'DECRYPTING_FOR_UPLOAD' | 'UPLOADING' | 'AWAITING_FINALIZATION';
+
+export const QUEUE_FAULTS = [
+  'KILL_APP',
+  'REBOOT',
+  'NETWORK_OFF',
+  'TOKEN_EXPIRED',
+  'DISK_FULL',
+  'KEYSTORE_UNAVAILABLE',
+  'FUNCTION_LOST',
+  'DUPLICATE_TRIGGER',
+  'METADATA_CORRUPT',
+  'CIPHERTEXT_CORRUPT',
+] as const;
+export type QueueFault = (typeof QUEUE_FAULTS)[number];
+
+export function queueFaultOutcome(state: QueueState, _fault: QueueFault): {
+  retainCiphertext: boolean;
+  upgradeToFinalized: boolean;
+  visibleFailure: boolean;
+} {
+  return {
+    retainCiphertext: state !== 'FINALIZED',
+    upgradeToFinalized: false,
+    visibleFailure: state !== 'FINALIZED',
+  };
+}
 
 export function queueCrashRecovery(phase: QueueCrashPhase): {
   retainCiphertext: boolean;

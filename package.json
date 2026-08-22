@@ -109,6 +109,8 @@
     "test:architecture": "node scripts/test-architecture-boundaries.mjs",
     "test:proof-properties": "npm --prefix functions run build && node scripts/test-proof-properties.mjs",
     "test:queue-fail-closed": "node --experimental-strip-types scripts/test-queue-fail-closed.mjs",
+    "test:queue-fault-matrix": "node --experimental-strip-types scripts/test-queue-fault-matrix.mjs",
+    "test:hc1-source-gate": "node scripts/hc1-source-gate.mjs",
     "test:release-manifest": "node scripts/write-release-manifest.mjs --check",
     "test:rc-e2e": "npm --prefix functions run build && node --experimental-strip-types scripts/test-rc-e2e.mjs",
     "portal:dev": "npm --prefix portal run dev",

@@ -26,4 +26,13 @@ __exportStar(require("./contracts"), exports);
 __exportStar(require("./compatibility"), exports);
 __exportStar(require("./enterprise"), exports);
 __exportStar(require("./edge-protocol"), exports);
+__exportStar(require("./digest-assurance"), exports);
+__exportStar(require("./key-registry"), exports);
+__exportStar(require("./privacy-intake"), exports);
+__exportStar(require("./retry-policy"), exports);
+__exportStar(require("./scientific-gate"), exports);
+__exportStar(require("./enterprise-pilot"), exports);
+__exportStar(require("./schema-policy"), exports);
+__exportStar(require("./idempotency-contract"), exports);
+__exportStar(require("./finalization-outcome"), exports);
 //# sourceMappingURL=index.js.map

@@ -17,6 +17,9 @@ function packProofFeatureFlags() {
         shareSheetIntake: enabled('PACKPROOF_FLAG_SHARE_SHEET_INTAKE'),
         browserExtensionIntake: enabled('PACKPROOF_FLAG_BROWSER_EXTENSION_INTAKE'),
         newParserVersion: enabled('PACKPROOF_FLAG_NEW_PARSER_VERSION', false),
+        newCarrierIntegration: enabled('PACKPROOF_FLAG_NEW_CARRIER_INTEGRATION', false),
+        newCapturePolicy: enabled('PACKPROOF_FLAG_NEW_CAPTURE_POLICY', false),
+        newProofRenderer: enabled('PACKPROOF_FLAG_NEW_PROOF_RENDERER', false),
         enterpriseAcquisition: enabled('PACKPROOF_FLAG_ENTERPRISE_ACQUISITION', false),
     };
 }

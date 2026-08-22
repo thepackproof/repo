@@ -8,6 +8,7 @@ exports.isConsumerIntakeSourceType = isConsumerIntakeSourceType;
 const commerce_1 = require("../../domain/v1/commerce");
 const compatibility_1 = require("../../domain/v1/compatibility");
 const common_1 = require("../../domain/v1/common");
+const privacy_intake_1 = require("../../domain/v1/privacy-intake");
 const transaction_intake_parsers_1 = require("../../domain/v1/transaction-intake-parsers");
 const runtime_1 = require("../../domain/v1/runtime");
 const transactions_1 = require("../../domain/v1/transactions");
@@ -84,16 +85,21 @@ function sellerEnteredIntakeFields(parsed, item, confirmed, parsedOrderId, order
     return fields;
 }
 function overlayIntakeItem(base, confirmed) {
-    if (!confirmed)
-        return base;
+    if (!confirmed) {
+        return {
+            ...base,
+            title: (0, privacy_intake_1.sanitizeRetainedText)(base.title),
+            description: (0, privacy_intake_1.sanitizeRetainedText)(base.description),
+        };
+    }
     const variant = confirmed.variant?.trim();
     const title = confirmed.title?.trim();
     const sku = confirmed.sku?.trim();
     const currency = confirmed.currency?.trim().toUpperCase();
     return {
         ...base,
-        title: title || base.title,
-        description: confirmed.description != null ? confirmed.description : base.description,
+        title: (0, privacy_intake_1.sanitizeRetainedText)(title || base.title),
+        description: (0, privacy_intake_1.sanitizeRetainedText)(confirmed.description != null ? confirmed.description : base.description),
         sku: sku || base.sku,
         selectedOptions: variant ? mergeOption(base.selectedOptions, { name: 'Variant', value: variant.slice(0, 300) }) : base.selectedOptions,
         quantity: confirmed.quantity && confirmed.quantity >= 1 ? Math.min(confirmed.quantity, 100_000) : base.quantity,

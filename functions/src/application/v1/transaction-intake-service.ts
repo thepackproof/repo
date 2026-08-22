@@ -17,6 +17,7 @@ import {
 } from '../../domain/v1/commerce';
 import { mapLegacyConsumerTransaction } from '../../domain/v1/compatibility';
 import { assertTransition } from '../../domain/v1/common';
+import { sanitizeRetainedText } from '../../domain/v1/privacy-intake';
 import { missingIntakeFields, parseCommerceArtifact } from '../../domain/v1/transaction-intake-parsers';
 import { DomainValidationError } from '../../domain/v1/runtime';
 import { transactionDtoSchema, type TransactionTerms } from '../../domain/v1/transactions';
@@ -227,15 +228,21 @@ export function sellerEnteredIntakeFields(
 }
 
 export function overlayIntakeItem(base: ItemDescriptor, confirmed: IntakeConfirmedFields | null | undefined): ItemDescriptor {
-  if (!confirmed) return base;
+  if (!confirmed) {
+    return {
+      ...base,
+      title: sanitizeRetainedText(base.title),
+      description: sanitizeRetainedText(base.description),
+    };
+  }
   const variant = confirmed.variant?.trim();
   const title = confirmed.title?.trim();
   const sku = confirmed.sku?.trim();
   const currency = confirmed.currency?.trim().toUpperCase();
   return {
     ...base,
-    title: title || base.title,
-    description: confirmed.description != null ? confirmed.description : base.description,
+    title: sanitizeRetainedText(title || base.title),
+    description: sanitizeRetainedText(confirmed.description != null ? confirmed.description : base.description),
     sku: sku || base.sku,
     selectedOptions: variant ? mergeOption(base.selectedOptions, { name: 'Variant', value: variant.slice(0, 300) }) : base.selectedOptions,
     quantity: confirmed.quantity && confirmed.quantity >= 1 ? Math.min(confirmed.quantity, 100_000) : base.quantity,

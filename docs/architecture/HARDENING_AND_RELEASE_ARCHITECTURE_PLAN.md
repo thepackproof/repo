@@ -558,7 +558,7 @@ PackProof does **not** become the next release candidate until all of these stat
 11. Two devices can complete the complete real flow.
 12. Network loss, crashes, and retries do not destroy or falsely upgrade evidence.
 
-Classification of those statements today: **not yet demonstrated** on `db69eef`. Source observations of HD-01 through HD-08 show several are currently false.
+Classification on HC-1 source (`hardening/hc-1`): statements 1–9 have source/emulator evidence. Statements 10–12 remain **not yet demonstrated** (device, two-party live, and crash/network on a real install).
 
 Once they are demonstrably true, development stops being the primary risk. The next unknown is adoption.
 

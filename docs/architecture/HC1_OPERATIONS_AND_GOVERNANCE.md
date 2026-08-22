@@ -6,7 +6,7 @@ Named notes: [`INTERNAL_SLOS_HC1.md`](INTERNAL_SLOS_HC1.md), [`DATA_GOVERNANCE_H
 
 ## Internal SLOs
 
-Thresholds stay unset until HC-1 telemetry exists. Track, do not advertise:
+Thresholds stay unset until live HC-1 telemetry exists. Source helpers: `functions/src/application/v1/telemetry.ts` and `operation-log.ts`. Track, do not advertise:
 
 | Signal | First measurement |
 |---|---|

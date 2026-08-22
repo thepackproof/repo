@@ -11,7 +11,7 @@ This directory records the controlled migration of the current PackProof 0.9.5.0
 - [Hardening and release architecture plan](HARDENING_AND_RELEASE_ARCHITECTURE_PLAN.md) - one fact / state / eligibility / Proof; freeze; P0–P2 sequence; release gate.
 - [HC-1 Phase 0 baseline](HARDENING_BASELINE_2026-08-22.md) - SHA, versions, Firebase projects, rules and lockfile hashes, known defects.
 - [HC-1 operations and governance](HC1_OPERATIONS_AND_GOVERNANCE.md) - internal SLOs, flags, privacy, keys, DR notes.
-- [HC-1 progress](HARDENING_PROGRESS_2026-08-22.md) - source closures and skipped device/live gates.
+- [HC-1 progress](HARDENING_PROGRESS_2026-08-22.md) - source closures and skipped device/live gates. Source candidate gate: `npm run test:hc1-source-gate`.
 - [Internal SLOs](INTERNAL_SLOS_HC1.md), [data governance](DATA_GOVERNANCE_HC1.md), [key registry](KEY_REGISTRY_V1.md), [disaster recovery](DISASTER_RECOVERY_HC1.md).
 
 ## Section 1 artifacts

@@ -2,7 +2,7 @@ import { readFile, readdir } from 'node:fs/promises';
 import { extname, join, relative } from 'node:path';
 
 const root = new URL('..', import.meta.url).pathname.replace(/^\/(?:([A-Za-z]):)/, '$1:');
-const scanRoots = ['src', 'public', 'sdk/javascript', 'functions/src', 'docs'];
+const scanRoots = ['src', 'public', 'sdk/javascript', 'functions/src', 'docs', 'portal/src', 'apps/enterprise-console'];
 const rootFiles = ['README.md', 'EXTERNAL_DEMO.md', 'PC_DEMO.md', 'SETUP_WIZARD.md'];
 const excluded = new Set(['docs/WHITEPAPER_COMPLIANCE.md', 'docs/CLAIMS_REGISTER.json']);
 const extensions = new Set(['.ts', '.tsx', '.js', '.mjs', '.html', '.md', '.yaml', '.yml']);
@@ -43,8 +43,9 @@ const prohibited = [
   /\bclaim valid\b/i,
   /\bclaim invalid\b/i,
   /\bguilty\b/i,
+  /\bliable\b/i,
 ];
-const boundedContext = /\b(?:not|never|cannot|does not|is not|neither|no|unsupported|prohibited|forbidden|avoid|without)\b/i;
+const boundedContext = /\b(?:not|never|cannot|does not|is not|neither|no|unsupported|prohibited|forbidden|avoid|without|unqualified)\b/i;
 
 const findings = [];
 const paths = [];
