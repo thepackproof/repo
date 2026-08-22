@@ -9,7 +9,7 @@ import { colors } from '@/constants/brand';
 import { featureFlags } from '@/constants/features';
 import { ingestTransactionIntake, previewTransactionIntake, startPackProofFromIntake, type ConsumerIntakeSourceType, type IntakePreview } from '@/lib/api';
 import { readableError } from '@/lib/format';
-import { confirmedFromPreview, hashFileArtifact, intakeSourceForShare, readTextArtifact, sha256Utf8 } from '@/lib/transaction-intake';
+import { confirmedFromPreview, hashFileArtifact, intakeSourceForShare, readBinaryArtifact, readTextArtifact, sha256Utf8 } from '@/lib/transaction-intake';
 import { useAuth } from '@/providers/auth-provider';
 
 export default function ImportPurchaseScreen() {
@@ -22,6 +22,7 @@ export default function ImportPurchaseScreen() {
   const [price, setPrice] = useState('');
   const [orderNumber, setOrderNumber] = useState('');
   const [binaryHash, setBinaryHash] = useState<string | null>(null);
+  const [binaryBase64, setBinaryBase64] = useState<string | null>(null);
   const [sourceType, setSourceType] = useState<ConsumerIntakeSourceType>('SHARE_SHEET');
   const [busy, setBusy] = useState(false);
 
@@ -43,10 +44,18 @@ export default function ImportPurchaseScreen() {
     if (!price && next.amount) setPrice((next.amount.minorUnits / 100).toFixed(2));
   };
 
-  const lookUp = async (text: string, intakeSourceType: ConsumerIntakeSourceType) => {
+  const lookUp = async (
+    text: string | null,
+    intakeSourceType: ConsumerIntakeSourceType,
+    artifactBytesBase64?: string | null,
+  ) => {
     setBusy(true);
     try {
-      const next = await previewTransactionIntake({ artifactText: text, intakeSourceType });
+      const next = await previewTransactionIntake({
+        artifactText: text,
+        intakeSourceType,
+        artifactBytesBase64: artifactBytesBase64 ?? null,
+      });
       applyPreview(next);
       setSourceType(intakeSourceType);
     } catch (error) {
@@ -79,14 +88,22 @@ export default function ImportPurchaseScreen() {
     if (text) {
       setArtifactText(text);
       setBinaryHash(null);
+      setBinaryBase64(null);
       await lookUp(text, intakeSourceType);
       return;
     }
     setBusy(true);
     try {
-      setBinaryHash(await hashFileArtifact(asset.uri));
+      const binary = await readBinaryArtifact(asset.uri);
+      const hash = binary?.sha256 ?? await hashFileArtifact(asset.uri);
+      setBinaryHash(hash);
+      setBinaryBase64(intakeSourceType === 'PDF_IMPORT' ? binary?.base64 ?? null : null);
       setArtifactText('');
-      setPreview(null);
+      if (intakeSourceType === 'PDF_IMPORT' && binary?.base64) {
+        await lookUp(null, intakeSourceType, binary.base64);
+      } else {
+        setPreview(null);
+      }
     } catch (error) {
       Alert.alert('Could not import this file', readableError(error));
     } finally {
@@ -100,6 +117,7 @@ export default function ImportPurchaseScreen() {
     setBusy(true);
     try {
       setBinaryHash(await hashFileArtifact(result.assets[0].uri));
+      setBinaryBase64(null);
       setArtifactText('');
       setPreview(null);
       setSourceType('SCREENSHOT_IMPORT');
@@ -139,6 +157,7 @@ export default function ImportPurchaseScreen() {
         intakeSourceType: sourceType,
         originalArtifactSha256,
         artifactText: text,
+        artifactBytesBase64: sourceType === 'PDF_IMPORT' ? binaryBase64 : null,
         confirmed,
       });
       const started = await startPackProofFromIntake({
@@ -179,7 +198,13 @@ export default function ImportPurchaseScreen() {
         multiline
         autoCapitalize="sentences"
       />
-      {binaryHash ? <Text style={styles.note}>Screenshot or PDF attached. Add the item name if PackProof could not read it.</Text> : null}
+      {binaryHash ? <Text style={styles.note}>{
+        sourceType === 'PDF_IMPORT' && preview?.hasTextLayer
+          ? 'PackProof read embedded PDF text. Confirm the item. This is not a verified order.'
+          : sourceType === 'PDF_IMPORT'
+            ? 'This PDF has no readable text layer. Add the item name. PackProof does not invent facts from images.'
+            : 'Screenshot attached. Add the item name. PackProof does not read pixels.'
+      }</Text> : null}
       {parsedReady ? (
         <>
           <Field label="Item name" value={title} onChangeText={setTitle} placeholder="Sony A7 Camera" autoCapitalize="sentences" />

@@ -220,6 +220,9 @@ export type PendingIntakeRecord = {
 
 export type IntakePreview = {
   parserVersion: string;
+  extractionMethod?: string;
+  hasTextLayer?: boolean;
+  factsConfirmed?: boolean;
   platformIdentifier: string | null;
   title: string | null;
   variant: string | null;
@@ -265,7 +268,11 @@ export function subscribePendingIntakes(uid: string, callback: (items: PendingIn
   }, onError);
 }
 
-export function previewTransactionIntake(input: { artifactText: string | null; intakeSourceType: ConsumerIntakeSourceType }) {
+export function previewTransactionIntake(input: {
+  artifactText: string | null;
+  intakeSourceType: ConsumerIntakeSourceType;
+  artifactBytesBase64?: string | null;
+}) {
   return callFunction<typeof input, IntakePreview>('previewTransactionIntake', input);
 }
 
@@ -274,6 +281,7 @@ export function ingestTransactionIntake(input: {
   intakeSourceType: ConsumerIntakeSourceType;
   originalArtifactSha256: string;
   artifactText: string | null;
+  artifactBytesBase64?: string | null;
   confirmed?: IntakeConfirmedFields | null;
 }) {
   return callFunction<typeof input, { commerceContextId: string; passportDraftId: string; pending: PendingIntakeRecord; parserVersion: string; replayed: boolean }>('ingestTransactionIntake', input);

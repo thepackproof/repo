@@ -4,6 +4,7 @@ exports.startPackProofFromIntake = exports.listPendingTransactionIntake = export
 const node_crypto_1 = require("node:crypto");
 const https_1 = require("firebase-functions/v2/https");
 const transaction_intake_service_1 = require("./application/v1/transaction-intake-service");
+const transaction_intake_extraction_1 = require("./domain/v1/transaction-intake-extraction");
 const config_1 = require("./config");
 const helpers_1 = require("./helpers");
 const callable_errors_1 = require("./infrastructure/firebase/v1/callable-errors");
@@ -30,6 +31,18 @@ function requiredText(value, field, min, max) {
     if (!result || result.trim().length < min)
         throw new https_1.HttpsError('invalid-argument', `${field} is required.`);
     return result.trim();
+}
+function optionalArtifactBytes(value) {
+    if (value === undefined || value === null || value === '')
+        return null;
+    if (typeof value !== 'string')
+        throw new https_1.HttpsError('invalid-argument', 'artifactBytesBase64 must be a string.');
+    try {
+        return (0, transaction_intake_extraction_1.decodeIntakeArtifactBytes)(value);
+    }
+    catch {
+        throw new https_1.HttpsError('invalid-argument', 'artifactBytesBase64 must be a PDF or image at most 1 MB.');
+    }
 }
 function confirmedFields(value) {
     if (value === undefined || value === null)
@@ -63,9 +76,12 @@ exports.previewTransactionIntake = (0, https_1.onCall)(callOptions, async (reque
         throw new https_1.HttpsError('invalid-argument', 'Unsupported intake source.');
     }
     try {
-        const parsed = intakeService.preview(optionalText(input.artifactText, 'artifactText', 100_000), intakeSourceType);
+        const parsed = intakeService.preview(optionalText(input.artifactText, 'artifactText', 100_000), intakeSourceType, optionalArtifactBytes(input.artifactBytesBase64));
         return {
             parserVersion: parsed.parserVersion,
+            extractionMethod: parsed.extractionMethod,
+            hasTextLayer: parsed.hasTextLayer,
+            factsConfirmed: false,
             platformIdentifier: parsed.platformIdentifier,
             title: parsed.item.title || null,
             variant: parsed.item.selectedOptions[0]?.value ?? null,
@@ -99,6 +115,7 @@ exports.ingestTransactionIntake = (0, https_1.onCall)(callOptions, async (reques
             intakeSourceType,
             originalArtifactSha256,
             artifactText: optionalText(input.artifactText, 'artifactText', 100_000),
+            artifactBytes: optionalArtifactBytes(input.artifactBytesBase64),
             confirmed: confirmedFields(input.confirmed),
         });
     }
