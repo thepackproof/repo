@@ -8,8 +8,8 @@ import { colors, radius } from '@/constants/brand';
 import { callFunction } from '@/lib/api';
 import { forceFreshCallableCredentials } from '@/lib/firebase';
 import { readableError } from '@/lib/format';
+import { presentProof, type CanonicalProofLike, type ProofPresentation } from '@/lib/ux-flow';
 import { useAuth } from '@/providers/auth-provider';
-import type { PackProofPassportView } from '@/types/models';
 
 function Chip({ label, state }: { label: string; state: string }) {
   return <View style={styles.chip}>
@@ -22,7 +22,7 @@ export default function PackProofPassportScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { user, loading } = useAuth();
-  const [passport, setPassport] = useState<PackProofPassportView | null>(null);
+  const [passport, setPassport] = useState<ProofPresentation | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -40,9 +40,9 @@ export default function PackProofPassportScreen() {
         const looksLikePassport = /^ppt_/.test(id) || /^PP-/i.test(id);
         const result = await callFunction<
           { transactionId?: string; passportId?: string },
-          PackProofPassportView
+          CanonicalProofLike
         >('getPackProofPassport', looksLikePassport ? { passportId: id } : { transactionId: id });
-        if (!cancelled) setPassport(result);
+        if (!cancelled) setPassport(presentProof(result));
       } catch (caught) {
         if (!cancelled) setError(readableError(caught));
       }
@@ -76,7 +76,7 @@ export default function PackProofPassportScreen() {
         </Card>
         <Card style={styles.card}>
           <Text style={styles.section}>Expected ↔ observed</Text>
-          <Text style={styles.footnote}>Comparisons report relationships between recorded data. They do not establish product authenticity, legal ownership, custody or liability.</Text>
+          <Text style={styles.footnote}>{passport.comparisonFootnote}</Text>
           {(passport.items[0]?.comparisons ?? []).map((item) => (
             <Text key={item.attribute} style={styles.row}>{item.attribute}: {item.result}</Text>
           ))}
@@ -99,7 +99,7 @@ export default function PackProofPassportScreen() {
           <Text style={styles.footnote}>The QR encodes the verification URL. It does not grant access. Sign-in is still required for PII.</Text>
           <Text style={styles.hash}>{passport.identity.verificationUrl}</Text>
         </Card>
-        <Text style={styles.footer}>Review the evidence and provenance on the following pages. PackProof does not determine fraud, fault, or liability.</Text>
+        <Text style={styles.footer}>{passport.pageOneFooter}</Text>
         <Text style={styles.footer}>{passport.limitations.humanReviewDisclaimer}</Text>
       </> : null}
     </ScrollView>

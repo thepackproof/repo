@@ -19,6 +19,12 @@ export {
   roleFromViewer,
   viewerRole,
 } from './next-action';
+export {
+  PROOF_COMPARISON_FOOTNOTE,
+  PROOF_PAGE_ONE_FOOTER,
+  presentProof,
+  proofParitySnapshot,
+} from './proof-presentation';
 
 export type {
   ActionRequiredBy,
@@ -43,3 +49,8 @@ export type {
   UxSecondaryActionKind,
   WaitingReason,
 } from './next-action';
+export type {
+  CanonicalProofLike,
+  ProofParitySnapshot,
+  ProofPresentation,
+} from './proof-presentation';
