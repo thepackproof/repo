@@ -94,6 +94,7 @@ export type { PassportSnapshotId as PassportSnapshotIdModel } from './models/Pas
 export type { PassportSnapshotResponse as PassportSnapshotResponseModel } from './models/PassportSnapshotResponse';
 export type { PortalHomeResponse as PortalHomeResponseModel } from './models/PortalHomeResponse';
 export type { PortalMobileHandoffResponse as PortalMobileHandoffResponseModel } from './models/PortalMobileHandoffResponse';
+export { PortalProofAvailability as PortalProofAvailabilityModel } from './models/PortalProofAvailability';
 export type { PortalProtocol as PortalProtocolModel } from './models/PortalProtocol';
 export type { PortalSessionResponse as PortalSessionResponseModel } from './models/PortalSessionResponse';
 export type { PortalTransaction as PortalTransactionModel } from './models/PortalTransaction';

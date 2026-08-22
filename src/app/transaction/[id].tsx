@@ -16,12 +16,13 @@ import { formatActivityTime, humanActivitySentence } from '@/lib/ux-activity';
 import { HUMAN_REVIEW_DISCLAIMER, packageSealProtocolStatus } from '@/lib/package-seal-protocol';
 import { evidenceLabels } from '@/lib/transaction-detail-labels';
 import { formatRuntimeEnum, normalizePhysicalStatus, type PhysicalStatusView } from '@/lib/runtime-display';
+import { useWorkspaceSlice } from '@/hooks/use-workspace-slices';
 import {
   orderLabel,
-  resolveNextRequiredAction,
   viewerRole,
   type NextRequiredAction,
 } from '@/lib/ux-flow';
+import { workspaceFromSlice } from '@/lib/workspace';
 import { useAuth } from '@/providers/auth-provider';
 import type { EvidenceRecord, EvidenceType, PackProofTransaction, ReturnPassport, TimelineEvent } from '@/types/models';
 
@@ -68,18 +69,16 @@ export default function TransactionDetail() {
     [activeReturn, evidence],
   );
   const inviteSentAt = events.find((event) => event.type === 'INVITE_CREATED')?.createdAt ?? null;
+  const slice = useWorkspaceSlice(id, item ? String(item.updatedAt) : undefined);
 
   const ux = useMemo<NextRequiredAction | null>(() => {
-    if (!item || !user) return null;
-    return resolveNextRequiredAction({
-      transaction: item,
-      viewerId: user.uid,
-      protocol,
+    if (!item || !user || !slice) return null;
+    return workspaceFromSlice(item, user.uid, slice, {
       returnPassport: activeReturn,
       returnProtocol,
       inviteSentAt,
-    });
-  }, [item, user, protocol, activeReturn, returnProtocol, inviteSentAt]);
+    }).nextAction;
+  }, [item, user, slice, activeReturn, returnProtocol, inviteSentAt]);
 
   const activityCtx = useMemo(() => (
     item && user

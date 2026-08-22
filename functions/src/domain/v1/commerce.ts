@@ -198,7 +198,12 @@ export function parseItemDescriptor(value: unknown, path: string): ItemDescripto
 const assertionConfidences = ['ASSERTED', 'OBSERVED', 'DERIVED'] as const;
 
 function parseFieldProvenance(value: unknown, path: string): FieldProvenanceDto {
-  const input = strictObject(value, path, ['source', 'confidence', 'importedAt', 'sourceReference', 'extractionMethod', 'sourceArtifactSha256']);
+  const input = strictObject(value, path, [
+    'source', 'confidence', 'importedAt', 'sourceReference', 'extractionMethod', 'sourceArtifactSha256',
+    'assertionId', 'supersedesAssertionId',
+  ]);
+  const assertionId = optionalString(input.assertionId, `${path}.assertionId`, { min: 1, max: 120 });
+  const supersedesAssertionId = optionalString(input.supersedesAssertionId, `${path}.supersedesAssertionId`, { min: 1, max: 120 });
   return {
     source: enumValue(input.source, `${path}.source`, assertionSources),
     confidence: enumValue(input.confidence, `${path}.confidence`, assertionConfidences),
@@ -206,6 +211,8 @@ function parseFieldProvenance(value: unknown, path: string): FieldProvenanceDto 
     sourceReference: optionalString(input.sourceReference, `${path}.sourceReference`, { min: 1, max: 500 }),
     extractionMethod: optionalString(input.extractionMethod, `${path}.extractionMethod`, { min: 1, max: 80, pattern: /^[A-Z0-9][A-Z0-9._-]{0,79}$/ }),
     sourceArtifactSha256: optionalSha256(input.sourceArtifactSha256, `${path}.sourceArtifactSha256`),
+    ...(assertionId ? { assertionId } : {}),
+    ...(supersedesAssertionId ? { supersedesAssertionId } : {}),
   };
 }
 
@@ -362,8 +369,12 @@ export function assertionSourceForIntakeSource(intakeSourceType: CommerceIntakeS
   }
 }
 
-export function commerceContextCanAuthoritativelyBindOrder(context: CommerceContextDto): boolean {
-  return isAuthoritativeCommerceTrustLevel(context.source.trustLevel) && context.source.externalOrderId !== null;
+export function canAuthoritativelyBindOrder(source: { trustLevel: CommerceTrustLevel | null | undefined }): boolean {
+  return isAuthoritativeCommerceTrustLevel(source.trustLevel);
+}
+
+export function commerceContextCanAuthoritativelyBindOrder(context: Pick<CommerceContextDto, 'source'> | { source: { trustLevel: CommerceTrustLevel | null; externalOrderId?: string | null } }): boolean {
+  return canAuthoritativelyBindOrder(context.source) && context.source.externalOrderId !== null;
 }
 
 export function commerceImageReferenceIsFinalizedEvidence(_image: ImageReference): false {

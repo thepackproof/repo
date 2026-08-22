@@ -73,6 +73,11 @@ export type PortalTransaction = {
   passportDisplayId: string | null;
   source: { type: string | null; platform: string | null; externalOrderId: string | null } | null;
   protocol: PortalProtocol;
+  proof: {
+    availability: 'NOT_ELIGIBLE' | 'ELIGIBLE_NOT_ISSUED' | 'AVAILABLE';
+    passportId: string | null;
+    displayId: string | null;
+  };
   lockedAt: string | null;
   createdAt: string;
   updatedAt: string;

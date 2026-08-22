@@ -27,9 +27,11 @@ Capture is an operation (`/capture/[id]`), not a tab.
 
 ## Next Action Engine
 
-Single source of truth: `resolveNextRequiredAction()` in `src/lib/ux-flow.ts`.
+During HC-1, workflow truth moves to the application-layer Transaction Workspace Projection ([hardening plan](../architecture/HARDENING_AND_RELEASE_ARCHITECTURE_PLAN.md) Phase 1). Screens consume that projection. They must not call `resolveNextRequiredAction()` with a partial transaction or a default empty protocol.
 
-Screens must not independently interpret backend states such as `READY_TO_PACK`. The consumer sees an instruction (`Photograph the sealed package`) and one button (`Take photo`).
+Until that projection ships, the shared engine remains `resolveNextRequiredAction()` in `shared/ux/next-action.ts` (re-exported from `src/lib/ux-flow.ts`). Missing protocol is a defect, not a valid business state.
+
+Screens must not independently interpret backend states such as `READY_TO_PACK`. The consumer sees an instruction (`Photograph the sealed package`) and one button (`Take photo`). `View Proof` follows Proof availability, not `PACKED` / `SHIPPED` / `COMPLETED`.
 
 Home capture actions deep-link through `hrefForPrimaryAction()` straight into camera when the next job is packing, label, arrival, or unboxing.
 

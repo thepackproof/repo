@@ -199,7 +199,7 @@
         "operationId": "getPortalProof",
         "tags": ["Portal", "Proofs"],
         "summary": "Canonical JSON Proof",
-        "description": "Alias of GET /v1/portal/transactions/{transactionId}/passport. Returns the live Proof projection.",
+        "description": "Alias of GET /v1/portal/transactions/{transactionId}/passport. Returns the live Proof projection and binds a stable Proof identity the first time eligibility passes. List and workspace hydration do not bind.",
         "security": [{ "firebaseUserBearer": [], "firebaseAppCheck": [] }],
         "parameters": [{ "$ref": "#/components/parameters/AccessibleTransactionId" }],
         "responses": {
@@ -756,7 +756,7 @@
         "operationId": "getProof",
         "tags": ["Proofs"],
         "summary": "Retrieve the live Proof",
-        "description": "Preferred alias of GET /v1/transactions/{transactionId}/passport. Returns the canonical Proof aggregation.",
+        "description": "Preferred alias of GET /v1/transactions/{transactionId}/passport. Returns the canonical Proof aggregation and binds a stable Proof identity the first time eligibility passes. Workspace list hydration does not bind.",
         "security": [{ "merchantApiKey": [] }],
         "parameters": [
           { "$ref": "#/components/parameters/AccessibleTransactionId" },
@@ -1454,10 +1454,20 @@
           "outboundComplete": { "type": "boolean" }
         }
       },
+      "PortalProofAvailability": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["availability", "passportId", "displayId"],
+        "properties": {
+          "availability": { "type": "string", "enum": ["NOT_ELIGIBLE", "ELIGIBLE_NOT_ISSUED", "AVAILABLE"] },
+          "passportId": { "type": ["string", "null"] },
+          "displayId": { "type": ["string", "null"] }
+        }
+      },
       "PortalTransaction": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["id", "object", "schemaVersion", "sellerId", "buyerId", "participantIds", "status", "title", "category", "description", "priceMinor", "currency", "identifiers", "conditionNotes", "terms", "confirmedBy", "handoffConfirmedBy", "completedBy", "passportId", "passportDisplayId", "source", "protocol", "lockedAt", "createdAt", "updatedAt"],
+        "required": ["id", "object", "schemaVersion", "sellerId", "buyerId", "participantIds", "status", "title", "category", "description", "priceMinor", "currency", "identifiers", "conditionNotes", "terms", "confirmedBy", "handoffConfirmedBy", "completedBy", "passportId", "passportDisplayId", "source", "protocol", "proof", "lockedAt", "createdAt", "updatedAt"],
         "properties": {
           "id": { "type": "string", "minLength": 10, "maxLength": 128 },
           "object": { "const": "portal_transaction" },
@@ -1490,6 +1500,7 @@
             }
           },
           "protocol": { "$ref": "#/components/schemas/PortalProtocol" },
+          "proof": { "$ref": "#/components/schemas/PortalProofAvailability" },
           "lockedAt": { "type": ["string", "null"], "format": "date-time" },
           "createdAt": { "type": "string", "format": "date-time" },
           "updatedAt": { "type": "string", "format": "date-time" }

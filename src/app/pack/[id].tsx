@@ -8,7 +8,9 @@ import { TaskSession } from '@/components/task-session';
 import { callFunction, subscribeEvidence, subscribeReturnPassports, subscribeTransaction } from '@/lib/api';
 import { readableError } from '@/lib/format';
 import { packageSealProtocolStatus } from '@/lib/package-seal-protocol';
-import { displayCarrierName, resolveNextRequiredAction, toHref } from '@/lib/ux-flow';
+import { useWorkspaceSlice } from '@/hooks/use-workspace-slices';
+import { displayCarrierName, toHref } from '@/lib/ux-flow';
+import { workspaceFromSlice } from '@/lib/workspace';
 import { useAuth } from '@/providers/auth-provider';
 import type { EvidenceRecord, EvidenceType, PackProofTransaction, ReturnPassport } from '@/types/models';
 
@@ -57,16 +59,14 @@ export default function PackSession() {
     () => (activeReturn ? packageSealProtocolStatus(evidence, { returnPassportId: activeReturn.id }) : null),
     [activeReturn, evidence],
   );
+  const slice = useWorkspaceSlice(id, item ? String(item.updatedAt) : undefined);
   const ux = useMemo(() => {
-    if (!item || !user) return null;
-    return resolveNextRequiredAction({
-      transaction: item,
-      viewerId: user.uid,
-      protocol: activeReturn ? returnProtocol : protocol,
+    if (!item || !user || !slice) return null;
+    return workspaceFromSlice(item, user.uid, slice, {
       returnPassport: activeReturn,
       returnProtocol,
-    });
-  }, [item, user, protocol, activeReturn, returnProtocol]);
+    }).nextAction;
+  }, [item, user, slice, activeReturn, returnProtocol]);
 
   const returning = Boolean(activeReturn && (ux?.primaryAction?.kind === 'RECORD_RETURN_PACKING' || ux?.primaryAction?.kind === 'RECORD_RETURN_SEAL' || ux?.primaryAction?.kind === 'ADD_RETURN_SHIPMENT'));
   const liveProtocol = returning ? (returnProtocol ?? protocol) : protocol;

@@ -8,13 +8,9 @@ import type {
 import type { MerchantReturnPassportDto, MerchantTimelineEventDto } from './merchant-evidence-types';
 import { toMerchantEvidenceArtifactDto } from './merchant-evidence-service';
 import { sha256 } from './merchant-transaction-service';
-import {
-  assertPassportEligible,
-  boundOrIssuedIdentity,
-  projectPassport,
-} from './passport-projection';
-import type { PackProofPassportV1, PassportCommerceInput } from '../../domain/v1/passport';
-import { evidenceReadyForWorkflow, isOutboundPackingEvidenceType, isOutboundSealEvidenceType } from '../../package-seal-protocol';
+import type { PackProofPassportV1, PassportCommerceInput, ProofAvailability } from '../../domain/v1/passport';
+import { ProofApplicationService } from './proof-application-service';
+import { hydrateWorkspaceSlices, protocolFromEvidence } from './transaction-workspace';
 
 export type PortalPrincipal = {
   type: 'PORTAL_USER';
@@ -56,6 +52,11 @@ export type PortalTransactionDto = {
   passportDisplayId: string | null;
   source: { type: string | null; platform: string | null; externalOrderId: string | null } | null;
   protocol: PortalProtocolPresence;
+  proof: {
+    availability: ProofAvailability;
+    passportId: string | null;
+    displayId: string | null;
+  };
   lockedAt: string | null;
   createdAt: string;
   updatedAt: string;
@@ -117,15 +118,13 @@ export interface PortalAuditWriter {
   }): Promise<void>;
 }
 
-const EMPTY_PROTOCOL: PortalProtocolPresence = {
-  hasPackingVideo: false,
-  hasSealReference: false,
-  hasArrivalPhoto: false,
-  hasUnboxingVideo: false,
-  sellerReferenceComplete: false,
-  buyerArrivalComplete: false,
-  outboundComplete: false,
+const NOT_ELIGIBLE_PROOF = {
+  availability: 'NOT_ELIGIBLE' as const,
+  passportId: null,
+  displayId: null,
 };
+
+export { protocolFromEvidence };
 
 function notFound(): ApplicationError {
   return new ApplicationError('NOT_FOUND', 'TRANSACTION_NOT_FOUND', 'The requested PackProof was not found.');
@@ -135,30 +134,10 @@ function forbidden(): ApplicationError {
   return new ApplicationError('FORBIDDEN', 'PORTAL_ACCESS_DENIED', 'You are not authorized to access this PackProof.');
 }
 
-export function protocolFromEvidence(records: readonly StoredEvidenceRecord[]): PortalProtocolPresence {
-  const outbound = records.filter((record) => !record.returnPassportId);
-  const ready = (predicate: (record: StoredEvidenceRecord) => boolean): boolean => outbound.some((record) => predicate(record) && evidenceReadyForWorkflow({
-    ...record,
-    assurance: record.assurance ?? undefined,
-  }));
-  const hasPackingVideo = ready((record) => isOutboundPackingEvidenceType(record.type));
-  const hasSealReference = ready((record) => isOutboundSealEvidenceType(record.type));
-  const hasArrivalPhoto = ready((record) => record.type === 'DELIVERY_PHOTO');
-  const hasUnboxingVideo = ready((record) => record.type === 'UNBOXING_VIDEO');
-  return {
-    hasPackingVideo,
-    hasSealReference,
-    hasArrivalPhoto,
-    hasUnboxingVideo,
-    sellerReferenceComplete: hasPackingVideo && hasSealReference,
-    buyerArrivalComplete: hasArrivalPhoto && hasUnboxingVideo,
-    outboundComplete: hasPackingVideo && hasSealReference && hasArrivalPhoto && hasUnboxingVideo,
-  };
-}
-
 export function toPortalTransactionDto(
   record: PortalWorkspaceRecord,
-  protocol: PortalProtocolPresence = EMPTY_PROTOCOL,
+  protocol: PortalProtocolPresence,
+  proof: PortalTransactionDto['proof'] = NOT_ELIGIBLE_PROOF,
 ): PortalTransactionDto {
   return {
     id: record.id,
@@ -181,6 +160,7 @@ export function toPortalTransactionDto(
     completedBy: record.completedBy,
     passportId: record.passportId,
     passportDisplayId: record.passportDisplayId,
+    proof,
     source: record.sourceType || record.sourcePlatform || record.externalOrderId
       ? { type: record.sourceType, platform: record.sourcePlatform, externalOrderId: record.externalOrderId }
       : null,
@@ -222,15 +202,25 @@ export class PortalWorkspaceApplicationService {
     return { actorId: principal.actorId, channel: 'WEB_PORTAL' };
   }
 
+  async listHydratedForActor(actorId: string, limit = 50): Promise<PortalTransactionDto[]> {
+    const records = await this.repository.listForParticipant(actorId, Math.min(Math.max(limit, 1), 50));
+    return Promise.all(records.map((record) => this.toHydratedDto(record)));
+  }
+
   async listTransactions(principal: PortalPrincipal, limit = 50): Promise<PortalTransactionDto[]> {
-    const records = await this.repository.listForParticipant(principal.actorId, Math.min(Math.max(limit, 1), 50));
-    return records.map((record) => toPortalTransactionDto(record));
+    return this.listHydratedForActor(principal.actorId, limit);
+  }
+
+  async getHydratedForActor(actorId: string, transactionId: string): Promise<PortalTransactionDto> {
+    const record = await this.repository.findForParticipant(transactionId, actorId);
+    if (!record || !record.participantIds.includes(actorId)) {
+      throw notFound();
+    }
+    return this.toHydratedDto(record);
   }
 
   async getTransaction(principal: PortalPrincipal, transactionId: string): Promise<PortalTransactionDto> {
-    const record = await this.requireParticipant(principal, transactionId);
-    const evidence = await this.repository.listEvidence(record.id);
-    return toPortalTransactionDto(record, protocolFromEvidence(evidence));
+    return this.getHydratedForActor(principal.actorId, transactionId);
   }
 
   async getTimeline(principal: PortalPrincipal, transactionId: string): Promise<MerchantTimelineEventDto[]> {
@@ -251,38 +241,16 @@ export class PortalWorkspaceApplicationService {
       this.repository.listTimeline(transaction.id),
       this.repository.listReturns(transaction.id),
     ]);
-    assertPassportEligible(transaction, records);
-    const issuedAt = this.now();
-    const identity = boundOrIssuedIdentity(transaction, issuedAt);
-    if (identity.bind) {
-      const bound = await this.repository.bindPassportIdentity(transaction.id, {
-        passportId: identity.passportId,
-        displayId: identity.displayId,
-        issuedAt: identity.issuedAt,
-      });
-      identity.passportId = bound.passportId;
-      identity.displayId = bound.displayId;
-      identity.issuedAt = bound.issuedAt;
-    }
     const commerce = transaction.commerceContextId
       ? await this.repository.findCommerceContext(transaction.commerceContextId)
       : null;
-    return projectPassport({
+    const proofs = new ProofApplicationService(this.repository, () => this.verificationBaseUrl(), this.now);
+    return proofs.getCurrentProof({
       transaction,
       artifacts: records,
-      shipment: transaction.shipment,
-      delivery: transaction.delivery,
-      returns,
       timeline,
+      returns,
       commerce,
-      identity: {
-        passportId: identity.passportId,
-        displayId: identity.displayId,
-        issuedAt: identity.issuedAt.toISOString(),
-      },
-      verificationBaseUrl: this.verificationBaseUrl(),
-      reviewQuery: null,
-      now: issuedAt.toISOString(),
     });
   }
 
@@ -333,6 +301,16 @@ export class PortalWorkspaceApplicationService {
       metadata: { apiVersion: 'v1', channel: 'WEB_PORTAL', action },
     }).catch(() => undefined);
     return handoff;
+  }
+
+  private async toHydratedDto(record: PortalWorkspaceRecord): Promise<PortalTransactionDto> {
+    const [evidence, returns, commerce] = await Promise.all([
+      this.repository.listEvidence(record.id),
+      this.repository.listReturns(record.id),
+      record.commerceContextId ? this.repository.findCommerceContext(record.commerceContextId) : Promise.resolve(null),
+    ]);
+    const slices = hydrateWorkspaceSlices(record, evidence, returns, commerce);
+    return toPortalTransactionDto(record, slices.protocol, slices.proof);
   }
 
   private verificationBaseUrl(): string {

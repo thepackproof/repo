@@ -1,6 +1,6 @@
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import { connectLinkBaseUrl, db } from './config';
-import { assertPassportEligible, boundOrIssuedIdentity, projectPassport } from './application/v1/passport-projection';
+import { ProofApplicationService } from './application/v1/proof-application-service';
 import { isPassportDisplayId, isPassportResourceId } from './domain/v1/passport';
 import { FirestoreMerchantEvidenceRepository } from './infrastructure/firebase/v1/merchant-evidence-repository';
 import { requireUid } from './helpers';
@@ -27,39 +27,17 @@ export const getPackProofPassport = onCall(callOptions, async (request) => {
     repository.listTimeline(transaction.id),
     repository.listReturns(transaction.id),
   ]);
+  const commerce = transaction.commerceContextId ? await repository.findCommerceContext(transaction.commerceContextId) : null;
+  const proofs = new ProofApplicationService(repository, () => connectLinkBaseUrl.value());
   try {
-    assertPassportEligible(transaction, records);
+    return await proofs.getCurrentProof({
+      transaction,
+      artifacts: records,
+      timeline,
+      returns,
+      commerce,
+    });
   } catch (error) {
     throw new HttpsError('failed-precondition', error instanceof Error ? error.message : 'This transaction does not yet qualify for a Proof.');
   }
-  const issuedAt = new Date();
-  const identity = boundOrIssuedIdentity(transaction, issuedAt);
-  if (identity.bind) {
-    const bound = await repository.bindPassportIdentity(transaction.id, {
-      passportId: identity.passportId,
-      displayId: identity.displayId,
-      issuedAt: identity.issuedAt,
-    });
-    identity.passportId = bound.passportId;
-    identity.displayId = bound.displayId;
-    identity.issuedAt = bound.issuedAt;
-  }
-  const commerce = transaction.commerceContextId ? await repository.findCommerceContext(transaction.commerceContextId) : null;
-  return projectPassport({
-    transaction,
-    artifacts: records,
-    shipment: transaction.shipment,
-    delivery: transaction.delivery,
-    returns,
-    timeline,
-    commerce,
-    identity: {
-      passportId: identity.passportId,
-      displayId: identity.displayId,
-      issuedAt: identity.issuedAt.toISOString(),
-    },
-    verificationBaseUrl: connectLinkBaseUrl.value(),
-    reviewQuery: null,
-    now: issuedAt.toISOString(),
-  });
 });

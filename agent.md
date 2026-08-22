@@ -1,19 +1,20 @@
 # PackProof Launch-Readiness and Demonstration Execution Plan
 
-**Authority:** This is the controlling launch and demonstration plan for the PackProof repository.
+**Authority (updated 2026-08-22):** Development and hardening sequencing is controlled by [`docs/architecture/HARDENING_AND_RELEASE_ARCHITECTURE_PLAN.md`](docs/architecture/HARDENING_AND_RELEASE_ARCHITECTURE_PLAN.md) and [`ADR 0016`](docs/adr/0016-one-fact-one-state-one-eligibility-one-proof.md). This file remains the controlling document for `DEMO_READY` / `LAUNCH_READY` / `LAUNCHED` claim vocabulary, Play/sandbox G-gates, and stop conditions after the hardening release gate is met.
 
-**Effective date:** 2026-08-13
+**Effective date:** 2026-08-13  
+**Hardening override:** 2026-08-22 (owner-approved replacement of development order)
 
 **Repository:** `C:\src\PackProof\repo`
 
 **Initial platform:** Android
 
 **Current default branch:** `master`
-**Current planning baseline:** commit `7acf79489e9b5b6c78f9a6b8ae64d529cd9b0e3b`
+**Current planning baseline:** commit `db69eef11890fc5d566795d92d40740a21f82308` ([`docs/architecture/HARDENING_BASELINE_2026-08-22.md`](docs/architecture/HARDENING_BASELINE_2026-08-22.md))
 
-All agents, contributors, and release operators must follow this file for launch sequencing, proof gates, status language, and stop conditions. Historical baselines, completion records, ADRs, architecture documents, test plans, Play checklists, and demo runbooks remain evidence and technical references. They do not override this execution order.
+New product surfaces, evidence semantics, Proof meanings, Enterprise modes, and AI/CV work are frozen until the hardening release-gate statements are demonstrably true. Launch claims in this file still use the evidence vocabulary below. They are not a permission to add features during HC-1.
 
-If another Markdown file conflicts with this plan, this plan controls unless the repository owner explicitly approves and records a replacement.
+Historical baselines, completion records, ADRs, architecture documents, test plans, Play checklists, and demo runbooks remain evidence and technical references. They do not override the hardening development order or this file’s claim vocabulary.
 
 ## 1. Mission and required outcomes
 

@@ -120,6 +120,8 @@ export type FieldProvenance = {
   sourceReference: string | null;
   extractionMethod: string | null;
   sourceArtifactSha256: string | null;
+  assertionId?: string | null;
+  supersedesAssertionId?: string | null;
 };
 
 export type FieldProvenanceDto = Omit<FieldProvenance, 'importedAt'> & { importedAt: string };

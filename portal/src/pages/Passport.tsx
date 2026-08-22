@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
+import { integrityBannerLabel } from '@packproof/ux';
 import { getPassport } from '../api';
 import { QrPanel } from '../QrPanel';
 
@@ -43,7 +44,7 @@ export function PassportPage() {
       {passport ? (
         <div className="stack">
           <article className="card">
-            <h2>{(passport.integrity?.banner ?? '').replaceAll('_', ' ')}</h2>
+            <h2>{integrityBannerLabel(passport.integrity?.banner ?? '')}</h2>
             <p>{passport.integrity?.summary}</p>
             <p className="meta">{passport.integrity?.meaning}</p>
           </article>

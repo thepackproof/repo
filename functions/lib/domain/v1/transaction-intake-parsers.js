@@ -241,6 +241,10 @@ function firstItemLine(text) {
             continue;
         if (/^[\d$€£.,\s]+$/.test(trimmed))
             continue;
+        if (/^(?:us|usd|eur|gbp)?\s*[$€£]/i.test(trimmed))
+            continue;
+        if (/\b(?:usd|eur|gbp)\s*[\d.,]+$/i.test(trimmed))
+            continue;
         return trimmed;
     }
     return null;

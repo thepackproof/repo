@@ -8,6 +8,7 @@ import { colors, radius } from '@/constants/brand';
 import { callFunction } from '@/lib/api';
 import { forceFreshCallableCredentials } from '@/lib/firebase';
 import { readableError } from '@/lib/format';
+import { integrityBannerLabel } from '@/lib/ux-flow';
 import { useAuth } from '@/providers/auth-provider';
 import type { PackProofPassportView } from '@/types/models';
 
@@ -63,7 +64,7 @@ export default function PackProofPassportScreen() {
       {passport ? <>
         <ScreenTitle eyebrow="Proof" title="Your Proof is ready" subtitle={passport.identity.displayId} />
         <Card style={styles.banner}>
-          <Text style={styles.bannerTitle}>{passport.integrity.banner.replaceAll('_', ' ')}</Text>
+          <Text style={styles.bannerTitle}>{integrityBannerLabel(passport.integrity.banner)}</Text>
           <Text style={styles.bannerSummary}>{passport.integrity.summary}</Text>
           <Text style={styles.body}>{passport.integrity.meaning}</Text>
         </Card>

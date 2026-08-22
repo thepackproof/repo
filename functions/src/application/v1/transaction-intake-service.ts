@@ -17,12 +17,14 @@ import {
 } from '../../domain/v1/commerce';
 import { mapLegacyConsumerTransaction } from '../../domain/v1/compatibility';
 import { assertTransition } from '../../domain/v1/common';
+import { sanitizeRetainedText } from '../../domain/v1/privacy-intake';
 import { missingIntakeFields, parseCommerceArtifact } from '../../domain/v1/transaction-intake-parsers';
 import { DomainValidationError } from '../../domain/v1/runtime';
 import { transactionDtoSchema, type TransactionTerms } from '../../domain/v1/transactions';
 import { activeConsumerTransactionStatuses } from './consumer-transaction-service';
 import { ApplicationError } from './errors';
 import type { ApplicationEvent } from './events';
+import { assertIntakeEnabled } from './feature-flags';
 import { canonicalize, sha256 } from './merchant-transaction-service';
 
 export const CONSUMER_INTAKE_INTEGRATION_ID = 'int_consumerIntake01';
@@ -41,6 +43,7 @@ export type TransactionIntakeCommand = {
   externalOrderId: string | null;
   externalListingId: string | null;
   productUrl: string | null;
+  sellerEnteredFields?: readonly string[];
 };
 
 export type IntakeConfirmedFields = {
@@ -204,16 +207,42 @@ function mergeOption(options: ItemDescriptor['selectedOptions'], option: { name:
   return next;
 }
 
+export function sellerEnteredIntakeFields(
+  parsed: ItemDescriptor,
+  item: ItemDescriptor,
+  confirmed: IntakeConfirmedFields | null | undefined,
+  parsedOrderId: string | null,
+  orderId: string | null,
+): string[] {
+  if (!confirmed) return [];
+  const fields: string[] = [];
+  if (confirmed.title?.trim() && confirmed.title.trim() !== parsed.title) fields.push('item.title');
+  if (confirmed.description != null && confirmed.description !== parsed.description) fields.push('item.description');
+  if (confirmed.sku?.trim() && confirmed.sku.trim() !== (parsed.sku ?? '')) fields.push('item.sku');
+  if (confirmed.variant?.trim()) fields.push('item.selectedOptions');
+  if (confirmed.quantity && confirmed.quantity !== parsed.quantity) fields.push('item.quantity');
+  if (confirmed.priceMinor != null && confirmed.priceMinor !== parsed.amount?.minorUnits) fields.push('item.amount');
+  if (confirmed.orderNumber?.trim() && confirmed.orderNumber.trim() !== (parsedOrderId ?? '')) fields.push('source.externalOrderId');
+  if (item.title !== parsed.title && !fields.includes('item.title') && confirmed.title?.trim()) fields.push('item.title');
+  return fields;
+}
+
 export function overlayIntakeItem(base: ItemDescriptor, confirmed: IntakeConfirmedFields | null | undefined): ItemDescriptor {
-  if (!confirmed) return base;
+  if (!confirmed) {
+    return {
+      ...base,
+      title: sanitizeRetainedText(base.title),
+      description: sanitizeRetainedText(base.description),
+    };
+  }
   const variant = confirmed.variant?.trim();
   const title = confirmed.title?.trim();
   const sku = confirmed.sku?.trim();
   const currency = confirmed.currency?.trim().toUpperCase();
   return {
     ...base,
-    title: title || base.title,
-    description: confirmed.description != null ? confirmed.description : base.description,
+    title: sanitizeRetainedText(title || base.title),
+    description: sanitizeRetainedText(confirmed.description != null ? confirmed.description : base.description),
     sku: sku || base.sku,
     selectedOptions: variant ? mergeOption(base.selectedOptions, { name: 'Variant', value: variant.slice(0, 300) }) : base.selectedOptions,
     quantity: confirmed.quantity && confirmed.quantity >= 1 ? Math.min(confirmed.quantity, 100_000) : base.quantity,
@@ -300,6 +329,13 @@ export class TransactionIntakeApplicationService {
     }
     const item = overlayIntakeItem(parsed.item, command.confirmed);
     const externalOrderId = command.confirmed?.orderNumber?.trim() || parsed.externalOrderId;
+    const sellerEnteredFields = sellerEnteredIntakeFields(
+      parsed.item,
+      item,
+      command.confirmed,
+      parsed.externalOrderId,
+      externalOrderId,
+    );
     if (!item.title.trim()) {
       throw new ApplicationError('INVALID_ARGUMENT', 'INTAKE_TITLE_REQUIRED', 'Add the item name to import this purchase.', [{
         field: 'title',
@@ -321,6 +357,7 @@ export class TransactionIntakeApplicationService {
       externalOrderId,
       externalListingId: parsed.externalListingId,
       productUrl: parsed.productUrl,
+      sellerEnteredFields,
     });
   }
 
@@ -328,6 +365,7 @@ export class TransactionIntakeApplicationService {
     if (!(consumerIntakeSourceTypes as readonly string[]).includes(command.intakeSourceType)) {
       throw new ApplicationError('INVALID_ARGUMENT', 'UNSUPPORTED_INTAKE_SOURCE', 'This intake adapter is not a consumer correspondence source.');
     }
+    assertIntakeEnabled(command.intakeSourceType);
     const timestamp = this.now();
     const importedAt = timestamp.toISOString();
     const expiresAt = new Date(timestamp.getTime() + 30 * 86_400_000);
@@ -346,14 +384,37 @@ export class TransactionIntakeApplicationService {
       productUrl: command.productUrl,
     }));
     const assertionSource = assertionSourceForIntakeSource(command.intakeSourceType);
-    const fieldProvenance = Object.fromEntries(populatedItemFields(command.item).map((field) => [field, {
-      source: assertionSource,
-      confidence: 'ASSERTED' as const,
-      importedAt,
-      sourceReference: command.externalOrderId ?? command.productUrl,
-      extractionMethod: command.parserVersion,
-      sourceArtifactSha256: command.originalArtifactSha256,
-    }]));
+    const sellerEntered = new Set(command.sellerEnteredFields ?? []);
+    const fieldProvenance = Object.fromEntries(populatedItemFields(command.item).map((field) => {
+      const importedAssertionId = `asrt_${sha256(`${commerceContextId}\n${field}\nimported`).slice(0, 24)}`;
+      const sellerAssertionId = `asrt_${sha256(`${commerceContextId}\n${field}\nseller`).slice(0, 24)}`;
+      const corrected = sellerEntered.has(field);
+      return [field, {
+        source: corrected ? 'SELLER_ENTERED' as const : assertionSource,
+        confidence: 'ASSERTED' as const,
+        importedAt,
+        sourceReference: command.externalOrderId ?? command.productUrl,
+        extractionMethod: corrected ? 'PARTICIPANT_CONFIRMED' : command.parserVersion,
+        sourceArtifactSha256: corrected ? null : command.originalArtifactSha256,
+        assertionId: corrected ? sellerAssertionId : importedAssertionId,
+        supersedesAssertionId: corrected ? importedAssertionId : null,
+      }];
+    }));
+    if (command.externalOrderId) {
+      const importedAssertionId = `asrt_${sha256(`${commerceContextId}\nsource.externalOrderId\nimported`).slice(0, 24)}`;
+      const sellerAssertionId = `asrt_${sha256(`${commerceContextId}\nsource.externalOrderId\nseller`).slice(0, 24)}`;
+      const corrected = sellerEntered.has('source.externalOrderId');
+      fieldProvenance['source.externalOrderId'] = {
+        source: corrected ? 'SELLER_ENTERED' : assertionSource,
+        confidence: 'ASSERTED',
+        importedAt,
+        sourceReference: command.externalOrderId,
+        extractionMethod: corrected ? 'PARTICIPANT_CONFIRMED' : command.parserVersion,
+        sourceArtifactSha256: corrected ? null : command.originalArtifactSha256,
+        assertionId: corrected ? sellerAssertionId : importedAssertionId,
+        supersedesAssertionId: corrected ? importedAssertionId : null,
+      };
+    }
     let context;
     let draft;
     try {

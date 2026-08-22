@@ -1,8 +1,18 @@
 # PackProof architecture governance
 
-> Current execution authority: follow [`../../agent.md`](../../agent.md) for launch sequencing, readiness status, demonstration gates, Play acceptance, and production rollout. This directory provides architecture and historical evidence; it does not override the current execution plan.
+> Current development authority: follow [`HARDENING_AND_RELEASE_ARCHITECTURE_PLAN.md`](HARDENING_AND_RELEASE_ARCHITECTURE_PLAN.md) and [`ADR 0016`](../adr/0016-one-fact-one-state-one-eligibility-one-proof.md). New product surfaces are frozen until that plan’s release-gate statements are true.
+>
+> Launch-claim vocabulary (`DEMO_READY`, `LAUNCH_READY`, `LAUNCHED`) remains in [`../../agent.md`](../../agent.md). This directory does not authorize those claims.
 
-This directory records the controlled migration of the current PackProof 0.9.5.0 working tree into a unified, API-first commerce evidence platform.
+This directory records the controlled migration of the current PackProof 0.9.5.0 working tree into a unified, API-first commerce evidence platform. HC-1 baseline: [`HARDENING_BASELINE_2026-08-22.md`](HARDENING_BASELINE_2026-08-22.md).
+
+## Hardening (current)
+
+- [Hardening and release architecture plan](HARDENING_AND_RELEASE_ARCHITECTURE_PLAN.md) - one fact / state / eligibility / Proof; freeze; P0–P2 sequence; release gate.
+- [HC-1 Phase 0 baseline](HARDENING_BASELINE_2026-08-22.md) - SHA, versions, Firebase projects, rules and lockfile hashes, known defects.
+- [HC-1 operations and governance](HC1_OPERATIONS_AND_GOVERNANCE.md) - internal SLOs, flags, privacy, keys, DR notes.
+- [HC-1 progress](HARDENING_PROGRESS_2026-08-22.md) - source closures and skipped device/live gates. Source candidate gate: `npm run test:hc1-source-gate`.
+- [Internal SLOs](INTERNAL_SLOS_HC1.md), [data governance](DATA_GOVERNANCE_HC1.md), [key registry](KEY_REGISTRY_V1.md), [disaster recovery](DISASTER_RECOVERY_HC1.md).
 
 ## Section 1 artifacts
 
@@ -13,7 +23,7 @@ This directory records the controlled migration of the current PackProof 0.9.5.0
 - [Baseline evidence](BASELINE_2026-08-11.md) - exact local source/emulator results and known open risks for the uncommitted 0.3.0 working tree.
 - [Migration map](MIGRATION_MAP.md) - current modules, current coupling and their target architectural destinations.
 - [Checkpoint plan](CHECKPOINT_PLAN.md) - historical disposition of the now-resolved uncommitted-baseline problem.
-- [Architecture decisions](../adr/README.md) - accepted decisions that later sections must preserve, including [ADR 0013](../adr/0013-transaction-intake-layer.md) (consumer intake over `commerce_context`) and [ADR 0014](../adr/0014-web-portal-presentation-surface.md) (web portal as a presentation surface).
+- [Architecture decisions](../adr/README.md) - accepted decisions that later sections must preserve, including [ADR 0013](../adr/0013-transaction-intake-layer.md) (consumer intake over `commerce_context`), [ADR 0014](../adr/0014-web-portal-presentation-surface.md) (web portal as a presentation surface), [ADR 0015](../adr/0015-proof-is-the-passport.md) (Proof is the Passport projection), and [ADR 0016](../adr/0016-one-fact-one-state-one-eligibility-one-proof.md) (one workspace projection and one Proof service).
 - [PackProof Web Portal v1](WEB_PORTAL_V1.md) - browser SPA, `PortalPrincipal`, `/v1/portal` transport, Hosting target, and activation limits.
 
 ## Section 2 artifacts

@@ -957,6 +957,8 @@ test('portal workspace authorizes participants, maps DTOs, and refuses browser c
   assert.equal(listed[0].object, 'portal_transaction');
   assert.equal(listed[0].status, 'TERMS_LOCKED');
   assert.equal(listed[0].source.platform, 'eBay');
+  assert.equal(listed[0].proof.availability, 'NOT_ELIGIBLE');
+  assert.equal(listed[0].protocol.hasPackingVideo, false);
   await assert.rejects(
     () => service.getTransaction(principal, 'not-yours-tx'),
     (error) => error instanceof ApplicationError && error.code === 'TRANSACTION_NOT_FOUND',

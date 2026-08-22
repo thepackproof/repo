@@ -1,0 +1,36 @@
+---
+description: HC-1 hardening freeze — one core, no new product meaning
+alwaysApply: true
+---
+
+# Hardening freeze (HC-1)
+
+Controlling plan: `docs/architecture/HARDENING_AND_RELEASE_ARCHITECTURE_PLAN.md`.
+Decision: `docs/adr/0016-one-fact-one-state-one-eligibility-one-proof.md`.
+
+Treat almost every new feature as secondary until the plan’s release-gate statements are true.
+
+**Frozen:** new product surfaces, evidence semantics, Proof meaning, Enterprise modes, AI/CV, evidence-core redesign.
+
+**Allowed:** named hardening defects, UX that removes local reasoning, tests, observability, release engineering, compatibility adapters.
+
+```ts
+// BAD — presentation invents workflow truth
+resolveNextRequiredAction({ transaction, viewerId }); // protocol defaults to empty
+
+// GOOD — application projection, required protocol, Proof availability from the Proof service
+workspace.proof.availability === 'AVAILABLE'; // only then show View Proof
+```
+
+```ts
+// BAD — transport calls eligibility / identity helpers
+assertPassportEligible(transaction, records);
+if (externalOrderId) authoritative = true;
+
+// GOOD — ProofApplicationService after commerce+evidence load; trust from provenance
+canAuthoritativelyBindOrder(source); // MERCHANT_SERVER_ATTESTED | PLATFORM_API_ATTESTED
+```
+
+P0 order: workspace projection → Proof application service → no lifecycle Proof readiness → Home/Portal consume the same object.
+
+Do not claim `1.0.0`, `DEMO_READY`, or `LAUNCH_READY`. Do not commit `functions/.env.thepackproof-prod` or `google-services.production.local.json`.

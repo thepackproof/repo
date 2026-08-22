@@ -5,6 +5,7 @@ import {
   groupHomeInbox,
   resolveNextRequiredAction,
 } from '../../shared/ux/next-action.ts';
+import { projectTransactionWorkspace } from '../../shared/ux/workspace-projection.ts';
 
 const protocol = {
   hasPackingVideo: false,
@@ -54,6 +55,24 @@ test('portal and mobile share the Next Action Engine for packing', () => {
   assert.equal(next.humanState, 'READY_TO_PACK');
   assert.equal(next.primaryAction?.kind, 'START_PACKING');
   assert.equal(CAPTURE_PRIMARY_ACTIONS.has(next.primaryAction?.kind ?? 'EDIT_TERMS'), true);
+});
+
+test('portal workspace projection matches the shared engine', () => {
+  const next = resolveNextRequiredAction({
+    transaction: transaction(),
+    viewerId: 'seller',
+    protocol,
+    proof: { availability: 'NOT_ELIGIBLE' },
+  });
+  const workspace = projectTransactionWorkspace({
+    transaction: transaction(),
+    viewerId: 'seller',
+    protocol,
+    proof: { availability: 'NOT_ELIGIBLE', passportId: null, displayId: null },
+    generatedAt: '2026-08-19T12:00:00.000Z',
+  });
+  assert.deepEqual(workspace.nextAction.primaryAction, next.primaryAction);
+  assert.equal(workspace.proof.availability, 'NOT_ELIGIBLE');
 });
 
 test('home groups records that need the viewer', () => {

@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { groupLibrary, resolveNextRequiredAction } from '@packproof/ux';
-import { listTransactions, toUxTransaction, type PortalTransaction } from '../api';
+import { groupLibrary } from '@packproof/ux';
+import { listTransactions, type PortalTransaction } from '../api';
+import { workspaceFromPortal } from '../workspace';
 import { useAuth } from '../auth';
 
 export function LibraryPage() {
@@ -17,11 +18,7 @@ export function LibraryPage() {
     return () => { cancelled = true; };
   }, []);
 
-  const grouped = user ? groupLibrary(items, (item) => resolveNextRequiredAction({
-    transaction: toUxTransaction(item),
-    viewerId: user.uid,
-    protocol: item.protocol,
-  })) : { active: [], completed: [] };
+  const grouped = user ? groupLibrary(items, (item) => workspaceFromPortal(item, user.uid).nextAction) : { active: [], completed: [] };
 
   return (
     <>

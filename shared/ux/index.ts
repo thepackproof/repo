@@ -1,4 +1,5 @@
 export {
+  ABSENT_PROTOCOL,
   CAMERA_SESSION_ACTIONS,
   CAPTURE_PRIMARY_ACTIONS,
   DIRECT_CAPTURE_ACTIONS,
@@ -13,12 +14,20 @@ export {
   groupByInboxBucket,
   groupHomeInbox,
   groupLibrary,
+  integrityBannerLabel,
   orderLabel,
   otherLabel,
+  proofCanBeViewed,
   resolveNextRequiredAction,
   roleFromViewer,
   viewerRole,
-} from './next-action';
+} from './next-action.ts';
+
+export {
+  WORKSPACE_PROJECTION_VERSION,
+  evidenceProcessingStateFromPhase,
+  projectTransactionWorkspace,
+} from './workspace-projection.ts';
 
 export type {
   ActionRequiredBy,
@@ -35,6 +44,7 @@ export type {
   ProgressStage,
   ProgressStep,
   ProgressStepState,
+  ProofAvailability,
   ReturnPassport,
   TransactionStatus,
   UxAction,
@@ -42,4 +52,10 @@ export type {
   UxPrimaryActionKind,
   UxSecondaryActionKind,
   WaitingReason,
-} from './next-action';
+} from './next-action.ts';
+
+export type {
+  TransactionWorkspaceProjectionV1,
+  WorkspaceEvidenceProcessingState,
+  WorkspaceProjectionInput,
+} from './workspace-projection.ts';

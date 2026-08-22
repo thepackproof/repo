@@ -9,7 +9,9 @@ import { TaskSession } from '@/components/task-session';
 import { callFunction, subscribeEvents, subscribeEvidence, subscribeReturnPassports, subscribeTransaction } from '@/lib/api';
 import { readableError } from '@/lib/format';
 import { packageSealProtocolStatus } from '@/lib/package-seal-protocol';
-import { displayCarrierName, hrefForPrimaryAction, PACK_SESSION_ACTIONS, resolveNextRequiredAction, toHref, type NextRequiredAction } from '@/lib/ux-flow';
+import { useWorkspaceSlice } from '@/hooks/use-workspace-slices';
+import { displayCarrierName, hrefForPrimaryAction, PACK_SESSION_ACTIONS, toHref, type NextRequiredAction } from '@/lib/ux-flow';
+import { workspaceFromSlice } from '@/lib/workspace';
 import { useAuth } from '@/providers/auth-provider';
 import type { EvidenceRecord, PackProofTransaction, ReturnPassport, TimelineEvent } from '@/types/models';
 
@@ -35,25 +37,22 @@ export default function TaskScreen() {
     return () => { unsubTransaction(); unsubEvidence(); unsubEvents(); unsubReturns(); };
   }, [id]);
 
-  const protocol = useMemo(() => packageSealProtocolStatus(evidence), [evidence]);
   const activeReturn = returnPassports.find((passport) => !['COMPLETED', 'CANCELLED'].includes(passport.status)) ?? null;
   const returnProtocol = useMemo(
     () => (activeReturn ? packageSealProtocolStatus(evidence, { returnPassportId: activeReturn.id }) : null),
     [activeReturn, evidence],
   );
   const inviteSentAt = events.find((event) => event.type === 'INVITE_CREATED')?.createdAt ?? null;
+  const slice = useWorkspaceSlice(id, item ? String(item.updatedAt) : undefined);
 
   const ux = useMemo<NextRequiredAction | null>(() => {
-    if (!item || !user) return null;
-    return resolveNextRequiredAction({
-      transaction: item,
-      viewerId: user.uid,
-      protocol,
+    if (!item || !user || !slice) return null;
+    return workspaceFromSlice(item, user.uid, slice, {
       returnPassport: activeReturn,
       returnProtocol,
       inviteSentAt,
-    });
-  }, [item, user, protocol, activeReturn, returnProtocol, inviteSentAt]);
+    }).nextAction;
+  }, [item, user, slice, activeReturn, returnProtocol, inviteSentAt]);
 
   const goHome = () => router.replace('/(tabs)');
   const run = async (action: () => Promise<void>) => {
