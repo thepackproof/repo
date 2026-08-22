@@ -84,7 +84,7 @@ async function verify() {
     : {};
   const secretKeys = ['MANIFEST_SIGNING_SECRET', 'API_CREDENTIAL_PEPPER', 'WEBHOOK_SIGNING_SECRET'];
   record('Required secrets', secretKeys.every((key) => Boolean(functionEnv[key])) || sourceOnly, sourceOnly ? 'source-only; live secrets not required' : 'functions/.env');
-  record('App Check file', await exists(join(root, '.env')), sourceOnly ? 'source-only' : '');
+  record('App Check file', sourceOnly || await exists(join(root, '.env')), sourceOnly ? 'source-only' : '');
 
   if (!sourceOnly && process.env.PACKPROOF_DEMO_API_BASE) {
     const base = process.env.PACKPROOF_DEMO_API_BASE.replace(/\/$/, '');
